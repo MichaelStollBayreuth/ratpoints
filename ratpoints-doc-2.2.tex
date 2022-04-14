@@ -1,0 +1,951 @@
+\documentclass[12pt,a4paper,oneside]{amsart}
+\usepackage{fullpage,url,amssymb,enumerate,colonequals}
+% add a bit of space between text and page numbers at the bottom of the page:
+\addtolength{\footskip}{10pt}
+
+\usepackage[all,pdf]{xy} % for complicated commutative diagrams, use pdf driver
+
+\usepackage{comment}
+\usepackage{color}
+\usepackage{charter,euler} % for better looks
+% Make sure that math operators are set in Charter, too.
+\DeclareSymbolFont{bchoperators}{T1}{bch}{m}{n}
+\SetSymbolFont{bchoperators}{bold}{T1}{bch}{b}{n}
+\makeatletter
+\renewcommand{\operator@font}{\mathgroup\symbchoperators}
+\makeatother
+
+\DeclareFontEncoding{OT2}{}{} % to enable usage of cyrillic fonts
+\newcommand{\textcyr}[1]{%
+ {\fontencoding{OT2}\fontfamily{wncyr}\fontseries{m}\fontshape{n}\selectfont #1}}
+\newcommand{\Sha}{{\mbox{\textcyr{Sh}}}}
+
+\usepackage{titlesec} % change small caps in section titles to boldface
+\titleformat{\section}{\normalfont\bfseries\filcenter}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\itshape}{\thesubsubsection}{1em}{}
+
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+
+\usepackage[
+        colorlinks, citecolor=darkgreen,
+        pdfauthor={Michael Stoll},
+        pdftitle={Documentation for the ratpoints program},
+]{hyperref}
+
+\newcommand{\Q}{{\mathbb Q}}
+\newcommand{\R}{{\mathbb R}}
+\newcommand{\BP}{{\mathbb P}}
+
+\newcommand{\rpversion}{2.2} % don't forget the verbatim stuff!
+
+\addtolength{\hoffset}{-1cm}
+\addtolength{\textwidth}{2cm}
+
+\setlength{\parskip}{0.8ex plus 0.1ex minus 0.1ex}
+\setlength{\parindent}{0mm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\title{Documentation for the ratpoints program}
+
+\author{Michael Stoll}
+\address{Mathematisches Institut,
+         Universit\"at Bayreuth,
+         95440 Bayreuth, Germany.}
+\email{Michael.Stoll@uni-bayreuth.de}
+\date{January 8, 2022}
+
+\maketitle
+
+%=========================================================================
+
+\section{Introduction}
+
+This paper describes the \texttt{ratpoints} program. This program tries to
+find all rational points within a given height bound on a hyperelliptic
+curve in the most efficient way possible.
+
+%=========================================================================
+
+\section{History and Acknowledgments}
+
+This program goes back to an implementation of the `quadratic sieving'
+idea by \textbf{Noam Elkies} that was around in the early 1990s. My own
+first contribution was to replace the \texttt{char} arrays that were used
+to store the sieving information by bit arrays, in~1995. \textbf{Colin Stahlke}
+then made use of the \texttt{gmp} library, so that points could be checked
+exactly, and implemented the selection of sieving primes according to
+their likely success rate, in~1998. After that, I successively put in
+numerous improvements (and some bug fixes). For details of how the
+program works, see Section~\ref{impl} below.
+
+Along with \textbf{Noam Elkies} and \textbf{Colin Stahlke}, I would like to
+thank \textbf{John Cremona} and \textbf{Sophie Labour} for bug reports and
+suggestions for improvements. Further thanks are due to \textbf{Bill Allombert}
+for a first implementation of the use of 256-bit (and possibly 512-bit) registers.
+
+%=========================================================================
+
+\section{Availability}
+
+The \texttt{ratpoints-\rpversion} package can be downloaded from my homepage,
+see~\cite{ratpoints}.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published
+by the Free Software Foundation, either version~2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but \textbf{without any warranty}; without even the implied warranty of
+\textbf{merchantability} or \textbf{fitness for a particular purpose}. See the
+GNU General Public License for more details.
+
+You should receive a copy of the GNU General Public License
+% and the GNU Lesser General Public License
+along with this program.
+
+If not, see \texttt{http://www.gnu.org/licenses/}.
+
+%=========================================================================
+
+\section{Installation}
+
+This section describes the installation procedure under Linux.
+
+\subsection{Extract the archive}
+
+\begin{verbatim}
+> tar xzf ratpoints-2.2.tar.gz
+\end{verbatim}
+
+This sets up a directory \texttt{ratpoints-\rpversion} containing the various
+files that belong to the installation.
+
+\subsection{Build the program and library}
+
+Do
+
+\begin{verbatim}
+> cd ratpoints-2.2
+> make all
+\end{verbatim}
+
+This will build the library \texttt{libratpoints.a}, the executable
+\texttt{ratpoints}, and also run pdf\/latex to generate this documentation.
+
+By default, the program will use primes up to 127. If you intend to
+do computations with large height bounds or with curves that you expect
+to have many points, it may make sense to increase the range of primes.
+This can be achieved via
+
+\begin{verbatim}
+> make all PRIME_SIZE=8
+\end{verbatim}
+
+perhaps after a
+
+\begin{verbatim}
+> make distclean
+\end{verbatim}
+
+to remove the files that were generated previously. The \texttt{PRIME\_SIZE}
+argument can be given any value from 5 to~10; otherwise it is taken to be~7.
+The precise meaning is that the program will work with primes $< 2^s$,
+when $\text{\texttt{PRIME\_SIZE}} = s$.
+
+The program now uses SSE instructions if available, working with 128-bit
+registers. Compared to using word-size registers, this results in a noticeable
+speed-up. If you don't want this, do
+\begin{verbatim}
+> make distclean
+> make all CCFLAGS=-UUSE_SSE
+\end{verbatim}
+
+As of version~2.2, \texttt{ratpoints} can also use 256-bit AVX registers.
+To activate this, change the line
+\begin{verbatim}
+CCFLAGS1 = ${CCFLAGS128}
+\end{verbatim}
+in \texttt{Makefile} into
+\begin{verbatim}
+CCFLAGS1 = ${CCFLAGS256}
+\end{verbatim}
+before building \texttt{ratpoints}. This usually gives a further speed-up.
+You may have to change \verb+-mavx2+ in the line
+\begin{verbatim}
+CCFLAGS256 = -DUSE_AVX -mavx2
+\end{verbatim}
+into \verb+-mavx+ or leave it out altogether, depending on the capabilities
+of your CPU. You will notice that AVX2 (or AVX) is not supported, when the
+executable throws an `unknown instruction' error or similar.
+
+\subsection{Run a test}
+
+Run
+
+\begin{verbatim}
+> make test1
+\end{verbatim}
+
+in the working directory. This will build an executable \texttt{rptest} and
+then run (and time) it. Finally, the output (which was written to a file
+\texttt{rptest.out}) is compared against \texttt{testbase}, which contains the
+output of a sample run. The two should be identical; otherwise the
+message \texttt{Test failed!} will be displayed (on its own on a line).
+
+\begin{verbatim}
+> make test2
+\end{verbatim}
+calls \texttt{ratpoints} on a curve with lots of rational points and with
+a fairly large height bound, times it, and compares the output to what is
+expected. This may take a few minutes, so be patient!
+
+\begin{verbatim}
+> make timing
+\end{verbatim}
+times \texttt{ratpoints} on some curve with height bound $400\,000$.
+This maybe useful for comparisons.
+
+Finally,
+\begin{verbatim}
+> make test
+\end{verbatim}
+does all three of the above.
+
+\subsection{Install}
+
+If you like, you can install the library, executable and header file
+on your system.
+
+\begin{verbatim}
+> sudo make install
+\end{verbatim}
+
+The executable is copied to \texttt{/usr/local/bin/}, the
+library to \texttt{/usr/local/lib/}, and the header file to
+\texttt{/usr/local/include/}. You can change the \texttt{/usr/local} prefix
+via
+\begin{verbatim}
+> make install INSTALL_DIR=...
+\end{verbatim}
+
+\subsection{Debugging}
+
+In case you found a bug and would like to find out where it comes from,
+or if you just want to see exactly what the program is doing, you can
+do
+
+\begin{verbatim}
+> make debug
+\end{verbatim}
+
+in the working directory. This will build an executable \texttt{ratpoints-debug},
+which, when run, will dump loads of output on the screen, so it is best
+to send the output to a file, which you can then study at leisure.
+
+\subsection{Cleaning up}
+
+In order to get rid of the temporary files, do
+
+\begin{verbatim}
+> make clean
+\end{verbatim}
+
+To remove everything except the files from the archive, use
+
+\begin{verbatim}
+> make distclean
+\end{verbatim}
+
+\subsection{Requirements}
+
+You need a C compiler (like \texttt{gcc}, which is the default specified
+for the \texttt{CC} variable in \texttt{Makefile}; if necessary, it can be
+changed there).
+
+In addition to the standard libraries, the program also requires the
+\texttt{gmp} (GNU multi-precision) library~\cite{gmp}.
+
+\subsection{List of files}
+
+The archive contains the following files.
+\begin{itemize}
+  \item \texttt{Makefile}
+  \item \texttt{ratpoints.h} --- the header file for programs using ratpoints
+  \item \texttt{rp-private.h, primes.h} --- header files used internally
+  \item \texttt{gen\_find\_points\_h.c, gen\_init\_sieve\_h.c} ---
+        short programs that write additional header files depending
+        on the system configuration
+  \item \texttt{sift.c, init.c, sturm.c, find\_points.c} ---
+        the source code for the ratpoints library
+  \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
+        and \texttt{rptest} executables, respectively
+  \item \texttt{testdata.h, testbase, testbase2} --- data for the test runs
+  \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
+  \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
+\end{itemize}
+
+%=========================================================================
+
+\section{How to use \texttt{ratpoints}}
+
+\subsection{Basic operation}
+
+Let
+\[ C : y^2 = a_n x^n + a_{n-1} x^{n-1} + \dots + a_1 x + a_0 \]
+be your
+curve, and let $H$ be the bound for the denominator and absolute value
+of the numerator of the $x$-coordinate of the points you want to find.
+The command to search for the points is then
+
+\verb+> ratpoints '+$a_0$ $a_1$ \dots $a_{n-1}$ $a_n$\verb+' +$H$
+
+The first argument to \texttt{ratpoints} is the list of the coefficients,
+which have to be integers, are separated by spaces, and are listed
+starting with the constant term. There is no bound on the size of the
+coefficients; they are read as multi-precision integers.
+
+The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
+(defined in \texttt{ratpoints.h}), which is set to~$100$ by default.
+
+The program will give an error message when the polynomial (considered
+as a binary form of the smallest even degree $\ge n$) is not squarefree
+(e.g., if you specify two leading zero coefficients).
+
+The following subsections discuss how to modify the standard behavior.
+This is achieved by adding options after the two required arguments.
+Some of the options have arguments, others don't; the ordering of
+the options and option-argument pairs is arbitrary (except for options
+with opposite effect, where the last one given counts, and for the
+specification of the search intervals, which must be in order).
+
+\subsection{Early abort}
+
+By default, \texttt{ratpoints} will search the whole region that you specify
+and print all the points it finds. If you just want to find {\em one}
+point (for example when dealing with 2-covering curves of elliptic curves),
+you can tell the program to quit after it has found one point via the
+\verb+-1+ option, e.g.,
+
+\verb+> ratpoints '-18 116 48 -12 30' 60000000 -1+
+
+If you don't want to see points at infinity, specify the \verb+-i+ option.
+The two options can be combined: \verb+-i -1+ will stop the program after
+it has found one finite point.
+
+\subsection{Changing the output}
+
+By default, \texttt{ratpoints} prints some general information before and
+after the points, which are given in the form
+\verb+(+$x$\verb+ : +$y$\verb+ : +$z$\verb+)+, one per line.
+Here, $(x : y : z)$ are the coordinates of the point considered as a point
+in the $(1, \lceil n/2\rceil, 1)$-weighted projective plane, which is the
+natural ambient space for the curve. The coordinates are integers with
+$x$ and~$z$ coprime and $z > 0$, or $z = 0$ and $x = 1$ (for points at
+infinity).
+
+There are various ways to change this behavior.
+\begin{itemize}\setlength{\parindent}{0mm}\setlength{\parskip}{1ex}
+  \item To suppress all output except the points, use \verb+-q+ (for
+        {\em quiet}).
+  \item To add some more output explaining what the program is doing,
+        use \verb+-v+ (for {\em verbose}). This has no effect if
+        the \verb+-q+ option is also given.
+  \item To suppress printing of the points, use \verb+-z+.
+  \item If you only want to list the $x$-coordinates of point pairs rather
+        than individual points, use~\verb+-y+.
+  \item There are four options that influence the format in which the
+        points are printed: \\
+        \strut\quad \verb+-f+ {\em format} \verb+-fs+ {\em string-before}
+        \verb+-fm+ {\em string-between} \verb+-fe+ {\em string-after} \\
+        The arguments to all of them are strings; \verb+"\n"+, \verb+"\t"+,
+        \verb+"\\"+ and \verb+"\%"+ are recognized and do what you expect.
+        The {\em format} string can contain markers \verb+%x+, \verb+%y+,
+        \verb+%z+ that will be replaced with the $x$, $y$, and $z$-coordinate
+        of the point, respectively. The defaults are empty for
+        {\em string-before}, {\em string-between} and {\em string-after},
+        and \verb+"(%x : %y : %z)\n"+ for {\em format} when \verb+-y+
+        is not specified; otherwise \verb+"(%x : %z)\n"+.
+
+        The effect is as follows. Before any point is printed,
+        {\em string-before} is output. Then every point is printed
+        according to {\em format}. Between any two points, {\em string-between}
+        is output, and after the last point, {\em string-after} is output.
+
+        As an example, consider the effect of \\
+        \strut\quad\verb+-f "[%x,%y,%z]" -fs "{" -fm "," -fe "}\n"+
+\end{itemize}
+
+\subsection{Restricting the search domain}
+
+There are two ways to restrict the domain of the search. The first is
+to restrict the range of denominators considered. This is done via \\
+\strut\quad\verb+-dl+ $d_{\text{min}}$ \verb+-du+ $d_{\text{max}}$\,. \\
+For example, to only look for integral points, you can say \verb+-du 1+.
+By default, the lower limit is~$1$ and the upper limit is~$H$.
+
+The other way is to restrict the search to a union of (closed) intervals.
+If you only want to search for points in
+\[ [l_1, u_1] \cup [l_2, u_2] \cup \dots \cup [l_k, u_k] \,, \]
+you can specify this in the form \\
+\strut\quad\verb+-l+ $l_1$ \verb+-u+ $u_1$ \verb+-l+ $l_2$ \verb+-u+ $u_2$ \dots
+\verb+-l+ $l_k$ \verb+-u+ $u_k$ \,. \\
+The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
+Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
+to~$+\infty$. The number $k$ of intervals is bounded by
+\texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+
+\subsection{Setting the parameters for the sieve} \label{fd}
+
+It is possible to change the number of primes that are used in the various
+stages of the algorithm. This is done by the following options. \\
+\strut\quad\verb+-p+ $M$ \verb+-N+ $N$ \verb+-n+ $n$ \\
+This sets the number of (odd) primes that are considered for the sieve
+to~$M$, the number of primes that are actually used for the sieve to~$N$,
+and the number of primes used in the first sieving stage to~$n$. The program
+will, if necessary, reduce $M$, $N$, and $n$ (in this order) to ensure
+that $n \le N \le M \le \text{\texttt{RATPOINTS\_NUM\_PRIMES}}$. The latter
+is usually~$30$ (the number of odd primes $< 2^7$), but will be $53$
+(the number of odd primes $< 2^8$) if \texttt{PRIME\_SIZE} is set to~$8$, etc.
+
+There are two more parameters that can be set. \\
+\strut\quad\verb+-F+ $D$ \\
+sets the maximal number of `forbidden divisors'. If the degree is even
+and the leading coefficient is not a square, then the denominator of
+any $x$-coordinate of a rational point cannot be divisible by a prime~$p$
+such that the leading coefficient is a non-square mod~$p$. If the leading
+coefficient is divisible by~$p$, but not a $p$-adic square, the denominator
+cannot be divisible by some power of~$p$. The program constructs a list
+of such forbidden divisors against which to check the denominators, and this
+option specifies how many of these should be used.
+
+The other option is \\
+\strut\quad\verb+-S+ $S$ \quad or\quad \verb+-s+ \,. \\
+In the first form, it sets the number of refinement (interval halving)
+steps in the isolation of the real components to~$S$. This part of the
+program computes a Sturm sequence for the polynomial and uses it in order
+to find a union of intervals that contains the intervals of positivity
+of the polynomial. This is done by a successive subdivision of the
+interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth.
+$S$ can be omitted; then it is given a default value. The option
+\verb+-s+ skips the Sturm sequence computation completely. This also has
+the effect of removing most of the check for squarefreeness.
+
+\subsection{Switching off optimizations}
+
+The options \verb+-k+ and \verb+-j+ can be used to prevent the program
+from reversing the polynomial, which it usually does if this will lead
+to faster operation (\verb+-k+), and to prevent the program from using
+the Jacobi symbol test on the denominators (\verb+-j+). This last test
+extends the `forbidden divisors' method described in
+Subsection~\ref{fd} above by computing the Jacobi symbol $(l/d)$, where
+$l$ is the leading coefficient and $d$ is the odd and coprime-to-$l$
+part of the denominator. If the symbol is~$-1$, the denominator need not
+be considered. The use of these options may be questionable, unless you
+want to see how much performance is gained by using these optimizations.
+
+\subsection{Switching off exact testing of points}
+
+The option \verb+-x+ will prevent the program from checking the potential
+points that survive the sieve whether they really give rise to rational
+points. This implies that the points that are output may not actually
+be points. It also effectively sets the \verb+-y+ option, since the
+$y$-coordinates are not computed.
+
+\subsection{Overriding previous options}
+
+The options \verb+-I+, \verb+-Y+, \verb+-Z+, \verb+-S+, \verb+-K+, \verb+-J+,
+\verb+-X+ can be used to cancel the effect of the corresponding lower-case
+option (and thereby restore the default behavior),
+when this occurs earlier in the list of options. This may be useful if
+you want to set a default behavior that is different from what the
+program does out-of-the-box (e.g., in a shell script), but want the caller
+to be able to override this change.
+
+%=========================================================================
+
+\section{How to use the library}
+
+It is possible to use the ratpoints machinery from within your own programs.
+
+The library \texttt{libratpoints.a} provides the following functions.
+
+\begin{verbatim}
+long find_points(ratpoints_args*,
+                 int proc(long, long, const mpz_t, void*, int*),
+                 void*);
+
+void find_points_init(ratpoints_args*);
+
+long find_points_work(ratpoints_args*,
+                      int proc(long, long, const mpz_t, void*, int*),
+                      void*);
+
+void find_points_clear(ratpoints_args*);
+\end{verbatim}
+
+The passing of arguments to these functions is via the \texttt{ratpoints\_args}
+structure, which is defined as follows.
+
+\begin{verbatim}
+typedef struct { mpz_t *cof; long degree; long height;
+                 ratpoints_interval *domain; long num_inter;
+                 long b_low; long b_high; long sp1; long sp2;
+                 long array_size;
+                 long sturm; long num_primes; long max_forbidden;
+                 unsigned int flags; ...}
+        ratpoints_args;
+\end{verbatim}
+
+The dots at the end stand for additional fields that are used internally
+and are not of interest here. When calling \texttt{find\_points}, the
+\texttt{cof} field must point to an array of size $\text{\texttt{degree}} + 1$
+of properly initialized gmp integers; these are the coefficients of
+the polynomial. The program can alter the values of the integers in this
+array. To prevent this, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
+in \texttt{flags}; this may result in a loss of performance, though.
+
+\texttt{height} gives the height bound. It is an error for the
+degree or the height bound to be nonpositive; in this case the function
+returns the value \texttt{RATPOINTS\_BAD\_ARGS}.
+
+The field \texttt{domain} must contain a pointer to an array of
+\texttt{ratpoints\_interval} structures of length at least \texttt{num\_inter}
+plus \texttt{degree}. This array gives (in its first \texttt{num\_inter} entries)
+the intervals for the search region. The type \texttt{ratpoints\_interval}
+is just
+
+\begin{verbatim}
+typedef struct {double low; double up;} ratpoints_interval;
+\end{verbatim}
+
+the meaning of this should be clear. In \texttt{ratpoints}, this is set
+via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
+restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
+(but you still have to fill \texttt{domain} with a valid pointer to at least
+\texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
+The program may alter the values in the array {\em domain} points to,
+unless \texttt{sturm} has a negative value (which may lead to a performance loss).
+
+\texttt{b\_low} and \texttt{b\_high}
+carry the lower and upper bounds for the denominator; if non-positive, they are
+set to~$1$ and the height bound, respectively. In \texttt{ratpoints}, these
+fields are set by the \verb+-dl+ and \verb+-du+ options.
+
+\texttt{sp1} and \texttt{sp2}
+specify the number of primes to be used in the first sieving stage and
+in both sieving stages together, respectively. If negative, they are set
+to certain default values. In \texttt{ratpoints}, these fields are set by the
+\verb+-n+ and \verb+-N+ options. Similar statements are true for
+\texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
+\verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
+\texttt{array\_size} specifies the maximal size (in bit arrays; a bit array
+contains 32, 64, 128, 256, \dots bits, depending on the configuration) of the
+array that is used in the first sieving stage. If non-positive, it is
+set to a default value. The various default values are defined at the
+beginning of the header file \texttt{ratpoints.h}, where also the maximal
+degree of the polynomial is set.
+
+The \texttt{flags} field holds a number of bit flags.
+\begin{itemize}
+  \item \texttt{RATPOINTS\_NO\_CHECK} --- when set, do not check whether
+        the surviving $x$-coordinates give rise to rational points
+        (set by the \verb+-x+ option to \texttt{ratpoints}).
+  \item \texttt{RATPOINTS\_NO\_Y} --- only list $x$-coordinates (in the
+        form $(x : z) \in \BP^1(\Q)$) instead of actual points (with
+        a $y$-coordinate); this is set by the \verb+-y+ option to
+        \texttt{ratpoints}.
+  \item \texttt{RATPOINTS\_NO\_REVERSE} --- when set, do not allow reversal
+        of the polynomial (set by the \verb+-k+ option to \texttt{ratpoints}).
+  \item \texttt{RATPOINTS\_NO\_JACOBI} --- when set, prevent the use of the
+        Jacobi symbol test (set by the \verb+-j+ option to \texttt{ratpoints}).
+  \item \texttt{RATPOINTS\_VERBOSE} --- when set, causes the procedure to
+        print some output on what it is doing (set by the \verb+-v+ option
+        to \texttt{ratpoints}).
+\end{itemize}
+
+There are some other flags that are used internally. One of them might be
+of interest:
+\begin{itemize}
+  \item \texttt{RATPOINTS\_REVERSED} --- when set after the function call,
+        this indicates that the polynomial has been reversed (and the
+        contents of the \texttt{cof} array have been modified).
+\end{itemize}
+
+The main vehicle for passing information back to the caller is the
+\texttt{proc} function argument together with the pointer \texttt{info}.
+This function \\
+\strut\quad\verb+int proc(long x, long z, const mpz_t y, void *info, int *quit)+ \\
+is called whenever a point was found. \texttt{x}, \texttt{y} and \texttt{z} are
+the coordinates of the point (where \texttt{y} is a gmp integer).
+\texttt{info} is the pointer that was passed to \texttt{find\_points}; this
+can be used to store information that should persist between calls
+to \texttt{proc}. If \texttt{*quit} is set to a non-zero value, this indicates
+that \texttt{find\_points} should abort the point search and return immediately;
+otherwise the search continues. This is how the \verb+-1+ option works.
+The return value is taken as a weight
+for counting the points; usually it will be~1.
+
+The usual framework for using \texttt{find\_points} is as follows.
+
+\begin{verbatim}
+(...)
+#include "ratpoints.h"
+
+(...)
+
+mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
+ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+                     /* This contains the intervals representing the
+                        search region */
+
+/*****************************************************************
+ * function that processes the points                            *
+ *****************************************************************/
+
+typedef struct {...} data;
+
+int process(long x, long z, const mpz_t y, void *info0, int *quit)
+{ data *info = (data *)info0;
+
+  (...)
+
+  return(1);
+}
+\end{verbatim}
+
+
+\begin{verbatim}
+/*****************************************************************
+ * main                                                          *
+ *****************************************************************/
+
+int main(int argc, char *argv[])
+{
+  long total, n;
+  ratpoints_args args;
+
+  long degree        = 6;
+  long height        = 16383;
+  long sieve_primes1 = RATPOINTS_DEFAULT_SP1;
+  long sieve_primes2 = RATPOINTS_DEFAULT_SP2;
+  long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
+  long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
+  long b_low         = 1;
+  long b_high        = height;
+  long sturm_iter    = RATPOINTS_DEFAULT_STURM;
+  long array_size    = RATPOINTS_ARRAY_SIZE;
+  int no_check       = 0;
+  int no_y           = 0;
+  int no_reverse     = 0;
+  int no_jacobi      = 0;
+  int no_output      = 0;
+
+  unsigned int flags = 0;
+
+  data *info = malloc(sizeof(data));
+
+  /* initialize multi-precision integer variables */
+  for(n = 0; n <= degree; n++) { mpz_init(c[n]); }
+
+  (...)
+
+  { /* set up polynomial */
+    long k;
+    for(k = 0; k < 7; k++) { mpz_set_si(c[k], ...); }
+
+    args.cof           = &c[0];
+    args.degree        = 6;
+    args.height        = height;
+    args.domain        = &domain[0];
+    args.num_inter     = 0;
+    args.b_low         = b_low;
+    args.b_high        = b_high;
+    args.sp1           = sieve_primes1;
+    args.sp2           = sieve_primes2;
+    args.array_size    = array_size;
+    args.sturm         = sturm_iter;
+    args.num_primes    = num_primes;
+    args.max_forbidden = max_forbidden;
+    args.flags         = flags;
+
+    info->... = ...;
+    (...)
+
+    total = find_points(&args, process, (void *)info);
+    if(total == RATPOINTS_NON_SQUAREFREE)
+    { ... }
+    if(total == RATPOINTS_BAD_ARGS)
+    { ... }
+
+    (...)
+
+  }
+
+  /* clean up multi-precision integer variables */
+  for(n = 0; n <= degree; n++) {mpz_clear(c[n]); }
+
+  return(0);
+}
+\end{verbatim}
+
+If points are to be searched on many curves of the same degree,
+then it is slightly more efficient to use the sequence
+
+\begin{verbatim}
+  args.degree = degree; /* this information is needed */
+  find_points_init(&args);
+
+  for( ... )
+  { ...
+    total = find_points_work(&args, process, (void *)info);
+    ...
+  }
+
+  find_points_clear(&args);
+\end{verbatim}
+
+This avoids the repeated allocation and freeing of memory.
+
+For practical examples, see \texttt{main.c} (the code that wraps
+\texttt{find\_points} for the command line program \texttt{ratpoints}) or
+\texttt{rptest.c} (which runs \texttt{find\_points} on some test data).
+
+%=========================================================================
+
+\section{Fine-tuning the parameters}
+
+For large computations, it may be a good idea to try to find the best
+(or at least, a good) combination of parameters for the given kind of data.
+The default values are chosen for optimal performance on my current laptop
+for random genus~2 curves with small coefficients and a height bound of
+$100\,000$. For your machine
+and input data, other values may be better. You can replace the
+\texttt{testdata.h} file with your own collection of test data (and
+edit \texttt{rptest.c} if necessary to adapt the degree and height settings)
+and then time \texttt{./rptest -z} (the \verb+-z+ option suppresses the output)
+for various combinations of the parameter settings. \texttt{rptest} accepts
+most of the optional parameters of \texttt{ratpoints}, in particular
+the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-F+ and \verb+-S+ parameters,
+so you can easily change the parameters used on the command line. In addition,
+there is an option \verb+-h+ $H$ to change the default height bound
+and an option \verb+-m+ $m$ that causes the program to repeat the
+computations $m$~times.
+
+Once you have found a good set of parameter values for your application,
+you can hard-code them as defaults into \texttt{ratpoints} by changing the
+definitions in \texttt{ratpoints.h} (and then \texttt{make distclean all test}),
+or you can use them to fill the \texttt{ratpoints\_args} structure for
+your call to \texttt{find\_points}.
+
+%=========================================================================
+
+\section{Implementation} \label{impl}
+
+\subsection{Overview}
+
+Let $F(x, z)$ be the binary form of even degree corresponding to the
+polynomial on the right hand side of the curve equation. The basic idea
+is to let run $b$ from $1$ to the height bound~$H$, for each~$b$, let
+$a$ run from $-H$ to~$H$, and for each coprime pair $(a,b)$ check
+if $F(a, b)$ is a square.
+
+Of course, in this form, this would take a very long time. To speed up the
+process, we try to eliminate quickly as many pairs $(a, b)$ as possible
+before the actual test. This can be done by `quadratic sieving' modulo
+several primes: if $F(a, b)$ is a square, it certainly has to be a square
+mod~$p$, and so we can rule out all $(a, b)$ that do not satisfy this
+condition. Another ingredient is to represent (for a fixed~$b$) the
+various values of~$a$ by bits and treat all the bits in a `bit array'
+(of 32 or 64 bits, as the case may be, or 128 or 256 bits when SSE/AVX
+instructions are used) in parallel. For this, we organize
+the sieving information for each prime~$p$ into $p$~arrays of $p$~words
+each, one such array for every $b$ mod~$p$, such that the $j$th~bit
+in this array is set if and only if $F(j, b)$ is a square mod~$p$.
+
+For each `denominator' $b$, we then set up an array of words whose bits
+represent the range $-H \le a \le H$ (aligned so that $a = 0$ corresponds
+to the $0$th bit of a word); the bits are initially set. Then for each
+of the sieving primes~$p$, we perform a bit-wise {\em and} operation
+between this array and the sieving information at~$p$. In a first stage,
+this is done on the whole array; after this first stage, each remaining
+(`surviving') non-zero word in the array is subject to tests with more
+primes. If some bits are still set after this second stage of sieving,
+the corresponding pairs $(a, b)$ (if coprime) are then checked exactly.
+
+In the following subsections, we discuss a number of improvements that
+were made.
+
+\subsection{Sorting the primes}
+
+This idea is due to \textbf{Colin Stahlke}. We do not just take the first so many
+primes in increasing order for the sieving, but we first compute the
+number of points the curve has mod~$p$ for a number of primes~$p$ and then
+sort the primes according to the fraction of $x$-coordinates that give points.
+We then take those primes for the sieving that have the smallest fraction
+of `surviving' $x$-coordinates. In this way, we need fewer sieving primes
+to achieve a comparable reduction of point tests.
+
+\subsection{Using connected components}
+
+We note that we can only have points when $F(a, b)$ is non-negative.
+If we can determine intervals on which $f(x) = F(x, 1)$ is negative, then
+we do not have to look for points in these intervals. The necessary
+computations can be performed exactly, by computing a Sturm sequence
+for~$f$ and counting the number of sign changes at various points,
+see~\cite[Thm.~4.1.10]{Cohen}. This can in particular tell us whether
+$F$ is negative definite, in which case we have already proved that there
+are no rational points in the curve. If there are real zeros, we use
+a subdivision method in order to find a collection of intervals containing
+the projections of the connected components of the curve over~$\R$.
+
+\subsection{Using 2-adic information}
+
+\textbf{John Cremona} suggested that in some cases, one can determine beforehand
+that all points will have odd `numerators'~$a$, and so we can pack the
+bits more tightly by only representing odd numbers. This approach can be
+extended. We first find all solutions mod~$16$ (higher powers of~$2$ would
+be possible, but not very likely to give a significant improvement). Then for every
+residue class mod~$16$ of the denominator~$b$, we can find the residue
+classes mod~$16$ of potential numerators~$a$. If there are none, then we
+can eliminate $b$ as a denominator altogether. If all potential $a$'s are
+even or odd (this will always be the case for even denominators), we can
+restrict the sieving to such numerators.
+
+\subsection{Elimination of denominators}
+
+Depending on the equation, certain denominators can be excluded. We have
+seen an instance of this in the previous subsection, but we can also work
+with odd primes.
+
+\subsubsection{Odd degree and $\pm$monic}
+
+If the polynomial has odd degree and leading coefficient $\pm 1$, then
+the denominator has to be a square. This reduces the time complexity
+tremendously.
+
+\subsubsection{Odd degree general}
+
+In general, when $f$ has odd degree, the denominator has to be `almost'
+a square: it must be a square times a (squarefree) divisor of the leading
+coefficient, and there are further restrictions on the parity of the
+valuation at~$p$, for $p$ dividing the leading coefficient, when this
+valuation is sufficiently large. This gives the same type of time complexity
+as in the monic case, but with a larger constant.
+
+\subsubsection{Even degree with non-square leading coefficient}
+
+Here we can exclude denominators divisible by a prime~$p$ such that the
+leading coefficient is a non-square mod~$p$. We can also in some cases
+rule out denominators divisible by a certain power of~$p$ when $p$ is
+a prime that divides the leading coefficient (if the leading coefficient
+is not a $p$-adic square). While computing the sieving information, we
+make a list of such primes and prime powers, which we then use later to
+eliminate denominators. In addition, we use the necessary condition that
+the Jacobi symbol $\left(\frac{l}{b'}\right)$ must be $+1$, where
+$l$ is the leading coefficient and $b'$ is the part of $b$ coprime to~$2l$.
+
+\subsection{Reversing the polynomial}
+
+The exclusion of denominators described above is more or less effective,
+depending on the situation; it is the better the earlier the case was
+described. Since the height of the points does not change under the
+transformation $(x,y) \to (1/x, y/x^{\lceil n/2 \rceil})$, we can as well search on the
+reversed polynomial $F(z,x)$. This will result in a speed-up if the
+reversed polynomial belongs to a `better' class than the original.
+
+\subsection{Some general remarks}
+
+Modern processors are very fast when doing basic things like moving
+data around between registers or simple arithmetic operations (addition,
+subtraction, shift, \dots, comparison). Even memory access can be fast
+when there is no cache miss. On the other hand, integer division is a
+slow process. It turned out that quite some improvement of the performance
+was possible by removing as many instances of integer division operations
+as reasonably possible.
+
+For example, we use gcd and Jacobi symbol routines that rely (almost)
+entirely on differences and shifts. We compute the residue classes
+of~$b$ modulo the various sieving primes by addition of the difference
+from the last~$b$ and then correcting by subtracting $p$ a number of
+times if necessary, and we implement most of the testing of `forbidden
+divisors' of~$b$ using bit arrays similar to those used for sieving
+the numerators.
+
+\subsection{Change log}
+
+\textbf{Version 2.0} was released January 9, 2008.
+
+\textbf{Version 2.0.1} was released July 7, 2008. It fixes a bug that prevented the
+'\texttt{-1}' option to work properly.
+
+\textbf{Version 2.1} was released March 9, 2009. It makes use of the SSE instructions,
+so that the sieve can work on 128~bits in parallel (instead of on 64 or~32).
+On my laptop (with an Intel Core2 processor), \texttt{make test} runs about
+25\% faster than before.
+
+\textbf{Version 2.1.1} was released April 14, 2009. It fixes a bug that in some
+cases prevented an early abort when \texttt{*quit} was set by the callback function.
+Thanks to \textbf{Robert Miller} for the bug report and the fix. In addition, it is now
+checked that \verb+__WORDSIZE == 64+ before SSE instructions are used
+(in \texttt{rp-private.h}), since the program then assumes that a bit array consists
+of two \texttt{unsigned long}s. In this context, \verb+__SSE2__+ has been replaced
+by a new macro \verb+USE_SSE+. A further fix eliminates unnecessary copying
+of sieving information when SSE instructions are not used (introduced in version~2.1).
+This was almost always harmless, but could have resulted in memory corruption
+in the extreme case that all the information had to be computed for all the
+primes.
+
+\textbf{Version 2.1.2} was released May 27, 2009. It fixes some memory leaks.
+Thanks to \textbf{Robert Miller}.
+
+\textbf{Version 2.1.3} was released September 21, 2009. The library function
+\verb+find_points+ should now work without any bound on the degree of the
+polynomial. The degree bound for the \texttt{ratpoints} executable is now set
+to~100 by default (specified by \verb+RATPOINTS_MAX_DEGREE+, used to be~10).
+
+A bug in \texttt{rptest.c} (pointed out to me by \textbf{Giovanni Mascellani}
+and \textbf{Randall Rathbun}) that could lead to a segmentation fault was fixed on
+March 10, 2011.
+
+\textbf{Version 2.2} was released January 9, 2022. The main change is that
+\texttt{ratpoints} can now also work with 256-bit (and, in principle, 512-bit)
+registers when the CPU has the relevant capabilities. Thanks to
+\textbf{Bill Allombert} for doing a first implementation of this. In addition,
+the code has been cleaned up to some extent (e.g., the variants according
+to register sizes are now completely dealt with through macros defined
+in \texttt{rp-private.h}), and some more comments have been added.
+There are also some further optimizations; for example, the first sieving
+phase now uses many of the SSE/AVX registers in parallel, and on some
+architectures, the code uses a faster implementation for the test whether
+a bit array is zero. On my current laptop, the new code (using 256-bit words)
+is about twice as fast as the old one (2.1.3 using 128-bit words).
+
+\textbf{Version 2.2.1} was released January 18, 2022. This fixes a small
+bug that was introduced in the previous version, which could lead to
+the program missing points at the upper end of the search interval
+for the numerators. Thanks to \textbf{Bill Allombert}.
+
+%=========================================================================
+
+\begin{thebibliography}{gmp}
+\frenchspacing
+
+\bibitem[Coh]{Cohen}
+  H. Cohen, \textit{A course in computational algebraic number theory,}
+  Springer GTM~\textbf{138}, second corr. printing, 1995.
+
+\bibitem[gmp]{gmp}
+  The GNU Multiple Precision Arithmetic Library, \texttt{http://gmplib.org/}
+
+\bibitem[rat]{ratpoints}
+  The \texttt{ratpoints-\rpversion} package. Available at \\
+  \texttt{http://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-\rpversion.tar.gz}
+
+\end{thebibliography}
+
+\end{document}
