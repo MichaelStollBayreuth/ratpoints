@@ -1446,7 +1446,7 @@ long find_points_work(ratpoints_args *args,
       { long n;
 
         args->flags |= RATPOINTS_REVERSED;
-        for(n = 1; n < degree>>1; n++)
+        for(n = 1; n <= degree>>1; n++)
         { mpz_set(work[0], c[n]);
           mpz_set(c[n], c[degree+1-n]);
           mpz_set(c[degree+1-n], work[0]);
