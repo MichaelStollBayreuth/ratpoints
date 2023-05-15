@@ -1,6 +1,6 @@
-#   ratpoints-2.2.1
+#   ratpoints-2.2.2
 #    - A program to find rational points on hyperelliptic curves
-#   Copyright (C) 2008, 2009, 2022  Michael Stoll
+#   Copyright (C) 2008, 2009, 2022, 2023  Michael Stoll
 #
 #   This program is free software: you can redistribute it and/or
 #   modify it under the terms of the GNU General Public License
@@ -23,7 +23,7 @@
 #   with changes by Bill Allombert, December 29, 2021
 
 PRIME_SIZE = 7
-VERSION = 2.2.1
+VERSION = 2.2.2
 
 CC = gcc
 RM = rm -f
