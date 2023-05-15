@@ -1453,7 +1453,14 @@ long find_points_work(ratpoints_args *args,
         }
         if(args->flags & RATPOINTS_VERBOSE)
         { printf("  odd degree, leading coefficient not +/-1, zero "
-                 "constant term, coefficient of x is +/-1 ==> reverse\n\n");
+                 "constant term, coefficient of x is +/-1 ==> reverse\n");
+          printf("  coefficients now:");
+          { long n;
+
+            for(n = 0; n <= degree; n++)
+            { printf(" "); mpz_out_str(NULL, 10, args->cof[n]); }
+            printf("\n\n");
+          }
         }
       }
   } }
