@@ -11,3 +11,5 @@ Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpo
 
 The current version is ratpoints-2.2.2 from May 15, 2023. This version can use 256-bit AVX
 registers and has been optimized further, so that it now runs considerably faster than ratpoints-2.1.3.
+
+There is now [ratpoints-gnu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.
