@@ -40,42 +40,72 @@ sieve bit-arrays for every bit-array of survivors; at `sp1 = 13` that is about
 8.2 G of the 11.2 G L1 loads of the whole run, roughly three quarters.  Any
 change confined to the second phase is moving a small denominator.  Both of the
 mis-estimates recorded below came from reasoning about phase 2 in isolation.
-
 ## Skipping runs of empty bit-arrays in phase 2 (adopted)
 
 The second phase now looks at four bit-arrays at a time and skips the group
-when their `or` is zero; at a 4% survival rate about 85% of the groups are
-empty, so one `TEST` does the work of four.  This needed an `ORR` macro next to
-`AND` for each register width.
+when their `or` is zero.  This needed an `ORR` macro next to `AND` for each
+register width.
 
-Cycle counts (`perf`, height 400000; cycles rather than wall time, because
-wall time on a laptop is not reproducible -- see below):
+**Where the gain really comes from.**  Not from the grouping.  The saving is in
+having a *tight inner loop* that walks over empty bit-arrays without re-entering
+the large outer loop body -- which otherwise recomputes `ssp = &sieves[sp1]`,
+sets `n = sp2-sp1`, and evaluates `TEST` twice, for every one of the ~96% that
+are empty.  A group size of one, which does no `or`s at all, already gets
+-13.6% at the default `sp1 = 11`, where the group of four gets only -1.3%.
 
-| `sp1`/`sp2` | baseline | with skip | gain |
-|---|---|---|---|
-| 11/19 | 15,680,527,603 | 15,477,868,152 | -1.3% |
-| 12/19 | 14,865,633,410 | 13,522,043,200 | -9.0% |
-| 13/19 | 14,910,874,786 | 12,941,737,107 | -13.2% |
-| 14/19 | 15,652,323,493 | 12,950,715,661 | -17.3% |
-| 15/19 | 16,121,310,754 | 13,413,969,735 | -16.8% |
-| 16/19 | 16,874,045,816 | 13,909,926,378 | -17.6% |
-| 13/23 | 15,041,833,238 | 13,144,061,280 | -12.6% |
+**The group size interacts with `sp1`, and not in one direction.**  Cycles at
+height 400000, against the same build with no skip loop:
 
-**The two versions want different settings, so they have to be tuned together
-rather than compared at a fixed one.**  The baseline is best at `sp1 = 12` and
-degrades above it; the version with the skip is flat-bottomed at `sp1 = 13..14`
-and only turns up beyond that.  More primes in the first phase lower the
-survival rate, and the skip is what converts a lower survival rate into saved
-work.  Best against best is 14.87 G -> 12.94 G, about -13%.  At the shipped
-default of 11/19 the change is worth almost nothing, which is why measuring at
-the default alone is misleading.  `sp2` is close to neutral in the range 19-23.
+| group | 11/19 | 12/19 | 13/19 | 14/19 | 15/19 |
+|---|---|---|---|---|---|
+| 1 | **-13.6%** | **-13.1%** | -12.1% | -12.9% | -- |
+| 2 | -7.1% | -11.9% | **-13.7%** | -15.2% | -- |
+| 4 | -1.3% | -8.9% | -13.3% | **-15.8%** | **-17.8%** |
+| 8 | -- | -- | -11.7% | -15.4% | -17.7% |
+| 16 | -- | -- | -9.7% | -12.4% | -16.1% |
+
+This is a ridge, not a slope.  At a low `sp1` the survival rate is high, and a
+group that contains a survivor has wasted its whole `or` tree, so small groups
+win.  At a high `sp1` the survival rate is low, nearly every group is empty, and
+the cost per bit-array is amortised over the group, so larger groups win.  The
+crossover is at about `sp1 = 13`.  Sixteen is never best; eight approaches four
+from below but does not pass it.
+
+Four is kept because the settings that are actually good are `sp1 = 13..15`,
+where it is at or near the top; but note that at the *shipped* default of 11 it
+is worth almost nothing, and a group of one would be worth 13%.
+
+**Instructions are a bad guide here.**  At 12/19 the group of four executes
+1.8 G *fewer* instructions than the group of one and needs 0.64 G *more*
+cycles: four independent load-test-branch iterations are replaced by four loads
+feeding a two-level `or` tree that has to resolve before the branch can.  Fewer
+operations, longer critical path.  Callgrind instruction counts were actively
+misleading for this change and only `perf` cycles settled it.
+
+**Best against best**, over both `sp1` and the group size: about -13%
+(15.38 -> 13.38 G cycles at height 400000).  That ratio came out the same in two
+sweeps taken hours apart whose absolute numbers differ by 4%, which is the usual
+pattern on this machine -- trust ratios measured close together, never absolutes.
+
+**Precision.**  The rows for 13/19 and 14/19 were measured in two separate
+sweeps and disagree by up to 1.5 points.  Differences below that are not
+meaningful, which puts 2 and 4 in a tie at `sp1 = 13`, and 4 and 8 in a tie at
+14 and 15.
 
 The effect is much smaller for many small curves: instruction counts for
 `rptest` at height 4000 fall by a flat 6.1-7.1% across all settings tried,
 because that workload is dominated by `sieve_init` and the denominator loop.
 
 Incidentally, the baseline's own optimum is not the shipped default either --
-at height 400000 it uses 15.68 G cycles at 11/19 against 14.87 G at 12/19.
+at height 400000 it uses about 16.2 G cycles at 11/19 against 15.38 G at 12/19
+and 13/19.
+
+**This makes the tuning problem three-dimensional.**  `sp1`, `sp2` and the group
+size are not independent: the best `sp1` depends on how expensive the second
+phase is, and the best group size depends on the survival rate, which is set by
+`sp1`.  The open question is what combination is best for a given distribution
+of height bounds and curves.  `sp2` is the least important of the three, being
+close to neutral over 19..23 at this height.
 
 ## Per-chunk emptiness flags from phase 1 (tried, rejected)
 
