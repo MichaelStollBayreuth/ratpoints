@@ -1,7 +1,7 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-2.2.3                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * This program writes the file find_points.h                          *
  *                                                                     *
- * Michael Stoll, Mar 8, 2009                                          *
+ * Michael Stoll, Mar 8, 2009; Sep 6, 2026                             *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -90,8 +90,16 @@ int main(int argc, char *argv[])
 
   { unsigned long work[RATPOINTS_MAX_PRIME];
 
+    /* The array is declared as unsigned long, but it is accessed through
+     * pointers of type  ratpoints_bit_array *  (see find_points.c and sift.c).
+     * gcc only promotes the alignment of a global array up to 32 bytes,
+     * so for 512-bit bit-arrays we have to request the alignment that the
+     * bit-array type requires; otherwise the aligned 512-bit loads that gcc
+     * generates for  *ptr  in _ratpoints_sift0 can fault. */
     printf("unsigned long "
-           "sieves0[RATPOINTS_NUM_PRIMES][RBA_PACK*(RATPOINTS_MAX_PRIME_EVEN +  RATPOINTS_CHUNK-1)] =\n{\n");
+           "sieves0[RATPOINTS_NUM_PRIMES][RBA_PACK*(RATPOINTS_MAX_PRIME_EVEN +  RATPOINTS_CHUNK-1)]\n"
+           "  __attribute__ ((aligned (%d))) =\n{\n",
+           (int)sizeof(ratpoints_bit_array));
     for(n = 0; n < RATPOINTS_NUM_PRIMES; n++)
     { long p = prime[n];
       long i, j;

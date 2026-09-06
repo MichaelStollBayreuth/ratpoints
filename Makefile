@@ -1,6 +1,6 @@
-#   ratpoints-2.2.2
+#   ratpoints-2.2.3
 #    - A program to find rational points on hyperelliptic curves
-#   Copyright (C) 2008, 2009, 2022, 2023  Michael Stoll
+#   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
 #   This program is free software: you can redistribute it and/or
 #   modify it under the terms of the GNU General Public License
@@ -19,11 +19,11 @@
 #
 #   Makefile
 #
-#   Michael Stoll, September 21, 2009; January 7, 2022
+#   Michael Stoll, September 21, 2009; January 7, 2022; September 6, 2026
 #   with changes by Bill Allombert, December 29, 2021
 
 PRIME_SIZE = 7
-VERSION = 2.2.2
+VERSION = 2.2.3
 
 CC = gcc
 RM = rm -f
@@ -54,7 +54,12 @@ CCFLAGS128a = -DUSE_AVX128
 CCFLAGS256 = -DUSE_AVX -mavx2
 # To use 512-bit AVX registers, use the following
 # (if your processor has AVX512f capability).
-# Experimental so far.
+# This has not been run on an AVX512F machine yet; see the comment at the
+# top of the USE_AVX512 branch in rp-private.h .  Leaving out "-mavx512f"
+# makes gcc emulate the 64-byte vectors with narrower ones; that is slower,
+# but it runs anywhere and exercises the same code path.  (gcc then warns
+# "AVX512F vector argument without AVX512F enabled changes the ABI"; this is
+# harmless here, since the whole library is built with the same flags.)
 CCFLAGS512 = -DUSE_AVX512 -mavx512f
 
 # This will be the default. Change as appropriate.

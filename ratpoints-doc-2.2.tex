@@ -37,7 +37,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{2.2.2} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{2.2.3} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -120,7 +120,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-2.2.2.tar.gz
+> tar xzf ratpoints-2.2.3.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -131,7 +131,7 @@ files that belong to the installation.
 Do
 
 \begin{verbatim}
-> cd ratpoints-2.2.2
+> cd ratpoints-2.2.3
 > make all
 \end{verbatim}
 
@@ -183,6 +183,28 @@ CCFLAGS256 = -DUSE_AVX -mavx2
 into \verb+-mavx+ or leave it out altogether, depending on the capabilities
 of your CPU. You will notice that AVX2 (or AVX) is not supported, when the
 executable throws an `unknown instruction' error or similar.
+
+There is also a variant using 512-bit registers, activated by
+\begin{verbatim}
+CCFLAGS1 = ${CCFLAGS512}
+\end{verbatim}
+which requires a CPU with AVX512F capability. Note that this variant has
+so far only been tested indirectly (see the change log entry below), since
+I have no such CPU available; you should therefore run \texttt{make test}
+before relying on it. Be aware that AVX-512 is not a safe bet for a
+speed-up: the sieving loop is limited by memory bandwidth rather than by
+arithmetic, and some Intel server processors reduce their clock frequency
+when 512-bit instructions are used. It is worth timing the 256-bit and the
+512-bit version against each other on your machine.
+
+If you leave out \verb+-mavx512f+ and compile with just
+\verb+-DUSE_AVX512+, then \texttt{gcc} will express the 64-byte vectors
+through narrower operations, so that the code runs on any machine. This is
+of no use in production (it is slower than the 256-bit version), but it
+does allow the 512-bit code path to be tested without the corresponding
+hardware. \texttt{gcc} will warn that passing a 512-bit vector argument
+without AVX512F enabled changes the ABI; this is harmless, as the whole
+library is built with the same flags.
 
 \subsection{Run a test}
 
@@ -762,7 +784,7 @@ several primes: if $F(a, b)$ is a square, it certainly has to be a square
 mod~$p$, and so we can rule out all $(a, b)$ that do not satisfy this
 condition. Another ingredient is to represent (for a fixed~$b$) the
 various values of~$a$ by bits and treat all the bits in a `bit array'
-(of 32 or 64 bits, as the case may be, or 128 or 256 bits when SSE/AVX
+(of 32 or 64 bits, as the case may be, or 128, 256 or 512 bits when SSE/AVX
 instructions are used) in parallel. For this, we organize
 the sieving information for each prime~$p$ into $p$~arrays of $p$~words
 each, one such array for every $b$ mod~$p$, such that the $j$th~bit
@@ -934,6 +956,34 @@ for the numerators. Thanks to \textbf{Bill Allombert}.
 \textbf{Version 2.2.2} was released May 15, 2023. This fixes a small
 bug that led to the polynomials being reversed incorrectly when the
 degree is odd. Thanks to \textbf{Nicolas Mascot} and \textbf{Bill Allombert}.
+
+\textbf{Version 2.2.3} was released September 6, 2026. It fixes the code
+path using 512-bit registers, which had never been exercised. Two problems
+were found. The first one would have made
+the program crash: the array \texttt{sieves0} of precomputed sieving
+information is declared as an array of \texttt{unsigned long}, but it is
+read through pointers to \texttt{ratpoints\_bit\_array}, and \texttt{gcc}
+aligns such a global array to at most 32~bytes, whereas a 512-bit
+bit-array needs 64. The aligned 512-bit load that \texttt{gcc} generates
+in the second sieving phase would then fault; whether it did so depended
+on where the linker happened to place the array. The array is now given
+the alignment of \texttt{ratpoints\_bit\_array} explicitly, in every
+variant. The second problem was that the \texttt{TEST} macro, which is
+used in the innermost loop of the second phase, still used the generic
+fall-back version; \texttt{gcc} compiles this to a spill of the whole
+64-byte vector to the stack followed by reading it back word by word,
+which defeats store-to-load forwarding. It now uses \texttt{vptestmq},
+in analogy with the 256-bit version.
+
+Since I have no CPU with AVX512F available, this was tested by compiling
+with \verb+-DUSE_AVX512+ but without \verb+-mavx512f+, so that
+\texttt{gcc} expresses the 64-byte vectors through 256-bit operations.
+This exercises the whole code path (in particular \verb+RBA_PACK == 8+
+and the two mask macros); \texttt{make test1} and \texttt{make test2}
+both reproduce the reference output exactly, as do 400 randomly generated
+comparisons against the 256-bit version. What this cannot check is the
+genuine 512-bit instructions, so a first run on real hardware is still
+wanted.
 
 %=========================================================================
 

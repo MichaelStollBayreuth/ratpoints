@@ -1,7 +1,7 @@
 /***********************************************************************
- * ratpoints-2.2.2                                                     *
+ * ratpoints-2.2.3                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * Core program file for ratpoints                                     *
  *                                                                     *
- * Michael Stoll, September 21, 2009, January 7, 2022                  *
+ * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 6, 2026               *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -41,14 +41,22 @@
      squares[n][x] = 1 if x is a square mod prime[n], 0 if not
 
    static const long offsets[RATPOINTS_NUM_PRIMES];
-     offset[n] = (2*LONG_LENGTH)^(-1) mod prime[n]
+     offset[n] = (2*RBA_LENGTH)^(-1) mod prime[n]
 
    static const long inverses[RATPOINTS_NUM_PRIMES][RATPOINTS_MAX_PRIME];
      inverses[n][x] = x^(-1) mod prime[n] for x != 0 mod prime[n]
 
-   ratpoints_bit_array sieves0[RATPOINTS_NUM_PRIMES][RATPOINTS_MAX_PRIME_EVEN]
+   unsigned long sieves0[RATPOINTS_NUM_PRIMES]
+                        [RBA_PACK*(RATPOINTS_MAX_PRIME_EVEN + RATPOINTS_CHUNK-1)];
+     the sieving information for denominator b == 0 mod prime[n]:
      sieves0[n][x] has bit i set (0 <= x < prime[n])
-       <==> x*LONG_LENGTH + i is not divisible by prime[n]
+       <==> x*LONG_LENGTH + i is not divisible by prime[n],
+     and this pattern of prime[n] words is then repeated, so that the array
+     can be read as prime[n] + RATPOINTS_CHUNK-1 bit-arrays
+     (the last RATPOINTS_CHUNK-1 of them being the wrap-around copies that
+      _ratpoints_sift0 relies on in phase 1; compare init.c).
+     The array carries an alignment attribute, since it is accessed through
+     pointers of type  ratpoints_bit_array * ; see gen_find_points_h.c.
  */
 
 
@@ -76,7 +84,9 @@ static const int squares16[16] = {1,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0};
  **************************************************************************/
 
 /* The following is needed to obtain the correct memory alignment
- * when using 256-bit or 512-bit "words".
+ * when using 256-bit or 512-bit "words": malloc() only guarantees 16 bytes.
+ * The callers allocate one bit-array more than they need, so that there is
+ * always enough room to move the start address up.
  * (Added by Bill Allombert)
  */
 void *pointer_align(void *xx, long m)
@@ -937,6 +947,8 @@ static long sieving_info(ratpoints_args *args,
         se->is_f_square = is_f_square;
         se->inverses = &inverses[pn][0];
         se->offset = offsets[pn];
+        /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
+         * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
         se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
         for(i = 1; i < p; i++) { se->sieve[i] = NULL; }
 

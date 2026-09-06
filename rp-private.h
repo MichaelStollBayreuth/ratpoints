@@ -1,7 +1,7 @@
 /***********************************************************************
- * ratpoints-2.2.1                                                     *
+ * ratpoints-2.2.3                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * Header file with information local to the ratpoints code            *
  *                                                                     *
- * Michael Stoll, Apr 14, 2009; January 7-18, 2022                     *
+ * Michael Stoll, Apr 14, 2009; Jan 7-18, 2022; Sep 6, 2026            *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -70,11 +70,24 @@
  * MASKU(a,s) : set upper s bits of a to zero
  *              MASKL and MASKU don't have to be terribly efficient;
  *              they are each executed once per denominator and interval.
+ *              Both may assume that 0 <= s < RBA_LENGTH; the two call sites
+ *              in find_points.c pass a residue mod RBA_LENGTH.  (This matters:
+ *              for s == RBA_LENGTH the versions below would either shift an
+ *              unsigned long by LONG_LENGTH or address a word outside a.)
  */
 
 #ifdef USE_AVX512
 /* Use 512 bit AVX registers for the bit arrays */
-/* So far not used, since no suitable CPU available for testing... */
+/* Note that this has not been run on a CPU with AVX512F capability yet.
+ * It has, however, been tested on a machine with AVX2 only, by compiling
+ * with -DUSE_AVX512 but without -mavx512f: gcc then lowers the 64-byte
+ * vectors to pairs of 256-bit operations, so that the whole code path
+ * (RBA_PACK == 8, the mask macros, phase 2) is exercised.  Done that way,
+ * rptest and the test with the record curve reproduce testbase/testbase2
+ * exactly.  What such a run cannot check is the genuine 512-bit
+ * instructions, i.e., the TEST macro below. */
+
+#include <immintrin.h>
 
 #define RBA_LENGTH (512)
 #define RBA_SHIFT (9)
@@ -88,9 +101,20 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
 #define AND(a,b) ((a) = (a)&(b))
 #define EXT0(a) ((unsigned long)a[0])
 #define EXT(a,i) ((unsigned long)a[i])
-/* there should be a faster way of doing the following; compare below */
-#define TEST(a) (EXT(a,0) || EXT(a,1) || EXT(a,2) || EXT(a,3) \
-                  || EXT(a,4) || EXT(a,5) || EXT(a,6) || EXT(a,7))
+#ifdef __AVX512F__
+/* vptestmq sets bit i of the mask register if and only if word i is non-zero;
+ * testing the resulting 8-bit mask against zero then compiles to a kortest.
+ * This is the 512-bit analogue of the AVX2 version below.
+ * The obvious fall-back (see the #else branch) is quite bad here: gcc spills
+ * the whole 64-byte vector to the stack and reads it back in 8-byte pieces,
+ * which defeats store-to-load forwarding in the innermost loop of phase 2. */
+# define TEST(a) ( _mm512_test_epi64_mask((__m512i)(a), (__m512i)(a)) != 0 )
+#else
+/* Fall-back version; also used when gcc lowers the 64-byte vectors itself
+ * (i.e., when compiling with -DUSE_AVX512, but without -mavx512f). */
+# define TEST(a) (EXT(a,0) || EXT(a,1) || EXT(a,2) || EXT(a,3) \
+                   || EXT(a,4) || EXT(a,5) || EXT(a,6) || EXT(a,7))
+#endif
 #define MASKL(a,s) { unsigned long *survl = (unsigned long *)(a); long sh = (s); \
                      long l, qsh = sh>>LONG_SHIFT, rsh = sh & (LONG_LENGTH-1); \
                      for(l = 0; l < qsh; l++) { *survl++ = 0UL; }; *survl &= (~0UL)<<rsh; }
