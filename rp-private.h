@@ -61,6 +61,8 @@
  * RBA(a)     : fill a ratpoints_bit_array with copies of the word a
  * zero       : all bits zero == RBA(0UL)
  * AND(a,b)   : bit-wise and operation: a &= b
+ * ORR(a,b)   : bit-wise or, as a value: returns a | b
+ *              (used in phase 2 to test several bit-arrays at once)
  * EXT0(a)    : extract first word (as unsigned long)
  * EXT(a,i)   : extract word with index i (as unsigned long)
  * TEST(a)    : tests if a is zero: TEST(a) == 0 <==> a == zero
@@ -99,6 +101,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
                                       ((unsigned long) a), ((unsigned long) a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (a)&(b))
+#define ORR(a,b) ((a)|(b))
 #define EXT0(a) ((unsigned long)a[0])
 #define EXT(a,i) ((unsigned long)a[i])
 #ifdef __AVX512F__
@@ -139,6 +142,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
 #define RBA_PACK (4)
 typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (32)));
 #define AND(a,b) ((a) = (a)&(b))
+#define ORR(a,b) ((a)|(b))
 #define EXT0(a) ((unsigned long)a[0])
 #define EXT(a,i) ((unsigned long)a[i])
 #ifdef __AVX2__
@@ -188,6 +192,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (16)));
 #define RBA(a) ((ratpoints_bit_array){((unsigned long) a), ((unsigned long) a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (a)&(b))
+#define ORR(a,b) ((a)|(b))
 #define EXT0(a) ((unsigned long)a[0])
 #define EXT(a,i) ((unsigned long)a[i])
 /* See above for this definition of TEST(a) */
@@ -214,6 +219,7 @@ typedef __v2di ratpoints_bit_array;
 #define RBA(a) ((__v2di){(a), (a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (ratpoints_bit_array)__builtin_ia32_andps((__v4sf)(a), (__v4sf)(b)))
+#define ORR(a,b) ((ratpoints_bit_array)__builtin_ia32_orps((__v4sf)(a), (__v4sf)(b)))
 #define EXT0(a) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 0))
 /* the following is a hack (here i is always 1) */
 #define EXT(a,i) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 1))
@@ -238,6 +244,7 @@ typedef unsigned long ratpoints_bit_array;
 #define RBA(a) ((ratpoints_bit_array)(a))
 #define zero ((ratpoints_bit_array)0UL)
 #define AND(a,b) ((a) &= (b))
+#define ORR(a,b) ((a)|(b))
 #define EXT0(a) (a)
 #define EXT(a,i) (a) /* just in case... */
 #define TEST(a) (a)

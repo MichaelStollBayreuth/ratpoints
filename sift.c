@@ -536,11 +536,21 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   { ratpoints_bit_array *surv0 = &survivors[0];
     long i, base = 0;
 
-    /* Step through the survivors array */
+    /* Step through the survivors array.
+     * Only a few per cent of the bit-arrays survive the first phase, so look
+     * at four of them at a time first and skip the whole group when their
+     * "or" is zero.  At a survival rate of about 4% that is the case for some
+     * 85% of the groups, and one TEST then does the work of four. */
     for(i = w_low; i < w_high; i++, base++)
-    { ratpoints_bit_array nums = *surv0++;
+    { ratpoints_bit_array nums;
       sieve_spec *ssp = &sieves[sp1];
       long n;
+
+      while(i + 4 <= w_high
+            && !TEST(ORR(ORR(surv0[0], surv0[1]), ORR(surv0[2], surv0[3]))))
+      { surv0 += 4; i += 4; base += 4; }
+      if(i >= w_high) { break; }
+      nums = *surv0++;
 
 #ifdef DEBUG
       if(TEST(nums))
