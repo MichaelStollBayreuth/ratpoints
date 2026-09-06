@@ -225,10 +225,23 @@ rptest-many: libratpoints.a rptest.c ratpoints.h testdata-many.h
 	${CC} rptest.c -o rptest-many -DRATPOINTS_TESTDATA='"testdata-many.h"' \
 	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
-gen_init_sieve_h: gen_init_sieve_h.c ratpoints.h rp-private.h primes.h
+# The generated headers depend on the configuration (the register width set
+# by CCFLAGS1, and PRIME_SIZE), which make cannot see by itself.  Keep the
+# current flags in a stamp file so that they are regenerated when the flags
+# change; without this, a stale find_points.h would be compiled against a
+# different RBA_PACK.  (The headers also carry a compile-time check of their
+# own, for the case that they are used outside this Makefile.)
+.PHONY: FORCE
+config.stamp: FORCE
+	@echo '${CCFLAGS_0}' > $@.tmp
+	@cmp -s $@.tmp $@ || \
+	  { mv $@.tmp $@; echo "configuration changed; regenerating headers"; }
+	@rm -f $@.tmp
+
+gen_init_sieve_h: gen_init_sieve_h.c ratpoints.h rp-private.h primes.h config.stamp
 	${CC} gen_init_sieve_h.c -o gen_init_sieve_h  ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}
 
-gen_find_points_h: gen_find_points_h.c ratpoints.h rp-private.h primes.h
+gen_find_points_h: gen_find_points_h.c ratpoints.h rp-private.h primes.h config.stamp
 	${CC} gen_find_points_h.c -o gen_find_points_h  ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}
 
 init_sieve.h: gen_init_sieve_h
