@@ -47,6 +47,27 @@ int main(int argc, char *argv[])
 {
   long n;
 
+  /* Record the configuration this file is generated for and check it when it
+   * is compiled.  The contents depend on the register width (offsets[] via
+   * RBA_LENGTH, sieves0[] via RBA_PACK and RATPOINTS_CHUNK) and on the prime
+   * size, but nothing in the build system ties the generated file to the
+   * flags.  Compiling a stale find_points.h against a wider configuration
+   * would leave sieves0[] partly zero -- too few initializers are perfectly
+   * legal C, so there would be no warning -- and offsets[] simply wrong. */
+  /* Note that RBA_LENGTH cannot be used here: in the default configuration it
+   * expands to a sizeof, which is not allowed in a preprocessor expression.
+   * RBA_PACK pins the width down just as well, since
+   * RBA_LENGTH == RBA_PACK * LONG_LENGTH. */
+  printf("#define RP_FP_H_RBA_PACK %d\n", (int)RBA_PACK);
+  printf("#define RP_FP_H_CHUNK %d\n", (int)RATPOINTS_CHUNK);
+  printf("#define RP_FP_H_NUM_PRIMES %d\n", (int)RATPOINTS_NUM_PRIMES);
+  printf("#if (RP_FP_H_RBA_PACK != RBA_PACK) \\\n"
+         "    || (RP_FP_H_CHUNK != RATPOINTS_CHUNK) \\\n"
+         "    || (RP_FP_H_NUM_PRIMES != RATPOINTS_NUM_PRIMES)\n"
+         "# error \"find_points.h was generated for a different configuration"
+         " -- run 'make clean' first\"\n"
+         "#endif\n\n");
+
   { int work[RATPOINTS_MAX_PRIME];
 
     printf("static const int "
