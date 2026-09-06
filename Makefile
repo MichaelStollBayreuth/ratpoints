@@ -79,7 +79,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
-            gpl-2.0.txt testbase2
+            gpl-2.0.txt testbase2 bench_init.c
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
@@ -189,6 +189,11 @@ find_points.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h
 
 find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h
 	${CC} find_points.c -c -o find_points-debug.o ${CCFLAGS_0} -DDEBUG ${CCFLAGS}
+
+# Correctness check and benchmark for the sieve table set-up (see bench_init.c).
+bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h
+	${CC} bench_init.c -o bench_init ${CCFLAGS_0} -O3 -funroll-loops \
+              ${CCFLAGS3} ${CCFLAGS2} ${CCFLAGS}
 
 rptest: libratpoints.a rptest.c ratpoints.h testdata.h
 	${CC} rptest.c -o rptest ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
