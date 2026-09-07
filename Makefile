@@ -37,7 +37,13 @@
 #   clean       remove the intermediate files; distclean also the executables
 #               and any tuning.mk
 
-PRIME_SIZE = 7
+# The program sieves with the odd primes below 2^PRIME_SIZE.  The default is 8
+# rather than 7 not because 53 primes are normally used -- the choice below
+# still starts from RATPOINTS_DEFAULT_NUM_PRIMES of them -- but so that the few
+# primes past that are there for the curves that run out, which are the ones
+# with very many rational points; on those it is worth up to a factor of two.
+# Having the larger table costs nothing when it is not used.
+PRIME_SIZE = 8
 VERSION = 2.2.3
 
 # The test targets time their runs with the shell's "time".  That is a shell

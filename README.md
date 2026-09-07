@@ -15,9 +15,13 @@ registers and has been optimized further, so that it now runs considerably faste
 The number of primes used in each of the two sieving stages is no longer a fixed default: unless
 `-n` and `-N` are given, both are chosen from the curve, from the densities of admissible numerators
 modulo the small primes that the program computes anyway. That is worth about 14% on random curves
-and about 36% on curves with many rational points, which sieve very differently. Two
-machine-dependent constants govern the choice; they can be set with the `-r` and `-R` options, so
-Reasonable values are compiled in, and `make tune` will measure better ones for your machine if
+and about 36% on curves with many rational points, which sieve very differently. A curve with very
+many rational points can also leave too few of the small primes saying anything at all for that
+choice to have the primes it wants; the program then looks at a few more of its own accord, which
+is worth up to a factor of two on such curves and is never asked for otherwise.
+
+Two machine-dependent constants govern the choice. They can be set with the `-r` and `-R` options,
+reasonable values are compiled in, and `make tune` will measure better ones for your machine if
 you want it to: it minimises the sum of the times of `make test1` (random curves) and
 `make test1many` (curves with many points), and writes what it finds to `tuning.mk`, which the
 Makefile picks up. No source file is touched, and deleting that file restores the compiled-in

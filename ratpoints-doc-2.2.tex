@@ -144,10 +144,11 @@ measure better ones for your machine if you want it to; see
 Section~\ref{sec:tuning}. It is a separate step because it takes several
 minutes.
 
-By default, the program will use primes up to 127. If you intend to
-do computations with large height bounds or with curves that you expect
-to have many points, it may make sense to increase the range of primes.
-This can be achieved via
+By default, the program has primes up to 251 available, and considers the
+smallest $30$ of them; for a curve that needs more, it will look further of
+its own accord, as described in Section~\ref{sec:spchoice}. If you intend to
+do computations with large height bounds, it may make sense to increase the
+range of primes further. This can be achieved via
 
 \begin{verbatim}
 > make all PRIME_SIZE=8
@@ -462,7 +463,11 @@ stages of the algorithm. This is done by the following options. \\
 \strut\quad\verb+-p+ $M$ \verb+-N+ $N$ \verb+-n+ $n$ \\
 This sets the number of (odd) primes that are considered for the sieve
 to~$M$, the number of primes that are actually used for the sieve to~$N$,
-and the number of primes used in the first sieving stage to~$n$. The program
+and the number of primes used in the first sieving stage to~$n$. Giving~$M$
+also fixes it: without \verb+-p+ the program considers
+\texttt{RATPOINTS\_DEFAULT\_NUM\_PRIMES} of them to begin with and looks
+further only for a curve that needs it (Section~\ref{sec:spchoice}), whereas
+with \verb+-p+ it looks at exactly~$M$. The program
 will, if necessary, reduce $M$, $N$, and $n$ (in this order) to ensure
 that $n \le N \le M \le \text{\texttt{RATPOINTS\_NUM\_PRIMES}}$. The latter
 is usually~$30$ (the number of odd primes $< 2^7$), but will be $53$
@@ -830,6 +835,25 @@ width, whereas a per-bit-array figure would have to double with each doubling
 of the width. Then \texttt{sp2} is set to
 \texttt{sp1} plus \texttt{RATPOINTS\_SP2\_EXTRA}, capped by the number of
 primes that carry any information at all.
+
+That cap is a real constraint on a curve with very many rational points, and
+the program does something about it. On such a curve $f$ is a square modulo
+every residue for the smallest primes, so those primes say nothing and are
+discarded, and there may be fewer than $\texttt{sp1} + \texttt{RATPOINTS\_SP2%
+\_EXTRA}$ left --- in the extreme, exactly \texttt{sp1} of them, so that the
+second sieving stage has no primes to sieve with and every survivor of the
+first stage goes to the exact test. So when the primes it was given do not
+suffice, the program looks at further primes, one at a time, until they do or
+until there are no more. Adding a prime can only lower \texttt{sp1}, since the
+$k$ smallest of a larger set have a smaller product, and can only raise the
+number of informative primes, so the shortfall shrinks with every prime added
+and the search stops at the first prime that is enough. It is asked for only
+when it is needed: of the $98$ curves in \texttt{testdata-many.h} it leaves
+$68$ untouched and takes at most six extra primes for the rest, and of the
+random curves in \texttt{testdata.h} not one triggers it. On the curves that
+do need it, it is worth between $1.3$ and $2$ times at a height bound
+of~$2\cdot 10^5$. Giving \verb+-p+ explicitly switches this off: an explicit
+number of primes is a hard limit.
 
 Because \texttt{sp1} is chosen this way, the second sieving stage now finds
 only a few per cent of the bit arrays non-empty whatever the curve, and it

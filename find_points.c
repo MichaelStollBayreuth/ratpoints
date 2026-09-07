@@ -845,6 +845,22 @@ static int compare_entries(const void *a, const void *b)
   return (diff > 0) ? 1 : (diff < 0) ? -1 : 0;
 }
 
+/* How many primes the first phase needs: enough of them that the expected
+ * number of surviving numerators per 64-bit word falls to the target.
+ * prec[] must be sorted by increasing r.  If the target cannot be reached
+ * with the primes available, all of them are used. */
+static long primes_for_phase_1(entry *prec, long pnp,
+                               double bits_per_word, double target)
+{ double rate = 1.0;
+  long n;
+
+  for(n = 0; n < pnp; n++)
+  { rate *= prec[n].r;
+    if(bits_per_word*rate <= target) { return(n + 1); }
+  }
+  return(pnp > 0 ? pnp : 1);
+}
+
 /************************************************************************
  * Collect the sieving information                                      *
  ************************************************************************/
@@ -852,7 +868,7 @@ static int compare_entries(const void *a, const void *b)
 static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
                          ratpoints_sieve_entry **sieve_list,
-                         double bits_per_word)
+                         double bits_per_word, int may_extend)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or else returns 0. */
@@ -870,8 +886,16 @@ static long sieving_info(ratpoints_args *args,
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   long *forbidden = (long *)args->forbidden;
 
+  /* How many primes to look at.  The loop below may raise this: see the
+   * comment at its end. */
+  long pn_lim = args->num_primes;
+  double target = (args->survivors_per_word > 0.0) ? args->survivors_per_word
+                                                   : RATPOINTS_SURVIVORS_PER_WORD;
+  long sp2_extra = (args->sp2_extra >= 0) ? args->sp2_extra
+                                          : RATPOINTS_SP2_EXTRA;
+
   /* initialize sieve in se_buffer */
-  for(pn = 0; pn < args->num_primes; pn++)
+  for(pn = 0; pn < pn_lim; pn++)
   { long coeffs_mod_p[degree+1];
            /* The coefficients of f reduced modulo p */
     long p = prime[pn];
@@ -1032,7 +1056,37 @@ static long sieving_info(ratpoints_args *args,
       }
     }
 
+    /* Once the primes we were told to look at are used up, look at more if
+     * the choice below would otherwise be cramped.  The second phase sieves
+     * the survivors of the first with sp2 - sp1 further primes, and there
+     * have to be that many left over; a curve with very many rational points
+     * makes f a square modulo every residue for the smallest primes, so those
+     * carry no information and are dropped above, and without this the second
+     * phase can end up with nothing to sieve with at all.
+     * Adding a prime can only lower sp1 -- the n smallest of a larger set have
+     * a smaller product -- and can only raise pnp, so the shortfall shrinks
+     * with every prime added and this stops at the first one that is enough.
+     */
+    if(may_extend && pn + 1 == pn_lim && pn_lim < RATPOINTS_NUM_PRIMES)
+    { long s1, want;
+
+      qsort(prec, pnp, sizeof(entry), compare_entries);
+      s1 = (args->sp1 >= 0) ? args->sp1
+                            : primes_for_phase_1(prec, pnp, bits_per_word, target);
+      want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
+      if(pnp < want) { pn_lim++; }
+    }
+
   } /* end for pn */
+
+  /* the sieve tables live in a block that was reserved for args->num_primes
+   * primes; if the loop went further, that block has to grow.  Nothing has
+   * been taken from it yet -- the tables are built lazily during the sieving
+   * itself -- so it can simply be replaced. */
+  if(pn_lim > args->ba_buffer_primes)
+  { free(args->ba_buffer_na);
+    alloc_ba_buffer(args, pn_lim);
+  }
 
   /* sort the array to get at the best primes */
   qsort(prec, pnp, sizeof(entry), compare_entries);
@@ -1046,32 +1100,17 @@ static long sieving_info(ratpoints_args *args,
    * of survivors per bit-array; see the comment on
    * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h . */
   if(args->sp1 < 0)
-  { double target = (args->survivors_per_word > 0.0)
-                      ? args->survivors_per_word
-                      : RATPOINTS_SURVIVORS_PER_WORD;
-    double rate = 1.0;
-    long n;
-
-    for(n = 0; n < pnp; n++)
-    { rate *= prec[n].r;
-      if(bits_per_word*rate <= target) { break; }
-    }
-    args->sp1 = (n < pnp) ? n + 1 : pnp;
-    if(args->sp1 < 1) { args->sp1 = 1; }
-  }
-  if(args->sp2 < 0)
-  { args->sp2 = args->sp1 + ((args->sp2_extra >= 0) ? args->sp2_extra
-                                                    : RATPOINTS_SP2_EXTRA);
-  }
+  { args->sp1 = primes_for_phase_1(prec, pnp, bits_per_word, target); }
+  if(args->sp2 < 0) { args->sp2 = args->sp1 + sp2_extra; }
 
   /* update sp2 and sp1 if necessary */
   if(args->sp2 > pnp) { args->sp2 = pnp; }
   if(args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
   if(args->flags & RATPOINTS_VERBOSE)
-  { printf("  %.1f bits set per word"
+  { printf("  %.1f bits set per word, %ld primes looked at"
            " ==> use %ld primes in the first phase, %ld altogether\n",
-           bits_per_word, args->sp1, args->sp2);
+           bits_per_word, pn_lim, args->sp1, args->sp2);
   }
 
   /* put the sorted entries into sieve_list */
@@ -1085,7 +1124,7 @@ static long sieving_info(ratpoints_args *args,
   if(args->flags & RATPOINTS_CHECK_DENOM)
   { long n;
 
-    for(n = args->num_primes;
+    for(n = pn_lim;
         fba + fdc < args->max_forbidden && n < RATPOINTS_NUM_PRIMES;
         n++)
     { long p = prime[n];
@@ -1325,6 +1364,10 @@ long find_points_work(ratpoints_args *args,
 {
   long total = 0;       /* total counts the points */
   int quit = 0;
+  /* Whether the caller left the number of primes to us.  If it did,
+   * sieving_info may look past RATPOINTS_DEFAULT_NUM_PRIMES for the curves
+   * that need it; an explicit num_primes is a hard limit. */
+  int np_is_default = (args->num_primes < 0);
   mpz_t *c = args->cof;
   long degree = args->degree;
   long height = args->height;
@@ -1708,7 +1751,7 @@ long find_points_work(ratpoints_args *args,
       if(nz) { bits_per_word = (double)tot/(double)nz; }
     }
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
-                              bits_per_word);
+                              bits_per_word, np_is_default);
 
     if(ret)
     {
