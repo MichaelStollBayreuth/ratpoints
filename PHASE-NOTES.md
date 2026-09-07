@@ -274,10 +274,14 @@ so `-p 30` does not reduce it:
 The resident set barely moves, because the pages belonging to primes that are
 never used are never touched, and the figures double at 512-bit registers.
 Still, 1.7 GB of address space per `ratpoints_args` is not something to ship,
-and it is per *thread* under TODO item 1.  `args->num_primes` is already set
-when `find_points_init` runs, so summing `need` over the primes that may
-actually be used, rather than over the whole table, would remove this -- a
-prerequisite for item 6 rather than part of it.
+and it is per *thread* under TODO item 1.
+
+**Fixed since** (`v2.3`): `find_points_init` reserves for
+`RATPOINTS_DEFAULT_NUM_PRIMES` and `find_points_work` enlarges the block when
+a call asks for more.  It cannot read `args->num_primes` at init, because the
+documented use of the library sets that field between the two.  The last
+column of the table above becomes 8, 9, 11 and 18 MB, and `-p 40` at
+`PRIME_SIZE=10` costs 26 MB.
 
 ## Open questions
 
