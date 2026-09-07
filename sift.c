@@ -53,6 +53,7 @@
 
 unsigned long long _rp_phase1_cycles = 0, _rp_phase2_cycles = 0;
 unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
+unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
 #ifdef RP_PHASE_COUNTS
 unsigned long long _rp_units_surviving = 0;
 # ifdef USE_LONG_IN_PHASE_2
@@ -64,6 +65,11 @@ unsigned long long _rp_units_surviving = 0;
 
 # define RP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_TOC(t, acc) (acc) += __rdtsc() - (t)
+/* wrap one call to _ratpoints_check_point, so that the exact verification
+ * can be subtracted from the cost of the second phase */
+# define RP_CHECK(call) \
+    ({ unsigned long long t_ = __rdtsc(); long r_ = (call); \
+       _rp_check_cycles += __rdtsc() - t_; _rp_check_calls++; r_; })
 
 static void _rp_phase_report(void) __attribute__((destructor));
 
@@ -102,12 +108,22 @@ static void _rp_phase_report(void)
           _rp_phase1_cycles, 100.0*_rp_phase1_cycles/total);
   fprintf(stderr, "[phases] phase 2 %15llu  %5.2f%%\n",
           _rp_phase2_cycles, 100.0*_rp_phase2_cycles/total);
+  /* _ratpoints_check_point runs inside phase 2; for curves with many
+   * rational points it can dominate it, and it is the same work for
+   * every register width, so report it separately. */
+  fprintf(stderr, "[phases]  of which exact check %llu (%.2f%% of all,"
+                  " %llu calls)\n",
+          _rp_check_cycles, 100.0*_rp_check_cycles/total, _rp_check_calls);
+  fprintf(stderr, "[phases] phase 2 sieve only %llu  %5.2f%%\n",
+          _rp_phase2_cycles - _rp_check_cycles,
+          100.0*(_rp_phase2_cycles - _rp_check_cycles)/total);
 }
 
 #else
 
 # define RP_TIC(t)
 # define RP_TOC(t, acc)
+# define RP_CHECK(call) (call)
 
 #endif /* RP_PHASE_TIMING */
 
@@ -607,7 +623,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             if(relprime(a, b))
             { printf("Check point...\n");
               fflush(NULL);
-              total += _ratpoints_check_point(a, b, args, quit, process, info);
+              total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
               if(*quit) return(total); /* if quit was set, stop */
             }
             else
@@ -616,7 +632,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           bit++;
 #else
           if((nums & 1) && relprime(a, b))
-          { total += _ratpoints_check_point(a, b, args, quit, process, info);
+          { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
             if(*quit) return(total); /* if quit was set, stop */
           }
 #endif
@@ -701,7 +717,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
               if(relprime(a, b))
               { printf("Check point...\n");
                 fflush(NULL);
-                total += _ratpoints_check_point(a, b, args, quit, process, info);
+                total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
                 if(*quit) return(total); /* if quit was set, stop */
               }
               else
@@ -712,7 +728,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             if((nums0 & 1) && relprime(a, b))
             /* bit is set and fraction a/b is in lowest terms:
              * check if we really get a point, and if so, process it. */
-            { total += _ratpoints_check_point(a, b, args, quit, process, info);
+            { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
               if(*quit) return(total); /* if quit was set, stop */
             }
 #endif
@@ -740,7 +756,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                   if(relprime(a, b))
                   { printf("Check point...\n");
                     fflush(NULL);
-                    total += _ratpoints_check_point(a, b, args, quit, process, info);
+                    total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
                     if(*quit) return(total); /* if quit was set, stop */
                   }
                   else
@@ -749,7 +765,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 bit++;
 #else
                 if((nums1 & 1) && relprime(a, b))
-                { total += _ratpoints_check_point(a, b, args, quit, process, info);
+                { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
                   if(*quit) return(total);
                 }
 #endif
