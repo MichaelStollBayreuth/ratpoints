@@ -5,11 +5,14 @@ rather than on `sp1` alone, and whether that could be turned into a way of
 choosing the parameters from the input.  It can.  This file records the model,
 the measurements it was fitted to, and how well it does.
 
-**Result in one line:** `sp1` can be chosen from quantities `sieving_info()`
-already computes, and doing so is worth nothing at all on random curves --
-where the shipped `sp1 = 11` turns out to be right -- but worth a factor of
-about two on curves with many rational points, where the default is 79% off on
-median and up to 278% off.  `sp2` cannot be chosen the same way; see below.
+**Result in one line:** at the optimal `sp1` the fraction of numerators
+surviving phase 1 is essentially a constant -- about 1 in 7500, within a factor
+of 2.7 over curves spanning a factor of 630 in density and optimal `sp1` from 8
+to 30 -- so the rule is simply *add phase-1 primes until about 2% of the
+bit-arrays are still non-empty*.  That single constant chooses `sp1` within
+about 1% of the best setting on both populations tested, beating both the
+shipped default (79% off on point-rich curves) and a seven-coefficient fitted
+cost model.  `sp2` cannot be chosen the same way; use `max(19, sp1+8)`.
 
 ## The measurements
 
@@ -182,6 +185,67 @@ recommendation: it is never worse than the default where the default is good,
 and it removes almost all of the penalty where the default is bad.  The fourth
 row -- keep the default unless the model predicts a large gain -- is an
 equally good and even more conservative alternative.
+
+## The survivor rate at the optimum is essentially constant
+
+The coarse grids above cannot answer this, because `sp1 = 11` covers a whole
+plateau.  A fine scan settles it: `sp1` from 6 to 30 in steps of 1 along
+`sp2 = min(30, sp1+8)`, for six point-rich and six random curves, minimum of
+three `perf` runs each, with the optimum located by a parabola through the
+three cheapest points (`model/sweep-fine-sp1.csv`).
+
+| | m | best `sp1` | interpolated | `R(sp1*)` | `u(sp1*)` |
+|---|---|---|---|---|---|
+| random `td:696` | 75 | 9 | 9.4 | 1.8e-04 | 0.013 |
+| random `td:313` | 94 | 10 | 10.4 | 1.6e-04 | 0.015 |
+| random `td:894` | 106 | 11 | 11.1 | 1.2e-04 | 0.013 |
+| random `td:564` | 83 | 12 | 11.6 | 9.0e-05 | 0.007 |
+| random `td:38` | 94 | 12 | 12.0 | 1.9e-04 | 0.017 |
+| random `td:560` | 241 | 13 | 12.6 | 7.0e-05 | 0.017 |
+| rich `ex:10` | 247 | 8 | 8.5 | 1.1e-04 | 0.025 |
+| rich `ex:118` | 173 | 14 | 14.1 | 1.5e-04 | 0.025 |
+| rich `ex:490` | 235 | 17 | 16.5 | 1.1e-04 | 0.025 |
+| rich `ex:676` | 239 | 18 | 17.8 | 1.6e-04 | 0.038 |
+| rich `bc:136` | 251 | 25 | 25.3 | 1.1e-04 | 0.027 |
+| rich `bc:1944` | 246 | 30 | 30.0 | 1.5e-04 | 0.036 |
+
+The optimal `sp1` ranges from 8 to 30 and the curves span a factor of 630 in
+`R(11)`, but **the fraction of numerators still alive after phase 1 barely
+moves**: `R(sp1*)` has median 1.3e-04 and a total spread of a factor 2.7.
+About one candidate in 7500 survives phase 1, whatever the curve.
+
+The array-level version `u = 1-(1-R)^m` is tighter still *within* a population
+(a factor 1.5 across the point-rich curves, 2.3 across the random ones) but sits
+at different levels for the two -- 0.026 against 0.014 -- because `m` differs,
+about 240 against about 94.  Overall `u` spreads by a factor 5.1 against 2.7
+for `R`.
+
+### This gives a rule with one constant instead of seven
+
+Choose `sp1` as the first `k` with `u(k) <= 0.02` (or, in the bit-level form,
+`R(k) <= 1e-04`), and `sp2 = max(19, sp1+8)`:
+
+| rule | point-rich | random |
+|---|---|---|
+| `u(sp1) <= 0.02` | **+0.4% / +1.1%** | **+0.0% / +1.0%** |
+| `R(sp1) <= 1e-04` | +0.5% / +1.4% | +0.5% / +2.8% |
+| minimising the full fitted model | +3.8% / +4.4% | +2.0% / +2.4% |
+| the shipped default `11/19` | +79.0% / +98.1% | +0.0% / +1.1% |
+
+(median / mean excess over the best setting in the grid.)  The one-constant rule
+**beats the seven-coefficient cost model on both populations**, and it is what
+should actually be implemented: `sieving_info()` has `R` and `m`, so it is a
+loop over at most 30 primes and one comparison.
+
+It is also robust.  Any threshold `u` in 0.013..0.026 stays under 2.5% mean on
+both populations, and any `R` in 1e-04..2e-04 does the same; only outside
+roughly a factor of two either way does it start to cost.  The constant is a
+property of the machine, not of the curves -- it is the point where one more
+phase-1 prime (1.36 cycles per bit-array) stops paying for itself against the
+84 cycles that the first non-empty array costs on entry to phase 2, so
+`u* ~ 1.36 / (84*(1-r) + 2.7) ~ 0.03` for a typical density `r ~ 0.5`.  That
+back-of-the-envelope figure is the right size, which is the reassuring part;
+the measured 0.02 is what to use.
 
 ## Caveats
 
