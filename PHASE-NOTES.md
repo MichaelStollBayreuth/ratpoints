@@ -197,11 +197,27 @@ rule ranks primes by information alone: given more to choose from it takes
 larger ones, whose tables are bigger and colder, and it pays for that whenever
 it did not need them.
 
-The criterion is sharp and cheap to evaluate, since `sieving_info` already
-knows both numbers: **a curve needs more primes exactly when the rule reaches
-the end of the list without reaching its target**, which is visible as
-`sp1 == sp2` in the verbose output.  Making the table size adaptive on that
-condition is on the TODO list.
+The height bound is the second half of it.  A prime `p` needs `p` sieve tables
+of `p` bits, so the tables grow quadratically in `p` and are paid for once per
+denominator whatever the height bound, while the sieving they serve grows with
+its square.  Ratios of `PRIME_SIZE=8 -p 40` to the default build, median of
+three paired runs:
+
+| curve | h=5000 | h=20000 | h=80000 | h=320000 |
+|---|---|---|---|---|
+| `1 0 126 0 441` (random) | 1.55 | 1.08 | 1.12 | 1.13 |
+| point-rich, starved | 1.17 | 0.91 | 0.67 | 0.56 |
+| point-rich, not starved | 1.65 | 1.51 | 1.51 | 1.22 |
+
+The starved curve crosses over at about `h = 15000` and is nearly twice as fast
+by `h = 320000`; the other two never cross over, they only become less bad.
+The suites are all at small heights, which is the other reason the effect
+cancels there.
+
+Both criteria are sharp and available before any sieving starts:
+`sieving_info` knows whether the loop over `prec[]` ends without the rate
+falling below the target -- visible as `sp1 == sp2` in the verbose output --
+and `args->height` is known.  Choosing the range from the two is TODO item 6.
 
 ## Open questions
 
