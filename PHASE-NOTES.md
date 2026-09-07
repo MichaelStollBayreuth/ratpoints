@@ -283,6 +283,80 @@ documented use of the library sets that field between the two.  The last
 column of the table above becomes 8, 9, 11 and 18 MB, and `-p 40` at
 `PRIME_SIZE=10` costs 26 MB.
 
+## How large should the prime table be?
+
+The previous section asked what a larger table costs when its primes are not
+used.  This one asks what it is worth when they are, and therefore what
+`PRIME_SIZE` should default to.
+
+**Raising `PRIME_SIZE` alone does nothing at all.**
+`RATPOINTS_DEFAULT_NUM_PRIMES` is a fixed 30 whatever the table holds, so
+without `-p` the rule never looks past the thirtieth prime: at 7, 8, 9 and 10
+the same `sp1` and `sp2` are chosen and the cycle counts agree to 0.5%.  The
+two constants are coupled, and only the pair means anything.
+
+**The benefit is captured by about forty primes.**  For the five most starved
+curves, the primes the rule asks for as it is allowed to see more (`sp1/sp2`;
+`sp1 == sp2` is the signature of running out):
+
+| | `-p 30` | 35 | 40 | 45 | 53 | 70 | 96 | 171 |
+|---|---|---|---|---|---|---|---|---|
+| record curve | 23/23 | 21/26 | 19/24 | 18/23 | 17/22 | 15/20 | 14/19 | 13/18 |
+| four others | 22-26 starved | all unstarved | 17-18/22-23 | | | | | 13/18 |
+
+By `-p 35` -- primes to 151 -- none of them is starved any more.  Everything
+beyond that only lets the rule swap in larger primes for their information,
+which it does happily, because it ranks by density and never by cost.
+
+**And forty is where the time is best.**  Core cycles at height 200000,
+relative to what the program does today (`PRIME_SIZE=7`, `-p 30`), median of
+three paired runs; the last two columns need `PRIME_SIZE=9`:
+
+| curve | 8, `-p 30` | 8, 35 | **8, 40** | 8, 45 | 8, 53 | 9, 70 | 9, 96 |
+|---|---|---|---|---|---|---|---|
+| record curve | 0.967 | 0.471 | **0.431** | 0.447 | 0.467 | 0.530 | 0.569 |
+| starved #2 | 0.971 | 0.521 | **0.501** | 0.535 | 0.556 | 0.618 | 0.694 |
+| starved #3 | 0.981 | 0.603 | **0.576** | 0.616 | 0.647 | 0.717 | 0.806 |
+| starved #4 | 0.971 | 0.623 | **0.572** | 0.610 | 0.664 | 0.726 | 0.816 |
+| starved #5 | 0.957 | 0.549 | **0.511** | 0.552 | 0.583 | 0.675 | 0.713 |
+
+**1.7 to 2.3 times faster**, with the optimum at `-p 40` for every one of them
+and a shallow minimum -- 35 and 45 are within a few per cent.  Forty primes
+reach to 173, so **`PRIME_SIZE = 8` is enough and 9 and 10 buy nothing**:
+every configuration that needs them is worse than `8, -p 40` on every curve.
+
+**What it must not be is a blanket default.**  The same `-p 40`, in cycles:
+
+| | ratio |
+|---|---|
+| random curve, h=400000 | 1.109 |
+| random curve, h=50000 | 1.096 |
+| point-rich but *not* starved, h=200000 | 1.260 |
+| `make test1` | 1.243 |
+| `make test1many` | 1.006 |
+
+Ten per cent on random curves at any height, and twenty-six on a point-rich
+curve that did not need the extra primes.  Nor does the penalty amortise the
+way a pure set-up cost would: at `-p 40` a random curve is given `sp1 = 11`
+instead of 12, out of larger primes with larger tables, so phase 1 itself gets
+slower.  Going further is worse again: on `make test1`, `-p 53` costs 64% and
+the full `PRIME_SIZE=10` table 6.6 times.
+
+So the two constants want to move differently:
+
+* **`PRIME_SIZE` to 8.**  It is free -- within 2.5% on everything measured in
+  the previous section, and about 1 MB of address space now that the
+  reservation follows `num_primes`.  It is the smallest table that contains
+  the whole win.  (One side effect: the fast Horner path in `sieving_info`
+  needs `(degree+1)*PRIME_SIZE <= 64`, so degree 8 loses it.  Measured on a
+  degree-8 curve at `-p 30`: 1.038 at h=2000 and 0.970 at h=50000, i.e.
+  nothing.)
+* **`RATPOINTS_DEFAULT_NUM_PRIMES` stays at 30**, and the extra primes are
+  looked at only for the curves that run out -- TODO item 6.  The criterion
+  costs nothing to evaluate and the two populations are cleanly separated by
+  it: nothing in `testdata.h` is ever starved, and the starved fifth of
+  `testdata-many.h` is exactly the set that gains.
+
 ## Open questions
 
 * The bit-extraction loop `for(a = a0; nums; a += d, nums >>= 1)` walks from
