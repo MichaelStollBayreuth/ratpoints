@@ -17,10 +17,19 @@ The number of primes used in each of the two sieving stages is no longer a fixed
 modulo the small primes that the program computes anyway. That is worth about 14% on random curves
 and about 36% on curves with many rational points, which sieve very differently. Two
 machine-dependent constants govern the choice; they can be set with the `-r` and `-R` options, so
-`make tune` retunes them for your machine automatically, by minimising the sum of the times of
-`make test1` (random curves) and `make test1many` (curves with many points); it writes what it finds
-to `tuning.mk`, which the Makefile picks up, and touches no source file. See the documentation for
-the details.
+Reasonable values are compiled in, and `make tune` will measure better ones for your machine if
+you want it to: it minimises the sum of the times of `make test1` (random curves) and
+`make test1many` (curves with many points), and writes what it finds to `tuning.mk`, which the
+Makefile picks up. No source file is touched, and deleting that file restores the compiled-in
+values.
+
+It is a separate step rather than part of `make all`, because it takes several minutes (three to
+eight, depending on the register width), wants an otherwise idle machine, and must not be run under
+`make -j`. Timing this reliably is the hard part — the cost surface is flat while a laptop under
+load slows by a quarter as it warms up — so each candidate is timed back to back with the current
+settings and only the ratio is kept, and nothing is written unless the winner is clearly better and
+the machine measured consistently. A run that reports that nothing beat the current settings has
+done its job. See the documentation for the details.
 
 There is also a variant that uses 512-bit AVX registers, which needs a CPU with AVX512F capability;
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I

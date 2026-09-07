@@ -138,6 +138,12 @@ Do
 This will build the library \texttt{libratpoints.a}, the executable
 \texttt{ratpoints}, and also run pdf\/latex to generate this documentation.
 
+Two of the constants that govern the sieve depend on the machine rather than
+on the curve. Reasonable values are compiled in, but \texttt{make tune} will
+measure better ones for your machine if you want it to; see
+Section~\ref{sec:tuning}. It is a separate step because it takes several
+minutes.
+
 By default, the program will use primes up to 127. If you intend to
 do computations with large height bounds or with curves that you expect
 to have many points, it may make sense to increase the range of primes.
@@ -234,8 +240,9 @@ random curve about one numerator in $10^4$ survives the first sieving stage,
 on these up to a hundred times more, so the best division of labour between
 the two stages is a different one. The two tests take about the same time and
 between them cover the two regimes that occur in practice; both should be used
-whenever the parameters are retuned (see Section~\ref{sec:tuning}), since a
-setting that suits one of them can be a poor choice for the other.
+whenever the parameters are retuned, since a setting that suits one of them can
+be a poor choice for the other. That is what \texttt{make tune} does with them;
+see Section~\ref{sec:tuning}.
 
 \begin{verbatim}
 > make test2
@@ -843,8 +850,20 @@ The file records the configuration it was measured for, and is ignored (with a
 warning) if you later build with a different register width or
 \texttt{PRIME\_SIZE}, since the best values may differ.
 
-It takes a few minutes, wants an otherwise idle machine, and must not be run
-under \texttt{make -j}. It is deliberately not part of \texttt{make all}.
+It is deliberately not part of \texttt{make all}: it takes several minutes,
+wants an otherwise idle machine, and must not be run under \texttt{make -j}.
+How long depends on the register width, since that is what decides how long the
+two tests take --- on the machine this was developed on, about three minutes
+for the 256-bit build, four for 128-bit, six for the plain 64-bit one and eight
+for the 512-bit code emulated through narrower operations.
+
+Four environment variables adjust it, should the defaults not suit:
+\texttt{ROUNDS} (how many times each setting is measured, default~$3$),
+\texttt{WARMUP} (seconds of load before anything is counted, default~$20$),
+\texttt{MARGIN} (how much better the winner must be, default $0.97$) and
+\texttt{NOISE} (how much residual noise is tolerated, default $0.02$). For
+instance \texttt{ROUNDS=6 make tune} on a machine that reports itself too
+noisy.
 
 Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
 some trouble over it. The cost surface is flat --- anything within a factor of
@@ -858,10 +877,19 @@ left. If that is more than $2\%$ the run is declared inconclusive, and
 nothing is written unless the winner is better by more than $3\%$ --- a noisy
 run should leave a good default alone rather than replace it with a worse one.
 
+Two consequences are worth expecting rather than being surprised by. A run
+that reports that nothing beat the current settings has \emph{succeeded}: on a
+build that is already tuned that is the right answer, and it is what happens
+here. And a configuration whose tests take long enough for the machine's
+thermal behaviour to change within a single round --- the plain 64-bit build on
+a laptop, for instance --- may well report itself inconclusive however often it
+is run; raising \texttt{ROUNDS}, or using a machine that does not throttle,
+is then the remedy.
+
 Should you prefer to do it by hand, the two constants can be set directly:
 \begin{verbatim}
-> ./rptest -r 0.03 -R 5 -z
-> ./rptest-many -r 0.03 -R 5 -z
+> ./rptest -r 0.0075 -R 5 -z
+> ./rptest-many -r 0.0075 -R 5 -z
 \end{verbatim}
 for a few values of each, minimising the sum of the two times; then put the
 values you found into \texttt{ratpoints.h}. The option \verb+-T+ makes the

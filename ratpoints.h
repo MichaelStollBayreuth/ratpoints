@@ -62,13 +62,16 @@
  * non-empty bit-array entering the second phase.  Anything within a factor
  * of about two of the value below costs less than 3%.
  *
- * To retune the two constants for another machine no rebuild is needed:
+ * To retune them for another machine, run "make tune", which measures both
+ * over the two test sets and writes what it finds to tuning.mk; it takes
+ * several minutes and wants an idle machine.  By hand, no rebuild is needed
+ * either, since the two can be set on the command line:
  *   ./rptest -r <x> -R <n> -z          (random curves)
  *   ./rptest-many -r <x> -R <n> -z     (curves with many rational points)
- * and minimise the sum of the two times.  Use both tests: they cover the
- * two regimes that matter, and a value that suits one can be poor for the
- * other.  The offset for sp2 matters much less than the threshold, and at
- * large height bounds hardly at all. */
+ * minimising the sum of the two times.  Use both tests: they cover the two
+ * regimes that matter, and a value that suits one can be poor for the other.
+ * The offset for sp2 matters much less than the threshold, and at large
+ * height bounds hardly at all. */
 /* Both constants are compiled-in defaults only: they can be set per call
  * through the survivors_per_word and sp2_extra fields of ratpoints_args
  * (a negative value there means "use the compiled-in one"), and on the

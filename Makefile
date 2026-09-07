@@ -22,6 +22,20 @@
 #   Michael Stoll, September 21, 2009; January 7, 2022; September 6, 2026
 #   with changes by Bill Allombert, December 29, 2021
 
+# The main targets are
+#   all         the library, the program and this documentation
+#   test        test1, test1many, test2 and timing (see below)
+#   test1       1000 random genus 2 curves, checked against testbase
+#   test1many   curves with many rational points, against testbase-many;
+#               the two cover the two regimes that behave differently, and
+#               both should be used when judging a change to the sieve
+#   tune        measure the two machine-dependent constants that decide how
+#               many primes each sieving stage uses, and write them to
+#               tuning.mk (see tune.sh); takes several minutes, wants an idle
+#               machine, and must not be run under -j
+#   clean       remove the intermediate files; distclean also the executables
+#               and any tuning.mk
+
 PRIME_SIZE = 7
 VERSION = 2.2.3
 
