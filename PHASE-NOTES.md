@@ -219,6 +219,66 @@ Both criteria are sharp and available before any sieving starts:
 falling below the target -- visible as `sp1 == sp2` in the verbose output --
 and `args->height` is known.  Choosing the range from the two is TODO item 6.
 
+## Does a larger prime table cost anything by itself?
+
+Asked in preparation for TODO item 6: if the rule is to be allowed to reach
+for larger primes when it needs them, the tables for those primes have to be
+in the build, and the question is what merely having them costs.
+
+It is a clean experiment, because `-p 30` makes every build use exactly the
+same thirty primes (3 to 127; `prime[]` in `primes.h` is one fixed list and
+`RATPOINTS_NUM_PRIMES` only says how far into it a build may look).  `sift.c`
+does not mention the prime size at all, so the sieve is textually identical;
+`find_points.c` mentions it twice, both in `sieving_info`.  Verified: the same
+`sp1` and `sp2` are chosen at every prime size, and all four builds reproduce
+`testbase` and `testbase-many`.  Only the size and stride of the tables differ.
+
+Ratios to `PRIME_SIZE=7`, each candidate run immediately after a
+`PRIME_SIZE=7` run, median of seven pairs for the suites and five for the
+curves:
+
+| | `PRIME_SIZE=8` | 9 | 10 |
+|---|---|---|---|
+| `make test1` | 1.006 | 1.014 | 1.004 |
+| `make test1many` | 1.020 | 1.017 | 0.995 |
+| `1 0 126 0 441`, h=400000 | 1.025 | 1.007 | 0.992 |
+| record curve, h=200000 | 0.965 | 0.967 | 0.966 |
+
+**There is no cost.**  On the suites and on the sparse curve everything is
+within 2.5% of 1 and not monotone in the prime size, which is what no effect
+looks like at this precision.
+
+The point-rich curve is 3.4% *faster* at every larger prime size, which is
+consistent across all five pairs and spread evenly over all four components of
+the run -- including the exact `gmp` check, which the prime tables cannot
+touch.  Two controls: `PRIME_SIZE=7` paired against itself gives 0.997, so it
+is not an artefact of always running the baseline first; and rebuilding
+`PRIME_SIZE=7` with `-falign-functions=32` and `=64`, which moves the code
+without changing it, gives 0.989 and 1.007 on the total and leaves the `gmp`
+component at 1.002, so ordinary code-layout luck is about half the size and
+does not touch the part that moved most.  The likely explanation is the heap:
+`find_points_init` allocates tens of megabytes more, and the `mpz` temporaries
+that the check works in are placed around it.  Recorded rather than explained.
+
+What a larger table does cost is address space.  `find_points_init` sizes
+`ba_buffer` from **all** `RATPOINTS_NUM_PRIMES`, not from `args->num_primes`,
+so `-p 30` does not reduce it:
+
+| `PRIME_SIZE` | primes | largest | `ba_buffer` malloc (256-bit) | peak RSS |
+|---|---|---|---|---|
+| 7 | 30 | 127 | 5.0 MB | 7.2 MB |
+| 8 | 53 | 251 | 33.2 MB | 9.4 MB |
+| 9 | 96 | 509 | 240.6 MB | 10.1 MB |
+| 10 | 171 | 1021 | 1668.5 MB | 8.8 MB |
+
+The resident set barely moves, because the pages belonging to primes that are
+never used are never touched, and the figures double at 512-bit registers.
+Still, 1.7 GB of address space per `ratpoints_args` is not something to ship,
+and it is per *thread* under TODO item 1.  `args->num_primes` is already set
+when `find_points_init` runs, so summing `need` over the primes that may
+actually be used, rather than over the whole table, would remove this -- a
+prerequisite for item 6 rather than part of it.
+
 ## Open questions
 
 * The bit-extraction loop `for(a = a0; nums; a += d, nums >>= 1)` walks from
