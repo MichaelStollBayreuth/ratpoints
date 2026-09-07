@@ -838,7 +838,8 @@ static int compare_entries(const void *a, const void *b)
 
 static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
-                         ratpoints_sieve_entry **sieve_list)
+                         ratpoints_sieve_entry **sieve_list,
+                         double bits_per_array)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or else returns 0. */
@@ -1020,12 +1021,39 @@ static long sieving_info(ratpoints_args *args,
 
   } /* end for pn */
 
+  /* sort the array to get at the best primes */
+  qsort(prec, pnp, sizeof(entry), compare_entries);
+
+  /* Choose sp1 and sp2 unless they were given.
+   * prec[] is now sorted by increasing r, where r is the density of the
+   * numerators that are admissible modulo the corresponding prime, so the
+   * expected fraction of numerators surviving the first n primes is the
+   * product of the first n values of r.  Multiplied by the number of bits
+   * actually set in a bit-array to begin with, that is the expected number
+   * of survivors per bit-array; see the comment on
+   * RATPOINTS_SURVIVORS_PER_ARRAY in ratpoints.h . */
+  if(args->sp1 < 0)
+  { double rate = 1.0;
+    long n;
+
+    for(n = 0; n < pnp; n++)
+    { rate *= prec[n].r;
+      if(bits_per_array*rate <= RATPOINTS_SURVIVORS_PER_ARRAY) { break; }
+    }
+    args->sp1 = (n < pnp) ? n + 1 : pnp;
+    if(args->sp1 < 1) { args->sp1 = 1; }
+  }
+  if(args->sp2 < 0) { args->sp2 = args->sp1 + RATPOINTS_SP2_EXTRA; }
+
   /* update sp2 and sp1 if necessary */
   if(args->sp2 > pnp) { args->sp2 = pnp; }
   if(args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
-  /* sort the array to get at the best primes */
-  qsort(prec, pnp, sizeof(entry), compare_entries);
+  if(args->flags & RATPOINTS_VERBOSE)
+  { printf("  %.1f bits set per bit-array"
+           " ==> use %ld primes in the first phase, %ld altogether\n",
+           bits_per_array, args->sp1, args->sp2);
+  }
 
   /* put the sorted entries into sieve_list */
   { long n;
@@ -1337,13 +1365,13 @@ long find_points_work(ratpoints_args *args,
 
   if(args->num_primes < 0)
   { args->num_primes = RATPOINTS_DEFAULT_NUM_PRIMES; }
-  if(args->sp1 < 0) { args->sp1 = RATPOINTS_DEFAULT_SP1; }
-  if(args->sp2 < 0) { args->sp2 = RATPOINTS_DEFAULT_SP2; }
+  /* a negative sp1 or sp2 means "choose it from the curve", which is done
+   * in sieving_info() once the densities of the primes are known */
 
   if(args->num_primes > RATPOINTS_NUM_PRIMES)
   { args->num_primes = RATPOINTS_NUM_PRIMES; }
   if(args->sp2 > args->num_primes) { args->sp2 = args->num_primes; }
-  if(args->sp1 > args->sp2) { args->sp1 = args->sp2; }
+  if(args->sp2 >= 0 && args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
   if(height < 1) { return(RATPOINTS_BAD_ARGS); }
   if(args->b_low < 1) { args->b_low = 1; }
@@ -1380,8 +1408,12 @@ long find_points_work(ratpoints_args *args,
     printf("  height bound: %ld\n", args->height);
     printf("  denominators from %ld to %ld\n", args->b_low, args->b_high);
     printf("  number of primes to consider:     %3ld\n", args->num_primes);
-    printf("  number of primes for sieving:     %3ld\n", args->sp2);
-    printf("  number of primes for first stage: %3ld\n", args->sp1);
+    if(args->sp2 < 0)
+    { printf("  number of primes for sieving:     (chosen from the curve)\n"); }
+    else { printf("  number of primes for sieving:     %3ld\n", args->sp2); }
+    if(args->sp1 < 0)
+    { printf("  number of primes for first stage: (chosen from the curve)\n"); }
+    else { printf("  number of primes for first stage: %3ld\n", args->sp1); }
     printf("  maximal number of `forbidden divisors': %ld\n",
            args->max_forbidden);
     if(args->sturm >= 0)
@@ -1628,7 +1660,23 @@ long find_points_work(ratpoints_args *args,
   { printf("Find the points mod p for the first %ld odd primes p:\n",
            args->num_primes);
   }
-  { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list);
+  { /* The mean number of bits set in a bit-array on entry to the sieve.
+     * num_bits[b] holds the admissible numerators for denominators
+     * b mod 16, as one word repeated through the bit-array, and the
+     * denominators with no admissible numerator at all are skipped, so the
+     * mean is taken over the non-zero entries only. */
+    double bits_per_array = 0.0;
+    { long i, nz = 0, tot = 0;
+
+      for(i = 0; i < 16; i++)
+      { long c = __builtin_popcountl(EXT0(num_bits[i]));
+
+        if(c) { tot += c; nz++; }
+      }
+      if(nz) { bits_per_array = ((double)tot/(double)nz)*(double)RBA_PACK; }
+    }
+    { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
+                              bits_per_array);
 
     if(ret)
     {
@@ -1641,7 +1689,7 @@ long find_points_work(ratpoints_args *args,
 #endif
 
       return(0);
-  } }
+  } } }
 
 #ifdef DEBUG
   { long n;

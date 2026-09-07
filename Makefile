@@ -83,17 +83,19 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
-            gpl-2.0.txt testbase2
+            gpl-2.0.txt testbase2 testdata-many.h testbase-many
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
 TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
-            rptest.out sift-debug.o find_points-debug.o main.o test2.out
+            rptest.out rptest-many.out \
+            sift-debug.o find_points-debug.o main.o test2.out
 
 # Executables and library produced when building
-TARGETFILES = ratpoints libratpoints.a rptest ratpoints-debug ratpoints-doc-2.2.pdf
+TARGETFILES = ratpoints libratpoints.a rptest rptest-many ratpoints-debug \
+              ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
 
@@ -101,13 +103,23 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test2 timing
+test: test1 test1many test2 timing
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
 test1: rptest testbase
 	time ./rptest > rptest.out
 	cmp -s testbase rptest.out || echo ${FAILED}
+
+# The same, but for curves with many rational points, which sieve very
+# differently: about one numerator in 10^4 survives the first phase on a
+# random curve, up to a hundred times more on these.  The two tests take
+# about the same time and should be used together whenever the constants
+# that choose sp1 and sp2 (see ratpoints.h) are retuned; a change that
+# helps one regime can easily hurt the other.
+test1many: rptest-many testbase-many
+	time ./rptest-many > rptest-many.out
+	cmp -s testbase-many rptest-many.out || echo ${FAILED}
 
 # Run ratpoints on the curve with the record number of known
 # rational points, with a fairly large height bound,
@@ -196,6 +208,10 @@ find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points
 
 rptest: libratpoints.a rptest.c ratpoints.h testdata.h
 	${CC} rptest.c -o rptest ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+rptest-many: libratpoints.a rptest.c ratpoints.h testdata-many.h
+	${CC} rptest.c -o rptest-many -DRATPOINTS_TESTDATA='"testdata-many.h"' \
+	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 gen_init_sieve_h: gen_init_sieve_h.c ratpoints.h rp-private.h primes.h
 	${CC} gen_init_sieve_h.c -o gen_init_sieve_h  ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}

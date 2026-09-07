@@ -224,6 +224,20 @@ output of a sample run. The two should be identical; otherwise the
 message \texttt{Test failed!} will be displayed (on its own on a line).
 
 \begin{verbatim}
+> make test1many
+\end{verbatim}
+does the same with a second collection of curves, in
+\texttt{testdata-many.h}, whose reference output is \texttt{testbase-many}.
+These curves have (comparatively) many rational points, which makes them
+sieve quite differently from the random curves in \texttt{testdata.h}: on a
+random curve about one numerator in $10^4$ survives the first sieving stage,
+on these up to a hundred times more, so the best division of labour between
+the two stages is a different one. The two tests take about the same time and
+between them cover the two regimes that occur in practice; both should be used
+whenever the parameters are retuned (see Section~\ref{sec:tuning}), since a
+setting that suits one of them can be a poor choice for the other.
+
+\begin{verbatim}
 > make test2
 \end{verbatim}
 calls \texttt{ratpoints} on a curve with lots of rational points and with
@@ -310,7 +324,8 @@ The archive contains the following files.
         the source code for the ratpoints library
   \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
         and \texttt{rptest} executables, respectively
-  \item \texttt{testdata.h, testbase, testbase2} --- data for the test runs
+  \item \texttt{testdata.h, testdata-many.h, testbase, testbase-many,
+        testbase2} --- data for the test runs
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
@@ -564,8 +579,10 @@ fields are set by the \verb+-dl+ and \verb+-du+ options.
 
 \texttt{sp1} and \texttt{sp2}
 specify the number of primes to be used in the first sieving stage and
-in both sieving stages together, respectively. If negative, they are set
-to certain default values. In \texttt{ratpoints}, these fields are set by the
+in both sieving stages together, respectively. If negative, they are chosen
+from the curve, as described in Section~\ref{sec:spchoice}; this is what the
+command line program does when \verb+-n+ and \verb+-N+ are absent. In
+\texttt{ratpoints}, these fields are set by the
 \verb+-n+ and \verb+-N+ options. Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
@@ -743,13 +760,54 @@ For practical examples, see \texttt{main.c} (the code that wraps
 
 %=========================================================================
 
-\section{Fine-tuning the parameters}
+\section{Fine-tuning the parameters}\label{sec:tuning}
+
+\subsection{How \texttt{sp1} and \texttt{sp2} are chosen}\label{sec:spchoice}
+
+Unless they are given explicitly, the two most important parameters are
+chosen from the curve. While collecting the sieving information, the program
+computes, for each prime~$p$, the proportion~$r_p$ of residues~$a$ modulo~$p$
+for which $f(a)$ is a square, and sorts the primes by increasing~$r_p$; the
+expected proportion of numerators surviving the first $k$~of them is then
+the product of the $k$~smallest~$r_p$. Multiplied by the number of bits that
+are set in a bit array to begin with, this is the expected number of
+survivors per bit array.
+
+The first sieving stage costs one load and one \texttt{AND} per bit array
+per prime, whatever survives, while the second stage costs nothing on an
+empty bit array and a good deal on a non-empty one. So primes should be moved
+into the first stage until few enough bit arrays are left alive. Measurements
+over curves spanning a factor of~$600$ in density show that the best
+\texttt{sp1} is, to within a factor of about two, the one at which the
+expected number of survivors per bit array falls below a constant --- almost
+independently of the curve, even though the resulting \texttt{sp1} itself
+ranges from $8$ to~$30$. That constant is
+\texttt{RATPOINTS\_SURVIVORS\_PER\_ARRAY} in \texttt{ratpoints.h}; it is a
+property of the machine rather than of the curve. Then \texttt{sp2} is set to
+\texttt{sp1} plus \texttt{RATPOINTS\_SP2\_EXTRA}, capped by the number of
+primes that carry any information at all.
+
+Against the fixed values used up to version~2.2.3, this is about $7\%$ faster
+on the random curves of \texttt{make test1} and about $33\%$ faster on the
+point-rich curves of \texttt{make test1many}.
+
+\subsection{Retuning for your machine}
 
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
-The default values are chosen for optimal performance on my current laptop
-for random genus~2 curves with small coefficients and a height bound of
-$100\,000$. For your machine
+The two constants above were tuned on my current laptop by minimising the sum
+of the times of \texttt{make test1} and \texttt{make test1many}; to repeat
+that on your machine, build with, say,
+\begin{verbatim}
+> make test1 test1many CCFLAGS='-DRATPOINTS_SURVIVORS_PER_ARRAY=0.03 \
+                                -DRATPOINTS_SP2_EXTRA=5'
+\end{verbatim}
+for a few values of each. The threshold matters considerably more than the
+offset, which at large height bounds hardly matters at all. Use both tests:
+they cover the two regimes that occur in practice, and a value that suits one
+of them can be a poor choice for the other.
+
+For your machine
 and input data, other values may be better. You can replace the
 \texttt{testdata.h} file with your own collection of test data (and
 edit \texttt{rptest.c} if necessary to adapt the degree and height settings)

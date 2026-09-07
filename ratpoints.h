@@ -32,13 +32,46 @@
 
 #define RATPOINTS_MAX_DEGREE 100           /* max. degree of f(x) */
 
-/* The following seem to work well for Intel(R) processors with AVX2.
- * For just AVX without AVX2, 10/18/27 seems to be slightly faster.
- * This is for random genus 2 curves and height 10^5, as tested via
- * ./rptest -h 100000 > /dev/null .
- * In any case, the optimal values will depend on the CPU etc. */
-#define RATPOINTS_DEFAULT_SP1 11           /* Default value for sp1 */
-#define RATPOINTS_DEFAULT_SP2 19           /* Default value for sp2 */
+/* These were the fixed defaults up to version 2.2.3.  They are kept for
+ * source compatibility and are no longer used by the library, which now
+ * chooses sp1 and sp2 from the curve (see below).  They were tuned on
+ * random genus 2 curves for Intel(R) processors with AVX2 and are a
+ * reasonable fixed choice for that regime -- but only for that regime: on
+ * curves with many rational points they cost about 50%. */
+#define RATPOINTS_DEFAULT_SP1 11           /* Former fixed value for sp1 */
+#define RATPOINTS_DEFAULT_SP2 19           /* Former fixed value for sp2 */
+
+/* Normally sp1 and sp2 are not taken from the two values above, but are
+ * chosen from the curve: setting them to a negative value (which is what
+ * the command line program does when -n / -N are absent) asks for that.
+ *
+ * The first phase of the sieve costs one load and one AND per bit-array
+ * per prime, whatever survives; the second phase costs nothing on an empty
+ * bit-array but a good deal on a non-empty one.  So primes should be moved
+ * into the first phase until few enough bit-arrays are left alive, and
+ * measurements over curves spanning a factor of 600 in density show that
+ * the best sp1 is where the expected number of surviving numerators per
+ * bit-array falls below the constant below -- almost independently of the
+ * curve.  See PARAMETER-MODEL.md for the measurements.
+ *
+ * The constant is a property of the machine, not of the curve: it is where
+ * one more first-phase prime stops paying for itself against the cost of a
+ * non-empty bit-array entering the second phase.  Anything within a factor
+ * of about two of the value below costs less than 3%.
+ *
+ * To retune the two constants for another machine, build with
+ *   make test1 test1many CCFLAGS='-DRATPOINTS_SURVIVORS_PER_ARRAY=<x> \\
+ *                                 -DRATPOINTS_SP2_EXTRA=<n>'
+ * and minimise the sum of the two times.  Use both tests: they cover the
+ * two regimes that matter, and a value that suits one can be poor for the
+ * other.  The offset for sp2 matters much less than the threshold, and at
+ * large height bounds hardly at all. */
+#ifndef RATPOINTS_SURVIVORS_PER_ARRAY
+# define RATPOINTS_SURVIVORS_PER_ARRAY 0.03 /* when to stop the first phase */
+#endif
+#ifndef RATPOINTS_SP2_EXTRA
+# define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
+#endif
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes */
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
 

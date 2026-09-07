@@ -31,7 +31,15 @@
 
 #include "ratpoints.h"
 
-#include "testdata.h"
+/* The list of test curves.  The default is testdata.h, a thousand random
+ * genus 2 curves; building with
+ *   -DRATPOINTS_TESTDATA='"testdata-many.h"'
+ * selects the curves with many rational points instead.  Both define
+ * NUM_TEST and long testdata[NUM_TEST][7]. */
+#ifndef RATPOINTS_TESTDATA
+# define RATPOINTS_TESTDATA "testdata.h"
+#endif
+#include RATPOINTS_TESTDATA
 
 mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
 
@@ -67,8 +75,8 @@ int main(int argc, char *argv[])
   /* parameters; see documentation */
   long degree        = 6;
   long height        = 16383;
-  long sieve_primes1 = RATPOINTS_DEFAULT_SP1;
-  long sieve_primes2 = RATPOINTS_DEFAULT_SP2;
+  long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
+  long sieve_primes2 = -1;
   long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
   long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
   long b_low         = 1;
