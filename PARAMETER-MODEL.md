@@ -7,7 +7,7 @@ the measurements it was fitted to, and how well it does.
 
 **Result in one line:** a rule using only quantities `sieving_info()` already
 computes chooses `(sp1, sp2)` within 4% of the best available setting on
-median, where the shipped default `11/19` is 79% off on median and up to 178%
+median, where the shipped default `11/19` is 79% off on median and up to 278%
 off on the curves measured here.
 
 ## The measurements
