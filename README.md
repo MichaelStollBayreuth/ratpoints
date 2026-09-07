@@ -21,4 +21,4 @@ kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland), for 
 rational points on a Zen 5 CPU, shows a speedup of 13-14% over the 256-bit version. It is still
 advisable to run `make test` and compare the timings on your own machine.
 
-There is now [ratpoints-gnu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.
+There is now [ratpoints-gpu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.
