@@ -111,7 +111,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *sieve_list;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
-                 void *ba_buffer_na;
+                 void *ba_buffer_na; long ba_buffer_primes;
                }
         ratpoints_args;
 

@@ -468,6 +468,13 @@ that $n \le N \le M \le \text{\texttt{RATPOINTS\_NUM\_PRIMES}}$. The latter
 is usually~$30$ (the number of odd primes $< 2^7$), but will be $53$
 (the number of odd primes $< 2^8$) if \texttt{PRIME\_SIZE} is set to~$8$, etc.
 
+$M$ has a price in memory, because the sieving tables for a prime~$p$ take
+$p$ rows of $p$ bits and so grow with~$p^2$: the primes below $128$ need about
+5\,MB, those below $1024$ about 1.7\,GB (twice that with 512-bit registers).
+Only the primes that $M$ actually asks for are reserved, so raising
+\texttt{PRIME\_SIZE} in order to have larger primes available costs nothing as
+long as $M$ is left alone.
+
 If \verb+-n+ or \verb+-N+ is left out, the corresponding number is chosen
 from the curve, as described in Section~\ref{sec:spchoice}. The two constants
 that govern that choice can themselves be set: \\
@@ -478,7 +485,7 @@ of primes added to~$n$ to obtain~$N$ to~$e$. The mnemonic is that \verb+-r+ and
 \verb+-R+ are to the automatic choice what \verb+-n+ and \verb+-N+ are to
 the explicit one. Both are machine-dependent, and giving them on the command
 line means they can be retuned without recompiling; the compiled-in defaults
-are \texttt{RATPOINTS\_SURVIVORS\_PER\_ARRAY}
+are \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
 and \texttt{RATPOINTS\_SP2\_EXTRA} in \texttt{ratpoints.h}.
 
 There are two more parameters that can be set. \\
