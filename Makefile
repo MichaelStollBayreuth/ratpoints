@@ -35,6 +35,10 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to work with unsigned long's instead of bit-arrays
 #  in phase 2 of the sieving. This is usually slower.
+# Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
+#  separately and write a report to stderr when the program exits; add
+#  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1.
+#  These are development aids; see the comment at the top of sift.c.
 # Add "-DRATPOINTS_CHUNK=<n>" to force the use of 2 <= n <= 16 registers
 #  in phase 1 of sieving. For n=1, this reverts to the code used previously.
 #  If SSE/AVX registers are used and this is not set, 16 registers will be used.

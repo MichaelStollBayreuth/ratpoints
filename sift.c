@@ -29,6 +29,88 @@
 
 #include "rp-private.h"
 
+/* ---------------------------------------------------------------------
+ * Development instrumentation: split the run time of _ratpoints_sift0
+ * into its two phases.  Build with -DRP_PHASE_TIMING to switch it on;
+ * a report is written to stderr when the program exits.
+ *
+ * The timer is rdtsc, which counts *reference* cycles at a constant rate
+ * and is therefore really a clock, not a core-cycle counter.  Frequency
+ * drift affects both phases alike, so the *ratio* it reports is sound;
+ * take the absolute cycle count from "perf stat" on an uninstrumented
+ * build and split it with that ratio.
+ *
+ * With -DRP_PHASE_COUNTS in addition, the number of units surviving
+ * phase 1 is counted as well -- bit-arrays, or single words when
+ * USE_LONG_IN_PHASE_2 is set.  That needs an extra TEST in the inner
+ * loop of phase 2, so the two flags should not be combined when the
+ * timings are what is wanted.
+ * --------------------------------------------------------------------- */
+
+#ifdef RP_PHASE_TIMING
+
+#include <x86intrin.h>
+
+unsigned long long _rp_phase1_cycles = 0, _rp_phase2_cycles = 0;
+unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
+#ifdef RP_PHASE_COUNTS
+unsigned long long _rp_units_surviving = 0;
+# ifdef USE_LONG_IN_PHASE_2
+#  define RP_UNITS_PER_ARRAY RBA_PACK
+# else
+#  define RP_UNITS_PER_ARRAY 1
+# endif
+#endif
+
+# define RP_TIC(t) unsigned long long t = __rdtsc()
+# define RP_TOC(t, acc) (acc) += __rdtsc() - (t)
+
+static void _rp_phase_report(void) __attribute__((destructor));
+
+static void _rp_phase_report(void)
+{ unsigned long long total = _rp_phase1_cycles + _rp_phase2_cycles;
+
+  if(total == 0) { return; }
+  fprintf(stderr, "\n[phases] width = %d bits, RATPOINTS_CHUNK = %d, "
+                  "phase 2 on %s\n",
+          (int)(8*(int)sizeof(ratpoints_bit_array)), (int)RATPOINTS_CHUNK,
+#ifdef USE_LONG_IN_PHASE_2
+          "unsigned long"
+#else
+          "bit-arrays"
+#endif
+          );
+  fprintf(stderr, "[phases] sift0 calls %llu, bit-arrays swept %llu"
+                  " (%.1f per call)\n",
+          _rp_sift0_calls, _rp_arrays_swept,
+          _rp_sift0_calls ? (double)_rp_arrays_swept/_rp_sift0_calls : 0.0);
+#ifdef RP_PHASE_COUNTS
+  { double units = (double)RP_UNITS_PER_ARRAY*(double)_rp_arrays_swept;
+    double words = (double)RBA_PACK*(double)_rp_arrays_swept;
+
+    /* "units" are what phase 2 looks at: bit-arrays, or single words when
+     * USE_LONG_IN_PHASE_2 is set.  The count per numerator word is the
+     * quantity that should be independent of the register width. */
+    fprintf(stderr, "[phases] surviving phase 1: %llu"
+                    " (%.3f%% of units, %.3e per numerator word)\n",
+            _rp_units_surviving,
+            units ? 100.0*_rp_units_surviving/units : 0.0,
+            words ? _rp_units_surviving/words : 0.0);
+  }
+#endif
+  fprintf(stderr, "[phases] phase 1 %15llu  %5.2f%%\n",
+          _rp_phase1_cycles, 100.0*_rp_phase1_cycles/total);
+  fprintf(stderr, "[phases] phase 2 %15llu  %5.2f%%\n",
+          _rp_phase2_cycles, 100.0*_rp_phase2_cycles/total);
+}
+
+#else
+
+# define RP_TIC(t)
+# define RP_TOC(t, acc)
+
+#endif /* RP_PHASE_TIMING */
+
 /**************************************************************************
  * check if m and n are relatively prime                                  *
  **************************************************************************/
@@ -116,6 +198,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 
   /* now do the sieving (fast!) */
+
+#ifdef RP_PHASE_TIMING
+  _rp_sift0_calls++;
+  _rp_arrays_swept += w_high - w_low;
+#endif
+  RP_TIC(_rp_t1);
 
 #ifdef DEBUG
   printf("\nsift0: sp1 = %ld, sp2 = %ld\n\n", sp1, sp2);
@@ -437,6 +525,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   }
 #endif /* RATPOINTS_CHUNK */
 
+  RP_TOC(_rp_t1, _rp_phase1_cycles);
+
 #ifdef DEBUG
   { long n, c = 0;
 
@@ -450,6 +540,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   }
 #endif
 
+  RP_TIC(_rp_t2);
+
 #ifdef USE_LONG_IN_PHASE_2
   /* Work with unsigned longs instead of bit-arrays */
   /* Second phase of the sieve: test each surviving word in the bit-array
@@ -461,6 +553,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     { unsigned long nums = *surv0++;
       sieve_spec *ssp = &sieves[sp1];
       long n;
+
+#ifdef RP_PHASE_COUNTS
+      if(nums) { _rp_units_surviving++; }
+#endif
 
 #ifdef DEBUG
       if(nums)
@@ -541,6 +637,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     { ratpoints_bit_array nums = *surv0++;
       sieve_spec *ssp = &sieves[sp1];
       long n;
+
+#ifdef RP_PHASE_COUNTS
+      if(TEST(nums)) { _rp_units_surviving++; }
+#endif
 
 #ifdef DEBUG
       if(TEST(nums))
@@ -674,6 +774,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     }
   }
 #endif /* USE_LONG_IN_PHASE_2 */
+
+  RP_TOC(_rp_t2, _rp_phase2_cycles);
 
   return(total);
 }
