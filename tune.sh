@@ -32,7 +32,9 @@ MARGIN=${MARGIN:-0.97}     # accept only if the best ratio is below this
 NOISE=${NOISE:-0.02}       # ... and the baseline's self-ratio is within this
 WARMUP=${WARMUP:-20}       # seconds of load before measuring
 
-R_VALUES=${R_VALUES:-"0.015 0.02 0.03 0.05 0.08"}
+# candidates for the threshold, bracketing the compiled-in 0.0075 either way;
+# a factor of two in it is worth about one prime in the first phase
+R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
 E_VALUES=${E_VALUES:-"3 5 7 10"}
 
 for f in ./rptest ./rptest-many testbase testbase-many ratpoints.h; do
@@ -104,7 +106,13 @@ measure() {
     END { for (a in k) { m = split(v[a], x, " ")
                          for (i = 1; i < m; i++) for (j = i+1; j <= m; j++)
                            if (x[j]+0 < x[i]+0) { t = x[i]; x[i] = x[j]; x[j] = t }
-                         printf "%s %.5f\n", a, x[int((m+1)/2)] } }' | sort > "$2"
+                         # true median: for an even number of rounds take the
+                         # mean of the two central values, not the lower one --
+                         # with ROUNDS=2 the lower one is the minimum, which
+                         # picks up exactly the outliers this is meant to reject
+                         med = (m % 2) ? x[int((m+1)/2)] \
+                                       : (x[m/2] + x[m/2+1]) / 2
+                         printf "%s %.5f\n", a, med } }' | sort > "$2"
 }
 
 report() { awk '{ printf "    %-14s %+7.1f%%\n", $1, 100*($2-1) }' "$1" | sort; }
@@ -138,7 +146,11 @@ report "$TMP/r2"
 BEST_LBL=`best_of "$TMP/r2" current`
 BEST_E=`echo "$BEST_LBL" | sed 's/^e=//'`
 BEST=`awk -v k="$BEST_LBL" '$1==k{print $2}' "$TMP/r2"`
-SELF=`awk '$1=="current"{print $2}' "$TMP/r2"`
+# how far the current settings measured from themselves, in either stage: both
+# are the same comparison of a binary with itself, so either one being far from
+# 1 means the machine could not be measured on
+SELF=`awk '$1=="current"{ d = $2 - 1; if (d < 0) d = -d; if (d > w) w = d }
+           END { printf "%.5f", 1 + w }' "$TMP/r1" "$TMP/r2"`
 
 echo
 verdict=`awk -v b="$BEST" -v s="$SELF" -v m="$MARGIN" -v z="$NOISE" \
