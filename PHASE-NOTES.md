@@ -1,149 +1,216 @@
 # The two sieving phases across register widths
 
-Measurements made on 2026-09-07 with the `-DRP_PHASE_TIMING` instrumentation
-added to `sift.c` on this branch.  The question was the one on the TODO list:
-does the second phase of the sieve benefit from wide registers the way the
-first one does, or would a narrower phase 2 be better?
+Measurements of 2026-09-07 with the `-DRP_PHASE_TIMING` instrumentation in
+`sift.c` on this branch.  The question is the one on the TODO list: does the
+second phase of the sieve benefit from wide registers the way the first one
+does, or would a narrower phase 2 be better?
 
-**Short answer: it depends entirely on how much survives phase 1, and the two
-regimes point in opposite directions.**  There is no single best width.
+**This supersedes the first version of these notes.**  That one was taken with
+`sp1 = 11`, `sp2 = 19` -- the fixed defaults of 2.2.3 -- and most of what it
+concluded was an artefact of those values rather than a property of the
+register width.  Everything below uses the automatic choice, so each curve is
+sieved at the survivor rate the parameters aim at.
+
+**Short answer: phase 2 is never faster on narrow registers.**  Where it
+depends on the width at all it prefers wide registers, and where it does not,
+it is flat to within 4%.  The hunch on the TODO list was wrong, and so was the
+first measurement, which appeared to support half of it.
 
 ## How it was measured
 
-`-DRP_PHASE_TIMING` brackets the two phases with `rdtsc`; `-DRP_PHASE_COUNTS`
-additionally counts the units surviving phase 1.  The exact `gmp` check runs
-*inside* phase 2 and is timed separately, because it is the same work for every
-build and for point-rich curves it is large.
+Core cycles from `perf stat -e cpu_core/cycles/u`, split into the three stages
+by the `rdtsc` ratios of the same run, pinned to CPU 0 with `taskset`.  Nine
+builds and two curves are rotated within each round and the minimum of five
+rounds is kept; the observed spread between the fastest and slowest round is
+in the last column, and is 1-3% except for one entry.  Where a difference
+mattered it was re-measured as an explicit ratio, the two builds run back to
+back, seven times, median kept -- this machine slows by up to a quarter as it
+warms up, and unpaired numbers taken minutes apart cannot be compared.
 
-`rdtsc` counts reference cycles at a constant rate, so it measures time, not
-core cycles.  `perf` was not available (`kernel.perf_event_paranoid` is back to
-3 after the reboot), so all numbers below are minima over 4-5 rounds with the
-variants rotated within each round and pinned to CPU 0.  Repeated rows agree to
-about 1% for the shorter runs and to 10-13% for the longest ones, so treat
-differences below about 5% as noise unless the spread column was small.  Every
-build was checked to produce identical output.
+The exact `gmp` check runs *inside* phase 2 and is timed separately, because
+it is the same work for every build.  "setup" is the rest of the run: the
+Sturm bounds, the 2-adic information and the sieve tables.
 
-Two curves, deliberately at opposite extremes:
+The two curves are deliberately at opposite ends:
 
 | | `1 0 126 0 441`, height 400000 | Drew Sutherland's record curve, height 200000 |
 |---|---|---|
-| surviving phase 1, per 64-bit word | 1.07% | 36.1% |
-| ... as a fraction of 256-bit arrays | 4.17% | 82.1% |
-| exact `gmp` check | 0.25% of the run | 24% of the run |
+| chosen automatically | `sp1 = 12`, `sp2 = 17` | `sp1 = 23`, `sp2 = 23` |
+| surviving phase 1, per 64-bit word | 0.54% | 1.75% |
+| bits set per surviving word | 1.003 | 1.008 |
+| exact `gmp` check | 1% of the run | 28% of the run |
 
-The second curve has a record number of rational points, so `f` is a square
-modulo the small primes very often, the phase-1 primes remove almost nothing,
-and 82% of all 256-bit arrays reach phase 2.  These are not two points on a
-scale; they are two different problems.
+Two things are already visible here.  The automatic rule picks **the same
+`sp1` and `sp2` at every width** -- by construction, since the threshold is
+per 64-bit word and the mean number of bits set per word does not depend on
+the register width -- so this comparison is between builds doing identical
+arithmetic, which the earlier one was not.  And a surviving word essentially
+never carries a second bit (1.003 bits per surviving word), which is what
+makes the model below work.
+
+The second curve is prime-starved rather than dense: see the last section.
 
 ## The sparse regime (a typical curve)
 
-`1 0 126 0 441` at height 400000, TSC units in units of 10^9, minimum of five
-rotated rounds:
+`1 0 126 0 441` at height 400000, `sp1 = 12`, `sp2 = 17`.  Core cycles in
+units of 10^9:
 
-| build | total | phase 1 | phase 2 | split |
-|---|---|---|---|---|
-| 64, `CHUNK=1` | 20.34 | 16.59 | 3.75 | 82 / 18 |
-| 64, `CHUNK=8` | 12.78 | 9.02 | 3.77 | 70 / 30 |
-| 64, `CHUNK=16` | 11.71 | 7.56 | 4.14 | 65 / 35 |
-| 128 SSE | 11.10 | 5.80 | 5.30 | 52 / 48 |
-| 128 SSE `+long` | 9.58 | 5.68 | 3.90 | 59 / 41 |
-| 128 AVX128 | 10.42 | 5.77 | 4.64 | 55 / 45 |
-| 128 AVX128 `+long` | 9.70 | 5.71 | 3.99 | 59 / 41 |
-| **256 AVX2** | **8.60** | 4.72 | 3.89 | 55 / 45 |
-| 256 AVX2 `+long` | 8.50 | 4.65 | 3.85 | 55 / 45 |
-| 512 emulated | 20.02 | 14.83 | 5.19 | 74 / 26 |
-| 512 emulated `+long` | 18.76 | 14.73 | 4.03 | 79 / 21 |
+| build | total | phase 1 | phase 2 | gmp | setup | 1/2 split | vs 256 | spread |
+|---|---|---|---|---|---|---|---|---|
+| 64, `CHUNK=16` | 21.31 | 13.49 | 5.40 | 0.13 | 2.30 | 71/29 | +74.1% | 0.9% |
+| 128 SSE | 16.72 | 10.04 | 5.43 | 0.12 | 1.12 | 65/35 | +36.6% | 1.4% |
+| 128 SSE `+long` | 17.29 | 10.10 | 5.92 | 0.12 | 1.15 | 63/37 | +41.2% | 0.8% |
+| 128 AVX128 | 15.15 | 10.08 | 3.81 | 0.12 | 1.13 | 73/27 | +23.7% | 0.5% |
+| 128 AVX128 `+long` | 16.40 | 10.04 | 5.09 | 0.12 | 1.14 | 66/34 | +34.0% | 1.4% |
+| **256 AVX2** | **12.24** | 8.33 | 3.06 | 0.12 | 0.73 | 73/27 | -- | 3.4% |
+| 256 AVX2 `+long` | 14.11 | 8.42 | 4.85 | 0.13 | 0.72 | 63/37 | +15.3% | 1.7% |
+| 512 emulated | 31.97 | 26.54 | 4.32 | 0.13 | 0.98 | 86/14 | +161.2% | 1.4% |
+| 512 emulated `+long` | 32.84 | 26.29 | 5.45 | 0.13 | 0.98 | 83/17 | +168.2% | 2.1% |
 
 `+long` is `-DUSE_LONG_IN_PHASE_2`; "512 emulated" is `-DUSE_AVX512` *without*
 `-mavx512f`, so gcc lowers the 64-byte vectors -- it says nothing about real
-AVX-512 hardware and is included only as a structural check.
+AVX-512 hardware and is a structural check only.
 
-**Phase 2 is essentially width-independent here.**  Across every build it costs
-between 3.75 and 4.03, a 7% band, while phase 1 varies by a factor of 3.6 (4.72
-to 16.59).  The lowest phase-2 numbers of all are the 64-bit ones, but only by
-about 3%, which is at the edge of the noise.
+**Phase 2 now scales with the width**, 5.40 -> 3.81 -> 3.06 from 64 to 128
+(AVX128) to 256.  The first version of these notes found it width-independent;
+that was because the phase-2 loop then re-entered its body for every empty
+bit-array, and the tight skip loop added since has made the scan cheap enough
+that its cost, which is proportional to `N/W`, is visible.
 
-The reason is in the counts, and it was predicted before the measurement: with a
-per-bit survival probability `q` of order `2^-sp1`, the number of *units* that
-reach the `sp2-sp1` loop is `(1-(1-q)^W)/W ~ q` per numerator -- independent of
-the width.  Measured surviving arrays: 26.70 M at 64 bits, 26.52 M at 128,
-26.16 M at 256, 25.48 M at 512.  A survivor is almost never accompanied by a
-second one in the same array, at any width.  So widening the registers divides
-the *scanning* work by `W` but leaves the per-survivor work untouched, and the
-per-survivor work is most of phase 2.
+Two constants describe phase 2 across the whole table.  Writing `A` for the
+bit-arrays swept and `S` for the arrays surviving phase 1,
 
-**Phase 1 does not scale with the width either.**  64 (`CHUNK=16`) -> 128 -> 256
-gives 7.56 -> 5.71 -> 4.72, i.e. factors of 1.32 and 1.21 for each doubling.
-The structural reason is in `init.c`: each sieve table is stored with
-`RBA_PACK` copies of the pattern, so phase 1 reads exactly `sp1` bits of table
-per numerator *whatever the width*.  The bytes moved are width-independent; only
-the instruction count falls.  That is the memory-bandwidth limit the
-documentation warns about, made concrete.
+    phase 2  =  1.17 * A  +  173 * S    cycles
 
-## The dense regime (a curve with very many points)
+fitted on the 128 AVX128 and 256 rows, predicts the 64-bit one to within 2.3%
+(5.28 against a measured 5.40).  `A` halves with every doubling of the width;
+`S` does not move at all (13.56, 13.51, 13.42, 13.24 million at 64, 128, 256,
+512), because a survivor almost never has a companion in the same array.  So
+widening the registers divides the scan and leaves the per-survivor work
+alone, and at this rate the per-survivor term is 76% of phase 2 at 256 bits
+(45% at 64, 61% at 128).  That is the ceiling on what any wider register can buy here.
 
-Drew's curve at height 200000, gmp check excluded, minimum of four rounds:
+**Phase 1 still does not scale with the width**: 13.49 -> 10.08 -> 8.33 is a
+factor of 1.34 and then 1.21 per doubling.  The reason is unchanged and
+structural, in `init.c`: each sieve table is stored with `RBA_PACK` copies of
+the pattern, so phase 1 reads exactly `sp1` bits of table per numerator
+whatever the width.  The bytes moved are width-independent; only the
+instruction count falls.  That is the memory-bandwidth limit the documentation
+warns about, made concrete.
 
-| build | sieve total | phase 1 | phase 2 | vs 256 |
-|---|---|---|---|---|
-| 64 `CHUNK=16` | 11.48 | 1.22 | 10.25 | +30.3% |
-| 128 SSE | 10.97 | 0.91 | 10.06 | +24.6% |
-| 128 SSE `+long` | 10.91 | 0.82 | 10.10 | +23.9% |
-| **256 AVX2** | **8.81** | 0.77 | 8.04 | -- |
-| 256 AVX2 `+long` | 11.13 | 0.79 | 10.34 | +26.4% |
-| 512 emulated | 9.60 | 2.16 | 7.44 | +9.0% |
-| 512 emulated `+long` | 12.40 | 2.12 | 10.29 | +40.8% |
+## The point-rich regime
 
-Everything is reversed.  Phase 2 is now 90% of the sieve and it *does* scale
-with the width: 64 bits is 28% worse than 256, and the emulated 512-bit build
--- which pays two AVX2 operations for every 512-bit one -- still beats 256 in
-phase 2 by 7%.  On real AVX-512 hardware phase 2 should gain substantially here.
+Drew's curve at height 200000, `sp1 = sp2 = 23`:
 
-The reason is the mirror image of the sparse case: when most arrays survive,
-phase 2 is not scanning, it is doing the `sp2-sp1` `AND`s (and then the
-bit-extraction loop) on nearly every array, and one wide `AND` covers `W`
-numerators.  Phase 1, meanwhile, has become irrelevant at 8% of the time.
+| build | total | phase 1 | phase 2 | gmp | setup | 1/2 split | vs 256 | spread |
+|---|---|---|---|---|---|---|---|---|
+| 64, `CHUNK=16` | 11.60 | 5.27 | 3.42 | 2.43 | 0.48 | 61/39 | +32.1% | 0.7% |
+| 128 SSE | 9.29 | 3.09 | 3.42 | 2.44 | 0.33 | 47/53 | +5.8% | 2.3% |
+| 128 SSE `+long` | 9.05 | 2.94 | 3.39 | 2.40 | 0.33 | 46/54 | +3.1% | 1.1% |
+| 128 AVX128 | 9.13 | 2.91 | 3.44 | 2.43 | 0.34 | 46/54 | +4.0% | 1.9% |
+| 128 AVX128 `+long` | 9.13 | 2.93 | 3.44 | 2.42 | 0.33 | 46/54 | +4.0% | 1.1% |
+| **256 AVX2** | **8.78** | 2.60 | 3.42 | 2.48 | 0.29 | 43/57 | -- | 1.6% |
+| 256 AVX2 `+long` | 8.54 | 2.59 | 3.26 | 2.41 | 0.28 | 44/56 | -2.7% | 1.5% |
+| 512 emulated | 13.29 | 6.98 | 3.56 | 2.42 | 0.33 | 66/34 | +51.4% | 3.1% |
+| 512 emulated `+long` | 12.92 | 6.87 | 3.32 | 2.40 | 0.33 | 67/33 | +47.2% | 9.0% |
 
-This is also the regime Drew measured in, which is worth remembering when
-reading his 13-14%: on that curve the sieve is about 76% of the run and phase 2
-is 90% of the sieve.  A *sparse* curve should show a smaller gain from 512-bit
-registers -- the model above predicts roughly 10% -- and it would be a good test
-of all this to try one.
+**Phase 2 is flat**: 3.26 to 3.56 across every build, a 4% band, against a
+factor of 2.7 in phase 1.  Here `sp2 = sp1`, so phase 2 does no `AND` steps at
+all (the counter reads exactly zero) and consists of the scan -- which is small
+because there are few numerators -- plus per-survivor work that does not depend
+on the width.  The first version of these notes had phase 2 *scaling* with the
+width in this regime, 64 bits being 28% worse than 256; that was entirely the
+old `sp1 = 11`, at which 82% of all 256-bit arrays reached phase 2 and phase 2
+really was doing wide `AND`s on nearly every array.  At the parameters the
+program now chooses, that regime does not occur.
+
+The `gmp` check is 2.4e9 cycles in every build, 28% of the run.  On this curve
+it, not the sieve, is what a further optimization would have to attack.
 
 ## What follows for the build
 
-* **Do not enable `USE_LONG_IN_PHASE_2` at 256 bits.**  It is a wash on the
-  sparse curve (-1.2%, inside the noise) and a clear loss on the dense one
-  (+26%).  The Makefile's "this is usually slower" is right here.
-* **Do enable it at 128 bits.**  There it is -13.7% on the sparse curve and a
-  wash on the dense one, and the same holds with `USE_AVX128` (-6.9% sparse).
-  The Makefile comment is wrong for this width.
-* **`CCFLAGS128` should probably be `-DUSE_AVX128`, not `-DUSE_SSE`.**  The
-  `USE_SSE` branch of `rp-private.h` still uses the generic fall-back
+* **Do not enable `USE_LONG_IN_PHASE_2` at any width.**  It costs 3.4% at
+  128 SSE, 8.3% at 128 AVX128 and 15.3% at 256 on the sparse curve, and is a
+  wash to -2.7% on the point-rich one.  The first version of these notes
+  recommended enabling it at 128 bits, on a measurement that predates the
+  skip loop; that recommendation is withdrawn.  The Makefile's "this is
+  usually slower" is right at every width.
+* **`CCFLAGS128` should be `-DUSE_AVX128`, not `-DUSE_SSE`.**  It is 9.4% on
+  the total and 30% on phase 2 of the sparse curve (5.43 -> 3.81), and a wash
+  on the point-rich one.  `USE_SSE` still uses the generic fall-back
   `TEST(a) = (EXT0(a) || EXT(a,1))`, which extracts both halves into general
-  registers -- the same weakness that was fixed for AVX-512 in 2.2.3, where
-  `USE_AVX128` already has the `_mm_movemask_epi8(_mm_cmpeq_epi8(...))` form.
-  It is worth 12% of phase 2 (5.30 -> 4.64) whenever phase 2 runs on
-  bit-arrays.  `USE_SSE` also uses `__builtin_ia32_andps`, a floating-point
-  `AND` on integer data.
+  registers, and `__builtin_ia32_andps`, a floating-point `AND` on integer
+  data; `USE_AVX128` has the `_mm_movemask_epi8(_mm_cmpeq_epi8(...))` form
+  that was introduced for AVX-512 in 2.2.3.  Despite the name it needs only
+  SSE2 intrinsics and no `-m` flag beyond the x86-64 baseline, so it is as
+  portable as the `USE_SSE` build it would replace.
 * **`-DRATPOINTS_CHUNK` matters enormously for the 64-bit build**, which
-  defaults to `CHUNK=1`: going to 16 takes phase 1 from 16.59 to 7.56, and the
-  total from 20.34 to 11.71 (-42%).  If the plain-`unsigned long` build is ever
-  used seriously, its default should not be 1.  (Note this also means the
-  64-bit column of any width comparison is meaningless unless the chunking is
-  matched.)
+  defaults to `CHUNK=1`.  The 64-bit rows above are all at `CHUNK=16`; at the
+  default the build is far slower, and the 64-bit column of any width
+  comparison is meaningless unless the chunking is matched.
+
+## Answers to the TODO item
+
+* *"Phase 2 may well be fastest at 64 bits."*  No.  It is fastest at 256 in
+  the sparse regime and width-independent in the point-rich one.  There is no
+  regime in which narrow registers win phase 2.
+* *"A wider `nums` takes more primes to clear, so the early exit fires later."*
+  Not measurable, because at the rate the parameters now aim at a surviving
+  array holds 1.003 bits on average at every width.  The effect needs several
+  bits per array, which was the old `sp1 = 11` and is not the current regime.
+* *"The optimal `sp1` should rise with the register width."*  It should not,
+  and with the per-word rule it does not: the choice is width-independent by
+  construction and nothing here argues against that.
+* *"A mixed build -- phase 1 wide, phase 2 on 64-bit words."*  That is exactly
+  `USE_LONG_IN_PHASE_2`, and it loses at every width.
+
+## What the measurement turned up instead
+
+**The prime table, not the register width, is what limits point-rich curves.**
+Drew's curve gets `sp1 = sp2 = 23` not because 23 primes reach the target rate
+but because 23 is every prime below 128 that carries any information at all:
+on a curve with that many points `f` is a square modulo every residue for the
+smallest primes, and `sieving_info` discards those.  The rule stops at 1.75%
+survivors per word against a target of 0.75%.
+
+Raising the table to `PRIME_SIZE=8` (primes to 251) and allowing 40 of them
+gives `sp1 = 19`, `sp2 = 24`, 12.7 times fewer calls to the exact check, and
+
+    ratio to the default build: 0.448 0.430 0.441 0.430 0.510 0.437 0.454
+
+seven paired runs -- **a factor of 2.3**.  Larger primes are what a point-rich
+curve needs, because `np/p` tends to 1/2 as `p` grows however many points the
+curve has, while for small `p` it is close to 1.
+
+It does not follow that the table should simply be enlarged.  Of the 98 curves
+in `testdata-many.h`, 19 are starved this way and 79 are not, and the two
+groups move in opposite directions (height 100000, median of three paired
+runs):
+
+| | starved (6 curves) | not starved (6 curves) |
+|---|---|---|
+| ratio, `PRIME_SIZE=8 -p 40` vs default | 0.64-0.73 | 1.03-1.49 |
+
+and over the whole suites the two cancel: `test1many` 0.97, `test1` 1.22 --
+random curves, which are never starved, only lose.  The reason is that the
+rule ranks primes by information alone: given more to choose from it takes
+larger ones, whose tables are bigger and colder, and it pays for that whenever
+it did not need them.
+
+The criterion is sharp and cheap to evaluate, since `sieving_info` already
+knows both numbers: **a curve needs more primes exactly when the rule reaches
+the end of the list without reaching its target**, which is visible as
+`sp1 == sp2` in the verbose output.  Making the table size adaptive on that
+condition is on the TODO list.
 
 ## Open questions
 
-* Where does the time in phase 2 actually go in the dense regime -- the
-  `sp2-sp1` `AND`s, or the bit-extraction loop with its `relprime` call per
-  surviving bit?  A counter for surviving *bits* would settle it, and it
-  decides whether the width helps for a structural reason or an incidental one.
-* The picture above has two points; the survival rate is the parameter, and it
-  ought to be swept.  This is the same variable that
-  `PERFORMANCE-NOTES.md` (branch `interface-phase1-phase2`) identifies as the
-  right one for choosing the phase-2 group size and `sp1`.  Choosing the
-  *phase-2 representation* from it belongs in the same fit.
-* All of this wants re-measuring with `perf stat -e cpu_core/cycles/` on an
-  idle machine; `sudo sysctl kernel.perf_event_paranoid=2` is needed first.
+* The bit-extraction loop `for(a = a0; nums; a += d, nums >>= 1)` walks from
+  bit 0 to the highest set bit.  On Drew's curve it runs 185.6 million
+  iterations to find 5.8 million set bits -- 32 iterations per bit, the
+  expected position of a single random bit in a word.  `__builtin_ctzl` would
+  make it one iteration per bit.  This is a few per cent of the run in the
+  point-rich regime and negligible in the sparse one.
+* Whether real AVX-512 hardware changes the sparse picture.  The model says
+  phase 2 would go from 3.06 to about 2.66, since only the scan term halves;
+  phase 1 is where the gain would have to come from.
