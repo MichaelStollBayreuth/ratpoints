@@ -99,6 +99,28 @@ void *pointer_align(void *xx, long m)
 }
 
 /* NOTE: args->degree must be set */
+/* Reserve the space for the sieving information for the first n primes.
+ * For each prime p we may need p arrays (one for each denominator mod p) of
+ * length p + RATPOINTS_CHUNK-1, the CHUNK-1 so that _ratpoints_sift0 can
+ * avoid a wrap-around.  The sum grows with the square of the largest prime,
+ * which is why n matters: taking it to be RATPOINTS_NUM_PRIMES asks for 5 MB
+ * when primes go up to 127, but 1.7 GB when they go up to 1021, whether or
+ * not the large primes are ever looked at.
+ * args->ba_buffer_na keeps the address malloc returned, so that it can be
+ * freed later; the +1 leaves the leeway needed for the alignment.
+ * args->ba_buffer_primes records what the block is good for.
+ */
+static void alloc_ba_buffer(ratpoints_args *args, long n)
+{ long need = 0;
+  long i;
+
+  for(i = 0; i < n; i++) { need += prime[i]*(prime[i] + RATPOINTS_CHUNK-1); }
+  args->ba_buffer_na = malloc((need+1)*sizeof(ratpoints_bit_array));
+  args->ba_buffer = pointer_align(args->ba_buffer_na, sizeof(ratpoints_bit_array));
+  args->ba_next = args->ba_buffer;
+  args->ba_buffer_primes = n;
+}
+
 void find_points_init(ratpoints_args *args)
 {
   long work_len = 3 + (args->degree + 1);
@@ -124,24 +146,15 @@ void find_points_init(ratpoints_args *args)
                                         * sizeof(ratpoints_sieve_entry));
   args->se_next = args->se_buffer;
 
-  /* allocate space for ba_buffer */
-  { long need = 0;
-    long n;
-
-    /* Figure out how much space is needed for the sieving information:
-     * For each prime p, we need p arrays (one for each denominator mod p)
-     * of length p + RATPOINTS_CHUNK-1.
-     * (We add RATPOINTS_CHUNK-1 so that we can avoid a wrap-around in _ratpoints_sift0.)
-     */
-    for(n = 0; n < RATPOINTS_NUM_PRIMES; n++) { need += prime[n]*(prime[n] + RATPOINTS_CHUNK-1); }
-    /* args->ba_buffer_na saves the start address of the block reserved by malloc,
-     * so that it can be freed later.
-     * Use  need+1  to have the necessary leeway for the alignment.
-     */
-    args->ba_buffer_na = malloc((need+1)*sizeof(ratpoints_bit_array));
-    args->ba_buffer = pointer_align(args->ba_buffer_na, sizeof(ratpoints_bit_array));
-    args->ba_next = args->ba_buffer;
-  }
+  /* allocate space for ba_buffer, for the first RATPOINTS_DEFAULT_NUM_PRIMES
+   * primes; find_points_work enlarges it should a caller ask for more.  It
+   * cannot be sized from args->num_primes here, because the documented way of
+   * using the library sets that field between find_points_init and
+   * find_points_work, not before.
+   */
+  alloc_ba_buffer(args, (RATPOINTS_DEFAULT_NUM_PRIMES < RATPOINTS_NUM_PRIMES)
+                          ? RATPOINTS_DEFAULT_NUM_PRIMES
+                          : RATPOINTS_NUM_PRIMES);
 
   /* allocate space for int_buffer */
   args->int_buffer
@@ -192,7 +205,7 @@ void find_points_clear(ratpoints_args *args)
   /* clear pointer in args */
   args->work = NULL; args->work_length = 0;
   args->se_buffer = NULL; args->se_next = NULL;
-  args->ba_buffer_na = NULL;
+  args->ba_buffer_na = NULL; args->ba_buffer_primes = 0;
   args->ba_buffer = NULL; args->ba_next = NULL;
   args->int_buffer = NULL; args->int_next = NULL;
   args->sieve_list = NULL;
@@ -1376,6 +1389,14 @@ long find_points_work(ratpoints_args *args,
 
   if(args->num_primes > RATPOINTS_NUM_PRIMES)
   { args->num_primes = RATPOINTS_NUM_PRIMES; }
+  /* find_points_init sized ba_buffer for the default number of primes; if this
+   * call wants more, enlarge it.  Nothing points into the buffer at this
+   * moment -- it is a bump allocator and ba_next was reset above -- so it can
+   * simply be replaced. */
+  if(args->num_primes > args->ba_buffer_primes)
+  { free(args->ba_buffer_na);
+    alloc_ba_buffer(args, args->num_primes);
+  }
   if(args->sp2 > args->num_primes) { args->sp2 = args->num_primes; }
   if(args->sp2 >= 0 && args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
