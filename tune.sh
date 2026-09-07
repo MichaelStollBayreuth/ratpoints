@@ -1,6 +1,6 @@
 #!/bin/sh
 # Find good values for the two machine-dependent constants that decide how
-# many primes each sieving stage uses -- RATPOINTS_SURVIVORS_PER_ARRAY and
+# many primes each sieving stage uses -- RATPOINTS_SURVIVORS_PER_WORD and
 # RATPOINTS_SP2_EXTRA in ratpoints.h -- and write them to tuning.mk, which
 # the Makefile includes.  Run it as "make tune"; it needs ./rptest and
 # ./rptest-many, and it modifies no source file.
@@ -39,9 +39,23 @@ for f in ./rptest ./rptest-many testbase testbase-many ratpoints.h; do
   [ -e "$f" ] || { echo "tune.sh: $f is missing; run 'make rptest rptest-many' first" >&2; exit 1; }
 done
 
-DEF_R=`sed -n 's/^# *define  *RATPOINTS_SURVIVORS_PER_ARRAY  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
+# The settings to measure against.  These are passed explicitly to every run,
+# including the baseline, so that the comparison never depends on what happens
+# to be compiled into the tests -- which matters when tuning.mk is already in
+# effect from an earlier run, since then the compiled-in values are its
+# values, not the ones in ratpoints.h.
+DEF_R=`sed -n 's/^# *define  *RATPOINTS_SURVIVORS_PER_WORD  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
 DEF_E=`sed -n 's/^# *define  *RATPOINTS_SP2_EXTRA  *\([0-9]*\).*/\1/p' ratpoints.h`
 [ -n "$DEF_R" ] && [ -n "$DEF_E" ] || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
+if [ -f tuning.mk ] && [ "`sed -n 's/^TUNED_FOR *= *//p' tuning.mk`" = "${TUNE_CONFIG:-}" ]
+then
+  v=`sed -n 's/.*RATPOINTS_SURVIVORS_PER_WORD=\([^ 	]*\).*/\1/p' tuning.mk`
+  [ -n "$v" ] && DEF_R=$v
+  v=`sed -n 's/.*RATPOINTS_SP2_EXTRA=\([^ 	]*\).*/\1/p' tuning.mk`
+  [ -n "$v" ] && DEF_E=$v
+  echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E"
+fi
+BASE="-r $DEF_R -R $DEF_E"
 
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
@@ -61,7 +75,7 @@ time_both() {
 
 printf 'warming up (%ss) ' "$WARMUP"
 end=`expr \`date +%s\` + $WARMUP`
-while [ `date +%s` -lt $end ]; do time_both "" > /dev/null; printf '.'; done
+while [ `date +%s` -lt $end ]; do time_both "$BASE" > /dev/null; printf '.'; done
 echo
 
 # measure(): "label<TAB>args" lines from $1 -> "label median_ratio" in $2
@@ -78,7 +92,7 @@ measure() {
     } > "$TMP/order"
     while IFS='	' read -r label args; do
       tc=`time_both "$args"`
-      tb=`time_both ""`          # the current settings, right next to it
+      tb=`time_both "$BASE"`     # the current settings, right next to it
       echo "$label `awk -v c="$tc" -v b="$tb" 'BEGIN{printf "%.5f", c/b}'`" >> "$TMP/raw"
       printf ' .'
     done < "$TMP/order"
@@ -100,10 +114,10 @@ best_of() { awk -v skip="${2:-}" '$1 != skip { if (m == "" || $2 < m) { m = $2; 
 echo
 echo "stage 1: the threshold, against the current $DEF_R (offset stays at $DEF_E)"
 : > "$TMP/c1"
-printf 'current\t\n' >> "$TMP/c1"
+printf 'current\t%s\n' "$BASE" >> "$TMP/c1"
 for v in $R_VALUES; do
   [ "$v" = "$DEF_R" ] && continue
-  printf 'r=%s\t-r %s\n' "$v" "$v" >> "$TMP/c1"
+  printf 'r=%s\t-r %s -R %s\n' "$v" "$v" "$DEF_E" >> "$TMP/c1"
 done
 measure "$TMP/c1" "$TMP/r1"
 report "$TMP/r1"
@@ -114,7 +128,7 @@ case $BEST_R in current) BEST_R=$DEF_R ;; r=*) BEST_R=`echo "$BEST_R" | sed 's/^
 echo
 echo "stage 2: the offset, with the threshold at $BEST_R"
 : > "$TMP/c2"
-printf 'current\t\n' >> "$TMP/c2"
+printf 'current\t%s\n' "$BASE" >> "$TMP/c2"
 for v in $E_VALUES; do
   printf 'e=%s\t-r %s -R %s\n' "$v" "$BEST_R" "$v" >> "$TMP/c2"
 done
@@ -148,7 +162,7 @@ case $verdict in
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
-TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_ARRAY=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E
+TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E
 EOF
     echo "Wrote tuning.mk: threshold $BEST_R, offset $BEST_E --"
     echo "`awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current $DEF_R / $DEF_E."

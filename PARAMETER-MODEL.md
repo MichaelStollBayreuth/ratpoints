@@ -293,6 +293,35 @@ retuning them for a machine needs no rebuild:
 
 minimising the sum.
 
+## Per word, not per bit-array
+
+The rule above was calibrated at 256 bits only, and expressed as survivors per
+*bit-array*.  Tuning runs at the other register widths (`make tune`, which
+compares every candidate against the current setting back to back) show that
+this mis-scales: the best per-bit-array threshold roughly doubles with every
+doubling of the width, because the exponent `m` doubles with it.
+
+| width | best threshold per bit-array | per 64-bit word |
+|---|---|---|
+| 128 | 0.015 | 0.0075 |
+| 256 | 0.030 | 0.0075 |
+| 512 (emulated) | 0.080 | 0.010 |
+
+Per word it is constant.  So the constant is now
+`RATPOINTS_SURVIVORS_PER_WORD = 0.0075` and the exponent is the number of bits
+set in one *word*, not in a bit-array; the chosen `sp1` is then the same at
+every width, where before it grew by one prime per doubling.  At 256 bits
+nothing changes -- 0.03 per bit-array is 0.0075 per word -- so the shipped
+configuration is unaffected.
+
+Re-running the tuner afterwards confirms it: at both 128 and 256 bits every
+other threshold tried (0.015, 0.02, 0.03, 0.05, 0.08) is now worse than
+0.0075, by 2% to 28%.
+
+This also corrects a claim made earlier from the code rather than from
+measurement -- that adding a prime to phase 1 per doubling of the width was
+the right behaviour.  It was what the formula did, not what the machine wanted.
+
 ## Caveats
 
 * The 79% median penalty of the default is a statement about **point-rich

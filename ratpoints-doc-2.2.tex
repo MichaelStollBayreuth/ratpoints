@@ -458,8 +458,8 @@ from the curve, as described in Section~\ref{sec:spchoice}. The two constants
 that govern that choice can themselves be set: \\
 \strut\quad\verb+-r+ $x$ \verb+-R+ $e$ \\
 sets the target number of numerators surviving the first sieving stage per
-bit array to~$x$ (a real number; this is what decides~$n$), and the number of
-primes added to~$n$ to obtain~$N$ to~$e$. The mnemonic is that \verb+-r+ and
+64-bit word to~$x$ (a real number; this is what decides~$n$), and the number
+of primes added to~$n$ to obtain~$N$ to~$e$. The mnemonic is that \verb+-r+ and
 \verb+-R+ are to the automatic choice what \verb+-n+ and \verb+-N+ are to
 the explicit one. Both are machine-dependent, and giving them on the command
 line means they can be retuned without recompiling; the compiled-in defaults
@@ -549,7 +549,7 @@ structure, which is defined as follows.
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2;
-                 double survivors_per_array; long sp2_extra;
+                 double survivors_per_word; long sp2_extra;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags; ...}
@@ -598,7 +598,7 @@ from the curve, as described in Section~\ref{sec:spchoice}; this is what the
 command line program does when \verb+-n+ and \verb+-N+ are absent. In
 \texttt{ratpoints}, these fields are set by the
 \verb+-n+ and \verb+-N+ options. The fields
-\texttt{survivors\_per\_array} and \texttt{sp2\_extra} hold the two
+\texttt{survivors\_per\_word} and \texttt{sp2\_extra} hold the two
 constants that govern that choice (options \verb+-r+ and \verb+-R+); if
 negative, the values compiled into \texttt{ratpoints.h} are used.
 Similar statements are true for
@@ -797,11 +797,15 @@ empty bit array and a good deal on a non-empty one. So primes should be moved
 into the first stage until few enough bit arrays are left alive. Measurements
 over curves spanning a factor of~$600$ in density show that the best
 \texttt{sp1} is, to within a factor of about two, the one at which the
-expected number of survivors per bit array falls below a constant --- almost
+expected number of survivors per 64-bit word falls below a constant --- almost
 independently of the curve, even though the resulting \texttt{sp1} itself
 ranges from $8$ to~$30$. That constant is
-\texttt{RATPOINTS\_SURVIVORS\_PER\_ARRAY} in \texttt{ratpoints.h}; it is a
-property of the machine rather than of the curve. Then \texttt{sp2} is set to
+\texttt{RATPOINTS\_SURVIVORS\_PER\_WORD} in \texttt{ratpoints.h}; it is a
+property of the machine rather than of the curve. Per word rather than per bit
+array on purpose: tuning runs at 128, 256 and 512 bits give $0.0075$, $0.0075$
+and $0.010$ survivors per word, so the same constant serves every register
+width, whereas a per-bit-array figure would have to double with each doubling
+of the width. Then \texttt{sp2} is set to
 \texttt{sp1} plus \texttt{RATPOINTS\_SP2\_EXTRA}, capped by the number of
 primes that carry any information at all.
 

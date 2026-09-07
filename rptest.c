@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
   long sieve_primes2 = -1;
-  double survivors_per_array = -1.0; /* negative: compiled-in default */
+  double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */
   long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
         case 'r': /* target survivors of the first stage per bit array */
           if(argc == i) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &survivors_per_array) != 1) return(-6);
+          if(sscanf(argv[i], " %lf", &survivors_per_word) != 1) return(-6);
           i++;
           break;
         case 'R': /* primes added to sp1 to get sp2 */
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
         args.b_high        = b_high;
         args.sp1           = sieve_primes1;
         args.sp2           = sieve_primes2;
-        args.survivors_per_array = survivors_per_array;
+        args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
         args.array_size    = array_size;
         args.sturm         = sturm_iter;

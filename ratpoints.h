@@ -51,8 +51,11 @@
  * into the first phase until few enough bit-arrays are left alive, and
  * measurements over curves spanning a factor of 600 in density show that
  * the best sp1 is where the expected number of surviving numerators per
- * bit-array falls below the constant below -- almost independently of the
- * curve.  See PARAMETER-MODEL.md for the measurements.
+ * 64-bit word falls below the constant below -- almost independently of the
+ * curve.  Per word rather than per bit-array: measured across the register
+ * widths, the best per-word figure is the same (0.0075, 0.0075, 0.010 at
+ * 128, 256 and 512 bits) while the per-bit-array one doubles with each
+ * doubling of the width.  See PARAMETER-MODEL.md for the measurements.
  *
  * The constant is a property of the machine, not of the curve: it is where
  * one more first-phase prime stops paying for itself against the cost of a
@@ -67,11 +70,11 @@
  * other.  The offset for sp2 matters much less than the threshold, and at
  * large height bounds hardly at all. */
 /* Both constants are compiled-in defaults only: they can be set per call
- * through the survivors_per_array and sp2_extra fields of ratpoints_args
+ * through the survivors_per_word and sp2_extra fields of ratpoints_args
  * (a negative value there means "use the compiled-in one"), and on the
  * command line with -r and -R. */
-#ifndef RATPOINTS_SURVIVORS_PER_ARRAY
-# define RATPOINTS_SURVIVORS_PER_ARRAY 0.03 /* when to stop the first phase */
+#ifndef RATPOINTS_SURVIVORS_PER_WORD
+# define RATPOINTS_SURVIVORS_PER_WORD 0.0075 /* when to stop the first phase */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
 # define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
@@ -91,7 +94,7 @@ typedef struct {double low; double up;} ratpoints_interval;
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2;
-                 double survivors_per_array; long sp2_extra;
+                 double survivors_per_word; long sp2_extra;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
