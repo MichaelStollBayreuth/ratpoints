@@ -5,10 +5,11 @@ rather than on `sp1` alone, and whether that could be turned into a way of
 choosing the parameters from the input.  It can.  This file records the model,
 the measurements it was fitted to, and how well it does.
 
-**Result in one line:** a rule using only quantities `sieving_info()` already
-computes chooses `(sp1, sp2)` within 4% of the best available setting on
-median, where the shipped default `11/19` is 79% off on median and up to 278%
-off on the curves measured here.
+**Result in one line:** `sp1` can be chosen from quantities `sieving_info()`
+already computes, and doing so is worth nothing at all on random curves --
+where the shipped `sp1 = 11` turns out to be right -- but worth a factor of
+about two on curves with many rational points, where the default is 79% off on
+median and up to 278% off.  `sp2` cannot be chosen the same way; see below.
 
 ## The measurements
 
@@ -40,13 +41,22 @@ follows from `R`, the number of bit-arrays to sweep, and the width `W`:
 
 | quantity | prediction | predicted/measured (median) |
 |---|---|---|
-| bits surviving stage 1 | `bits_in * R(sp1)` | 0.93 |
-| units entering stage 2 | `arrays * (1 - (1-R(sp1))^W)` | 1.06 |
-| `AND` steps in stage 2 | `arrays * sum_j (1 - (1-R(sp1+j))^W)` | 0.97 |
+| bits surviving stage 1 | `bits_in * R(sp1)` | 0.93 / 0.99 |
+| units entering stage 2 | `arrays * (1 - (1-R(sp1))^m)` | 1.02 / 1.00 |
+| `AND` steps in stage 2 | `arrays * sum_j (1 - (1-R(sp1+j))^m)` | 0.99 / 1.00 |
+
+(point-rich sample / random sample)
+
+where `m = bits_in/arrays` is the mean number of bits actually *set* per
+bit-array on entry.  `m` is **not** the width: for `which_bits != num_all` only
+every other bit is set, and the range masking removes some more.  Measured, `m`
+is about 229 on the point-rich curves but only 94 on random ones, so using `W`
+in the exponent over-predicts the units entering phase 2 by a factor 2.4 on
+random curves.  `ratpoints` knows `m` before sieving.
 
 The middle line is the one that matters, and it is why the survivor *rate* and
 not `sp1` is the right variable: what stage 2 pays for is the number of
-bit-arrays that are not empty, and that depends on `R(sp1)` and on `W` together.
+bit-arrays that are not empty, and that depends on `R(sp1)` and `m` together.
 
 ## The floor
 
@@ -120,25 +130,81 @@ The optima found range from `8/14` on the sparsest curve to `26/26` and `26/30`
 on the densest -- the whole width of the grid.  No fixed pair can cover that,
 which is the point.
 
+## Validation against random curves
+
+Everything above was fitted on the curve lists in `examples/`, which collect
+curves with *many* rational points.  `testdata.h` holds 1000 random genus 2
+curves with coefficients up to 10 in absolute value, and they are a different
+population altogether:
+
+| predicted survivor rate after 11 primes | 5% | 25% | median | 75% | 95% |
+|---|---|---|---|---|---|
+| random curves (`testdata.h`) | 3.5e-05 | 8.4e-05 | 1.3e-04 | 1.8e-04 | 3.0e-04 |
+
+against 1.4e-05 to 8.5e-03 with median 1.3e-03 for the point-rich sample.  So a
+random curve is about an order of magnitude sparser than a typical point-rich
+one, and the random population is far more tightly clustered -- a factor of 9
+between the 5th and 95th percentiles, against a factor of 600.
+
+Fourteen of them were swept the same way (heights 100000 and 300000, `sp1` in
+5..17, `sp2` in 11..26, 616 runs, `model/sweep-random.csv`).  The predictors
+carry over unchanged: predicted/measured is 0.99 for all three, using the *same*
+formulas and the cost coefficients fitted on the point-rich curves -- a genuine
+out-of-population test, not just a held-out curve.
+
+**The shipped `sp1 = 11` is right for random curves.**  It is the optimum in 27
+of 28 cases, and the default `11/19` costs +0.0% on median and +1.1% on mean
+against the best setting in the grid, worst case +8.3%.  Whatever it was tuned
+on, it was tuned well.  The model agrees: it also picks `sp1 = 11` in 27 of 28
+cases.  So the model buys nothing here -- and left to itself it *loses* 2.0% on
+median, because of `sp2`.
+
+**`sp2` is the weak coordinate.**  Every mistake the model makes on random
+curves is an `sp2` overshoot: it picks the largest `sp2` in the grid every time,
+where the optimum is 18 in 16 cases and 22 in 10.  The cause is the floor `F`:
+the model cannot know how many candidates are non-reduced representations of
+genuine points, so it keeps believing that another phase-2 prime will remove
+something.  The cost of the overshoot is small because the surface is flat in
+`sp2`, but it is real.
+
+**So use the model for `sp1` and a fixed rule for `sp2`.**  Taking `sp1` from
+the marginal rule and setting `sp2 = max(19, sp1 + 8)`:
+
+| policy | random curves | point-rich curves |
+|---|---|---|
+| the shipped default `11/19` | **+0.0% / +1.1%** | +79.0% / +98.1% |
+| minimising the full model | +2.0% / +2.4% | +3.8% / +4.4% |
+| model `sp1`, `sp2 = max(19, sp1+8)` | **+0.0% / +1.0%** | **+4.4% / +8.4%** |
+| default unless the model predicts >10% | **+0.0% / +1.1%** | +4.6% / +5.7% |
+
+(median / mean excess over the best setting in the grid).  The third row is the
+recommendation: it is never worse than the default where the default is good,
+and it removes almost all of the penalty where the default is bad.  The fourth
+row -- keep the default unless the model predicts a large gain -- is an
+equally good and even more conservative alternative.
+
 ## Caveats
 
-* **The curve sample is biased.** Both lists in `examples/` collect curves with
-  many rational points, so the population here is much denser than a random
-  curve.  On the sparsest curve tested (`x^6 + 1`) the shipped default is only
-  5-12% off, which is presumably how it was chosen.  The 79% median is a
-  statement about point-rich curves, not about all curves.  A sample of random
-  curves is needed before changing any default.
-* If a fixed default is wanted anyway, `17/26` is the best single choice over
-  this sample (1.17x the best on average, against 1.98x for `11/19`).
+* The 79% median penalty of the default is a statement about **point-rich
+  curves only**.  On random curves the default is optimal, as the section above
+  shows.  Anyone reading only the first half of this file would draw the wrong
+  conclusion.
+* If a fixed default is wanted for point-rich work, `17/26` is the best single
+  choice over that sample (1.17x the best on average, against 1.98x for
+  `11/19`); but it would be a poor default for random curves.
 * The coefficients are for the 256-bit build on this machine and would have to
   be refitted for another width or CPU -- cheaply, since the fit needs only a
-  few dozen runs.  The *structure* should carry over; the ratio 69.5/1.36 is
-  what sets the phase boundary, and it is a property of the memory system.
-* `sp2` is the weaker of the two: the measured optimum is often flat over a
-  wide range, and the model tends to overshoot it because it cannot know `F`.
-  Every case where the rule loses more than 10% is an `sp2` overshoot at the
-  smallest height.
+  few dozen runs.  The *structure* should carry over; the ratio 84/1.36 is what
+  sets the phase boundary, and it is a property of the memory system.  The
+  coefficients fitted independently on the two samples agree to within about
+  15% for `sp1arr`, `arrays` and `units_1`, which is the evidence that they are
+  machine constants and not curve-population artefacts.
 * The grid stops at 30 primes (`PRIME_SIZE=7`); the densest curves want all of
   them in phase 1, so their true optimum may be past the edge.  Note that the
   `test2` target in the `Makefile` already runs the record curve with
   `-n 30 -N 30`, which is exactly what the model predicts.
+* The random-curve runs are smaller than the point-rich ones (many of these
+  curves have a negative leading coefficient, so the numerator range is bounded
+  by the real locus rather than by the height).  Only about three quarters of
+  such a run is inside `sift0`, so their timings are noisier; the sweep was
+  repeated at larger heights for this reason and the conclusion did not change.
