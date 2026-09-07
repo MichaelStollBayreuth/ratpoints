@@ -70,6 +70,10 @@ static void _rp_t_begin(void) { _rp_t_start = __rdtsc(); }
  * USE_LONG_IN_PHASE_2) that are non-zero after phase 1 */
 unsigned long long _rp_bits_in = 0, _rp_bits_1 = 0, _rp_bits_2 = 0;
 unsigned long long _rp_units_surviving = 0;
+/* work actually done in phase 2: AND steps in the sp2-sp1 loop (which
+ * stops early once nums is empty) and iterations of the bit-extraction
+ * loops (which run up to the highest set bit, not once per set bit) */
+unsigned long long _rp_and2 = 0, _rp_ext2 = 0;
 
 static inline unsigned _rp_popcnt(const ratpoints_bit_array *a)
 { unsigned long w[RBA_PACK]; unsigned i, c = 0;
@@ -99,8 +103,8 @@ static void _rp_phase_report(void)
   fprintf(stderr,
           "[phasedata] width=%d chunk=%d long2=%d sp1=%ld sp2=%ld"
           " calls=%llu arrays=%llu bits_in=%llu bits_1=%llu bits_2=%llu"
-          " units_1=%llu checks=%llu cyc1=%llu cyc2=%llu cyc3=%llu"
-          " cyctot=%llu\n",
+          " units_1=%llu and2=%llu ext2=%llu checks=%llu"
+          " cyc1=%llu cyc2=%llu cyc3=%llu cyctot=%llu\n",
           (int)(8*(int)sizeof(ratpoints_bit_array)), (int)RATPOINTS_CHUNK,
 #ifdef USE_LONG_IN_PHASE_2
           1,
@@ -110,8 +114,9 @@ static void _rp_phase_report(void)
           _rp_sp1, _rp_sp2, _rp_sift0_calls, _rp_arrays_swept,
 #ifdef RP_PHASE_COUNTS
           _rp_bits_in, _rp_bits_1, _rp_bits_2, _rp_units_surviving,
+          _rp_and2, _rp_ext2,
 #else
-          0ULL, 0ULL, 0ULL, 0ULL,
+          0ULL, 0ULL, 0ULL, 0ULL, 0ULL, 0ULL,
 #endif
           _rp_check_calls, _rp_phase1_cycles, c2, _rp_check_cycles,
           __rdtsc() - _rp_t_start);
@@ -589,7 +594,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 
       for(n = sp2-sp1; n && nums; n--)
-      { unsigned long *ptr = (unsigned long *)ssp->start;
+      {
+#ifdef RP_PHASE_COUNTS
+        _rp_and2++;
+#endif
+        unsigned long *ptr = (unsigned long *)ssp->start;
         long pp = RBA_PACK*ssp->p;
 
         ptr += base;
@@ -627,6 +636,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         for(a = a0; nums; a += d, nums >>= 1)
         { /* test one bit */
+
+#ifdef RP_PHASE_COUNTS
+            _rp_ext2++;
+#endif
 
 #ifdef DEBUG
           if(nums & 1)
@@ -681,7 +694,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
       /* Sieve with the next sp2-sp1 primes while some bits are set. */
       for(n = sp2-sp1; n && TEST(nums); n--)
-      { ratpoints_bit_array *ptr = (ssp->start) + base;
+      {
+#ifdef RP_PHASE_COUNTS
+        _rp_and2++;
+#endif
+        ratpoints_bit_array *ptr = (ssp->start) + base;
         long p = ssp->p;
 
         while(ptr >= ssp->end) { ptr -= p; }
@@ -727,6 +744,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           for(a = a0; nums0; a += d, nums0 >>= 1)
           { /* test one bit */
 
+#ifdef RP_PHASE_COUNTS
+            _rp_ext2++;
+#endif
+
 #ifdef DEBUG
             if(nums0 & 1)
             { printf("\nsurviving bit no. %ld --> a = %ld. ", bit, a);
@@ -765,6 +786,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
               a0 += da; /* numerator corresponding to first bit of word no. k */
               for (a = a0; nums1; a += d, nums1 >>= 1)
               { /* test one bit */
+
+#ifdef RP_PHASE_COUNTS
+            _rp_ext2++;
+#endif
 
 #ifdef DEBUG
                 if(nums1 & 1)
