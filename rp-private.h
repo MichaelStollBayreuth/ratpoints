@@ -61,7 +61,6 @@
  * RBA(a)     : fill a ratpoints_bit_array with copies of the word a
  * zero       : all bits zero == RBA(0UL)
  * AND(a,b)   : bit-wise and operation: a &= b
- * ORR(a,b)   : bit-wise or, as a value: returns a | b
  *              (used in phase 2 to test several bit-arrays at once)
  * EXT0(a)    : extract first word (as unsigned long)
  * EXT(a,i)   : extract word with index i (as unsigned long)
@@ -101,9 +100,8 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
                                       ((unsigned long) a), ((unsigned long) a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (a)&(b))
-#define ORR(a,b) ((a)|(b))
-#define EXT0(a) ((unsigned long)a[0])
-#define EXT(a,i) ((unsigned long)a[i])
+#define EXT0(a) ((unsigned long)(a)[0])
+#define EXT(a,i) ((unsigned long)(a)[i])
 #ifdef __AVX512F__
 /* vptestmq sets bit i of the mask register if and only if word i is non-zero;
  * testing the resulting 8-bit mask against zero then compiles to a kortest.
@@ -142,9 +140,8 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
 #define RBA_PACK (4)
 typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (32)));
 #define AND(a,b) ((a) = (a)&(b))
-#define ORR(a,b) ((a)|(b))
-#define EXT0(a) ((unsigned long)a[0])
-#define EXT(a,i) ((unsigned long)a[i])
+#define EXT0(a) ((unsigned long)(a)[0])
+#define EXT(a,i) ((unsigned long)(a)[i])
 #ifdef __AVX2__
 /* The following seems to be about the fastest way to test for zero,
  * see https://coderedirect.com/questions/445277/comparing-2-vectors-in-avx-avx2-c .
@@ -192,9 +189,8 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (16)));
 #define RBA(a) ((ratpoints_bit_array){((unsigned long) a), ((unsigned long) a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (a)&(b))
-#define ORR(a,b) ((a)|(b))
-#define EXT0(a) ((unsigned long)a[0])
-#define EXT(a,i) ((unsigned long)a[i])
+#define EXT0(a) ((unsigned long)(a)[0])
+#define EXT(a,i) ((unsigned long)(a)[i])
 /* See above for this definition of TEST(a) */
 #define TEST(a) ( _mm_movemask_epi8(_mm_cmpeq_epi8((__m128i)(a), (__m128i)zero)) != 0xffffU )
 #define MASKL(a,s) { unsigned long *survl = (unsigned long *)(a); long sh = (s); \
@@ -219,7 +215,6 @@ typedef __v2di ratpoints_bit_array;
 #define RBA(a) ((__v2di){(a), (a)})
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (ratpoints_bit_array)__builtin_ia32_andps((__v4sf)(a), (__v4sf)(b)))
-#define ORR(a,b) ((ratpoints_bit_array)__builtin_ia32_orps((__v4sf)(a), (__v4sf)(b)))
 #define EXT0(a) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 0))
 /* the following is a hack (here i is always 1) */
 #define EXT(a,i) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 1))
@@ -244,7 +239,6 @@ typedef unsigned long ratpoints_bit_array;
 #define RBA(a) ((ratpoints_bit_array)(a))
 #define zero ((ratpoints_bit_array)0UL)
 #define AND(a,b) ((a) &= (b))
-#define ORR(a,b) ((a)|(b))
 #define EXT0(a) (a)
 #define EXT(a,i) (a) /* just in case... */
 #define TEST(a) (a)

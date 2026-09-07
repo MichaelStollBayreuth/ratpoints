@@ -269,8 +269,8 @@ Measured with the two test sets, minimum of six interleaved rounds:
 | 0.02 / 2 | 7.214 G (+2.7%) | 7.434 G (+2.9%) |
 | 0.04 / 2 | 7.188 G (+2.3%) | 7.521 G (+4.1%) |
 
-and against a group size of 0, which removes the skip loop altogether, every
-one of these is 6 to 10% faster.  So the *skip loop* is worth having and the
+and against no skip loop at all, every one of these is 6 to 10% faster (14% at
+height 400000).  So the *skip loop* is worth having and the
 *grouping* is not: with only a few per cent of the bit-arrays alive, a group
 that contains a survivor has wasted its whole `or` tree, and that happens often
 enough to cost more than the saved tests.  This is the same ridge as before,
@@ -282,6 +282,16 @@ The whole change, against the fixed `11/19` and no skip loop of version 2.2.3:
 |---|---|---|---|
 | `test1` (random curves) | 8.232 G | 7.062 G | **-14.2%** |
 | `test1many` (point-rich) | 11.386 G | 7.233 G | **-36.5%** |
+
+The grouping machinery has therefore been removed again and the skip loop is
+unconditional.  The two constants that remain, `RATPOINTS_SURVIVORS_PER_ARRAY`
+and `RATPOINTS_SP2_EXTRA`, can be set at run time with `-r` and `-R`, so
+retuning them for a machine needs no rebuild:
+
+    ./rptest      -r <x> -R <n> -z      # random curves
+    ./rptest-many -r <x> -R <n> -z      # curves with many rational points
+
+minimising the sum.
 
 ## Caveats
 

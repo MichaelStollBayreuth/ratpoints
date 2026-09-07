@@ -59,13 +59,17 @@
  * non-empty bit-array entering the second phase.  Anything within a factor
  * of about two of the value below costs less than 3%.
  *
- * To retune the two constants for another machine, build with
- *   make test1 test1many CCFLAGS='-DRATPOINTS_SURVIVORS_PER_ARRAY=<x> \\
- *                                 -DRATPOINTS_SP2_EXTRA=<n>'
+ * To retune the two constants for another machine no rebuild is needed:
+ *   ./rptest -r <x> -R <n> -z          (random curves)
+ *   ./rptest-many -r <x> -R <n> -z     (curves with many rational points)
  * and minimise the sum of the two times.  Use both tests: they cover the
  * two regimes that matter, and a value that suits one can be poor for the
  * other.  The offset for sp2 matters much less than the threshold, and at
  * large height bounds hardly at all. */
+/* Both constants are compiled-in defaults only: they can be set per call
+ * through the survivors_per_array and sp2_extra fields of ratpoints_args
+ * (a negative value there means "use the compiled-in one"), and on the
+ * command line with -r and -R. */
 #ifndef RATPOINTS_SURVIVORS_PER_ARRAY
 # define RATPOINTS_SURVIVORS_PER_ARRAY 0.03 /* when to stop the first phase */
 #endif
@@ -73,19 +77,6 @@
 # define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
 #endif
 
-/* Because sp1 is chosen to leave about RATPOINTS_SURVIVORS_PER_ARRAY
- * survivors per bit-array, the second phase spends most of its time stepping
- * over empty bit-arrays, and it does so in a tight loop.  With a group size
- * above 1 it looks at that many bit-arrays at a time and steps over the whole
- * group when their "or" is zero, which costs one test instead of several but
- * wastes the "or" whenever the group is not empty.  Must be 0, 1, 2, 4, 8 or
- * 16; 0 removes the skip loop altogether, which is what the code did before
- * version 2.2.4.
- * The best value depends on how many bit-arrays are still alive, i.e. on
- * RATPOINTS_SURVIVORS_PER_ARRAY, so retune the two together. */
-#ifndef RATPOINTS_PHASE2_GROUP
-# define RATPOINTS_PHASE2_GROUP 1           /* bit-arrays tested at once */
-#endif
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes */
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
 
@@ -100,6 +91,7 @@ typedef struct {double low; double up;} ratpoints_interval;
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2;
+                 double survivors_per_array; long sp2_extra;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;

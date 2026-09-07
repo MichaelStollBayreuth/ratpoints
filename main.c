@@ -68,6 +68,7 @@ char *usage_str =
     "                 [-f format] [-fs str] [-fm str] [-fe str] [-y] [-Y]\n"
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
+    "                 [-r survivors_per_array] [-R extra_primes]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -246,8 +247,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->num_inter     = 0;  /* No interval up to now */
   args->b_low         = 1;  /* denominators go from 1 to h */
   args->b_high        = -1;
-  args->sp1           = -1; /* gives default value */
-  args->sp2           = -1; /* gives default value */
+  args->sp1           = -1; /* negative: choose from the curve */
+  args->sp2           = -1; /* negative: choose from the curve */
+  args->survivors_per_array = -1.0; /* negative: compiled-in default */
+  args->sp2_extra     = -1; /* negative: compiled-in default */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
@@ -337,6 +340,21 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->sp2)) != 1) { error(6); }
+          i++;
+          break;
+        case 'r': /* target number of survivors of the first stage per
+                   * bit array; decides sp1 when -n is absent */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->survivors_per_array)) != 1)
+          { error(6); }
+          i++;
+          break;
+        case 'R': /* how many primes to add to sp1 to get sp2, when -N is
+                   * absent */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
           i++;
           break;
         case 'f': /* printing format */

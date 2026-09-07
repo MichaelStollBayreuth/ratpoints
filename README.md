@@ -12,6 +12,15 @@ Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpo
 The current version is ratpoints-2.2.3 from September 6, 2026. This version can use 256-bit AVX
 registers and has been optimized further, so that it now runs considerably faster than ratpoints-2.1.3.
 
+The number of primes used in each of the two sieving stages is no longer a fixed default: unless
+`-n` and `-N` are given, both are chosen from the curve, from the densities of admissible numerators
+modulo the small primes that the program computes anyway. That is worth about 14% on random curves
+and about 36% on curves with many rational points, which sieve very differently. Two
+machine-dependent constants govern the choice; they can be set with the `-r` and `-R` options, so
+they can be retuned for your machine without recompiling, by minimising the sum of the times of
+`make test1` (random curves) and `make test1many` (curves with many points). See the documentation
+for the details.
+
 There is also a variant that uses 512-bit AVX registers, which needs a CPU with AVX512F capability;
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I
 have no such CPU available (it has only been checked indirectly, by having the compiler express the

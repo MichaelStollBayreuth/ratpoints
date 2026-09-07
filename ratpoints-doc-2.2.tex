@@ -453,6 +453,19 @@ that $n \le N \le M \le \text{\texttt{RATPOINTS\_NUM\_PRIMES}}$. The latter
 is usually~$30$ (the number of odd primes $< 2^7$), but will be $53$
 (the number of odd primes $< 2^8$) if \texttt{PRIME\_SIZE} is set to~$8$, etc.
 
+If \verb+-n+ or \verb+-N+ is left out, the corresponding number is chosen
+from the curve, as described in Section~\ref{sec:spchoice}. The two constants
+that govern that choice can themselves be set: \\
+\strut\quad\verb+-r+ $x$ \verb+-R+ $e$ \\
+sets the target number of numerators surviving the first sieving stage per
+bit array to~$x$ (a real number; this is what decides~$n$), and the number of
+primes added to~$n$ to obtain~$N$ to~$e$. The mnemonic is that \verb+-r+ and
+\verb+-R+ are to the automatic choice what \verb+-n+ and \verb+-N+ are to
+the explicit one. Both are machine-dependent, and giving them on the command
+line means they can be retuned without recompiling; the compiled-in defaults
+are \texttt{RATPOINTS\_SURVIVORS\_PER\_ARRAY}
+and \texttt{RATPOINTS\_SP2\_EXTRA} in \texttt{ratpoints.h}.
+
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
 sets the maximal number of `forbidden divisors'. If the degree is even
@@ -536,6 +549,7 @@ structure, which is defined as follows.
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2;
+                 double survivors_per_array; long sp2_extra;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags; ...}
@@ -583,7 +597,11 @@ in both sieving stages together, respectively. If negative, they are chosen
 from the curve, as described in Section~\ref{sec:spchoice}; this is what the
 command line program does when \verb+-n+ and \verb+-N+ are absent. In
 \texttt{ratpoints}, these fields are set by the
-\verb+-n+ and \verb+-N+ options. Similar statements are true for
+\verb+-n+ and \verb+-N+ options. The fields
+\texttt{survivors\_per\_array} and \texttt{sp2\_extra} hold the two
+constants that govern that choice (options \verb+-r+ and \verb+-R+); if
+negative, the values compiled into \texttt{ratpoints.h} are used.
+Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
 \texttt{array\_size} specifies the maximal size (in bit arrays; a bit array
@@ -791,13 +809,12 @@ Because \texttt{sp1} is chosen this way, the second sieving stage now finds
 only a few per cent of the bit arrays non-empty whatever the curve, and it
 spends most of its time stepping over the empty ones. It does that in a tight
 loop of its own rather than re-entering the main loop body each time, which is
-worth some $7\%$ on its own. A third constant,
-\texttt{RATPOINTS\_PHASE2\_GROUP}, can make that loop test several bit arrays
-at once by or-ing them together; that used to pay when \texttt{sp1} was fixed
-and the proportion of surviving bit arrays therefore varied a great deal, but
+worth some $7\%$ on its own. Making that loop test several
+bit arrays at once, by or-ing them together, used to pay when \texttt{sp1} was
+fixed and the proportion of surviving bit arrays therefore varied a great deal;
 now that the proportion is held down to a couple of per cent it no longer does,
-and the default is~$1$. Setting it to~$0$ removes the skip loop altogether,
-which is what the code did before.
+since a group containing a survivor wastes its whole `or', and that happens
+often enough to cost more than the tests it saves.
 
 Taken together, and against the fixed values used up to version~2.2.3, this is
 about $14\%$ faster on the random curves of \texttt{make test1} and about
@@ -809,17 +826,15 @@ For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
 The two constants above were tuned on my current laptop by minimising the sum
 of the times of \texttt{make test1} and \texttt{make test1many}; to repeat
-that on your machine, build with, say,
+that on your machine, no recompilation is needed:
 \begin{verbatim}
-> make test1 test1many CCFLAGS='-DRATPOINTS_SURVIVORS_PER_ARRAY=0.03 \
-                                -DRATPOINTS_SP2_EXTRA=5 \
-                                -DRATPOINTS_PHASE2_GROUP=1'
+> ./rptest -r 0.03 -R 5 -z
+> ./rptest-many -r 0.03 -R 5 -z
 \end{verbatim}
-for a few values of each. The threshold matters considerably more than the
-offset, which at large height bounds hardly matters at all. The threshold and
-the group size should be tuned together, since the best group size depends on
-how many bit arrays the first stage leaves alive, which is what the threshold
-sets. Use both tests:
+for a few values of each, minimising the sum of the two times; then put the
+values you found into \texttt{ratpoints.h}. The threshold \verb+-r+ matters
+considerably more than the offset \verb+-R+, which at large height bounds
+hardly matters at all. Use both tests:
 they cover the two regimes that occur in practice, and a value that suits one
 of them can be a poor choice for the other.
 
@@ -830,7 +845,8 @@ edit \texttt{rptest.c} if necessary to adapt the degree and height settings)
 and then time \texttt{./rptest -z} (the \verb+-z+ option suppresses the output)
 for various combinations of the parameter settings. \texttt{rptest} accepts
 most of the optional parameters of \texttt{ratpoints}, in particular
-the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-F+ and \verb+-S+ parameters,
+the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-F+
+and \verb+-S+ parameters,
 so you can easily change the parameters used on the command line. In addition,
 there is an option \verb+-h+ $H$ to change the default height bound
 and an option \verb+-m+ $m$ that causes the program to repeat the

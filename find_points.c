@@ -1033,17 +1033,23 @@ static long sieving_info(ratpoints_args *args,
    * of survivors per bit-array; see the comment on
    * RATPOINTS_SURVIVORS_PER_ARRAY in ratpoints.h . */
   if(args->sp1 < 0)
-  { double rate = 1.0;
+  { double target = (args->survivors_per_array > 0.0)
+                      ? args->survivors_per_array
+                      : RATPOINTS_SURVIVORS_PER_ARRAY;
+    double rate = 1.0;
     long n;
 
     for(n = 0; n < pnp; n++)
     { rate *= prec[n].r;
-      if(bits_per_array*rate <= RATPOINTS_SURVIVORS_PER_ARRAY) { break; }
+      if(bits_per_array*rate <= target) { break; }
     }
     args->sp1 = (n < pnp) ? n + 1 : pnp;
     if(args->sp1 < 1) { args->sp1 = 1; }
   }
-  if(args->sp2 < 0) { args->sp2 = args->sp1 + RATPOINTS_SP2_EXTRA; }
+  if(args->sp2 < 0)
+  { args->sp2 = args->sp1 + ((args->sp2_extra >= 0) ? args->sp2_extra
+                                                    : RATPOINTS_SP2_EXTRA);
+  }
 
   /* update sp2 and sp1 if necessary */
   if(args->sp2 > pnp) { args->sp2 = pnp; }
