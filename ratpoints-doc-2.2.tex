@@ -164,24 +164,30 @@ argument can be given any value from 5 to~10; otherwise it is taken to be~7.
 The precise meaning is that the program will work with primes $< 2^s$,
 when $\text{\texttt{PRIME\_SIZE}} = s$.
 
-The program now uses SSE instructions if available, working with 128-bit
-registers. Compared to using word-size registers, this results in a noticeable
-speed-up. If you don't want this, do
-\begin{verbatim}
-> make distclean
-> make all CCFLAGS=-UUSE_SSE
-\end{verbatim}
-
-As of version~2.2, \texttt{ratpoints} can also use 256-bit AVX registers.
-To activate this, change the line
-\begin{verbatim}
-CCFLAGS1 = ${CCFLAGS128}
-\end{verbatim}
-in \texttt{Makefile} into
+The sieve works on several numerators at a time, in a register whose width is
+selected by the line
 \begin{verbatim}
 CCFLAGS1 = ${CCFLAGS256}
 \end{verbatim}
-before building \texttt{ratpoints}. This usually gives a further speed-up.
+in \texttt{Makefile}. It can be set to \verb+${CCFLAGS64}+ (word-size
+registers, which works on essentially any machine), \verb+${CCFLAGS128}+,
+\verb+${CCFLAGS256}+ (the default, using 256-bit AVX registers) or
+\verb+${CCFLAGS512}+; do a \texttt{make distclean} after changing it. Wider
+registers help the first phase of the sieve, where most of the time goes on a
+curve with few rational points, but they help the second phase much less and
+the sieve tables not at all, so the gain is nowhere near proportional to the
+width: on the author's machine, 64, 128 and 256~bits take 21.3, 15.2
+and~12.2 units of time on such a curve.
+
+The 128-bit setting uses the macro \verb+USE_AVX128+. In spite of its name it
+needs only SSE2 instructions, so it runs wherever the older \verb+USE_SSE+
+variant did, and it is never slower, because its test for an empty register
+compares the whole register against zero instead of extracting both halves
+into general registers. That is worth about 30\% of the second phase of the
+sieve, which comes to 9\% of a run long enough for the sieve to dominate it
+and about 3\% of \texttt{make test1}. The older variant is still available as
+\verb+${CCFLAGS128s}+.
+
 You may have to change \verb+-mavx2+ in the line
 \begin{verbatim}
 CCFLAGS256 = -DUSE_AVX -mavx2

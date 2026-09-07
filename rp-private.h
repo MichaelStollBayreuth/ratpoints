@@ -39,14 +39,17 @@
 		    (LONG_LENGTH == 64) ? 6 : 0)
 #define LONG_MASK (~(-(1UL<<LONG_SHIFT)))
 
-/* Check if SSE instructions can be used.
+/* Check if SSE instructions can be used.  Both 128-bit variants need them:
+ * USE_AVX128 uses only SSE2 intrinsics, in spite of its name.
  * We assume that one SSE word of 128 bit is two long's,
  * so check that a long is 64 bit = 8 byte. */
 #ifndef __SSE2__
 #undef USE_SSE
+#undef USE_AVX128
 #endif
 #if __WORDSIZE != 64
 #undef USE_SSE
+#undef USE_AVX128
 #endif
 
 #include "ratpoints.h"

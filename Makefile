@@ -55,7 +55,9 @@ INSTALL_DIR = /usr/local
 CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to work with unsigned long's instead of bit-arrays
-#  in phase 2 of the sieving. This is usually slower.
+#  in phase 2 of the sieving. This is slower at every register width that has
+#  a choice: measured 3% at 128 and 15% at 256 bits on a curve with few points,
+#  and a wash on one with many. (At 64 bits it is what the code does anyway.)
 # Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
 #  separately and write a report to stderr when the program exits; add
 #  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1.
@@ -69,10 +71,16 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 # The following uses word-length registers.
 # This should work on essentially every machine.
 CCFLAGS64 =
-# The following uses 128-bit SSE-registers.
-CCFLAGS128 = -DUSE_SSE
-# A variant of the above.
-CCFLAGS128a = -DUSE_AVX128
+# The following uses 128-bit registers. In spite of its name, USE_AVX128 needs
+# only SSE2, which every x86-64 machine has, so this is as portable as the
+# USE_SSE variant below and never slower: its test for an empty register
+# compares the whole register against zero instead of extracting both halves
+# into general registers. That is worth 30% of the second sieving phase, hence
+# 9% of a long run, but only about 3% of "make test1", whose height bounds are
+# small enough that the set-up is a large share of the time.
+CCFLAGS128 = -DUSE_AVX128
+# The older variant, using the SSE intrinsics directly. Kept for comparison.
+CCFLAGS128s = -DUSE_SSE
 # The following uses 256-bit AVX registers.
 # Change "-mavx2" to "-mavx" when your processor has AVX, but no AVX2.
 # This may be a bit slower compared to using AVX2 instructions.
