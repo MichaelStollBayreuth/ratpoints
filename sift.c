@@ -30,37 +30,54 @@
 #include "rp-private.h"
 
 /* ---------------------------------------------------------------------
- * Development instrumentation: split the run time of _ratpoints_sift0
- * into its two phases.  Build with -DRP_PHASE_TIMING to switch it on;
- * a report is written to stderr when the program exits.
+ * Development instrumentation: split the work of _ratpoints_sift0 into
+ * its three stages and record how much survives each of them.  Build
+ * with -DRP_PHASE_TIMING for the timings, and additionally with
+ * -DRP_PHASE_COUNTS for the survivor counts, which need a popcount pass
+ * over the survivors and two more per surviving unit in phase 2.  The
+ * two flags should not be combined when the timings are what is wanted.
+ * A machine-readable line is written to stderr when the program exits.
  *
- * The timer is rdtsc, which counts *reference* cycles at a constant rate
- * and is therefore really a clock, not a core-cycle counter.  Frequency
- * drift affects both phases alike, so the *ratio* it reports is sound;
- * take the absolute cycle count from "perf stat" on an uninstrumented
- * build and split it with that ratio.
+ * The three stages are
+ *   1  sieving with the first sp1 primes,
+ *   2  scanning the survivors and sieving them with the next sp2-sp1,
+ *   3  the exact check with gmp, which runs inside stage 2 and is
+ *      subtracted from it.
  *
- * With -DRP_PHASE_COUNTS in addition, the number of units surviving
- * phase 1 is counted as well -- bit-arrays, or single words when
- * USE_LONG_IN_PHASE_2 is set.  That needs an extra TEST in the inner
- * loop of phase 2, so the two flags should not be combined when the
- * timings are what is wanted.
+ * The timer is rdtsc, which counts reference cycles at a constant rate
+ * and is therefore a clock, not a core-cycle counter.  Frequency drift
+ * affects the stages alike, so the ratios are sound; for core cycles run
+ * the whole thing under "perf stat -e cpu_core/cycles/" and split that.
  * --------------------------------------------------------------------- */
 
 #ifdef RP_PHASE_TIMING
 
 #include <x86intrin.h>
+#include <string.h>
 
 unsigned long long _rp_phase1_cycles = 0, _rp_phase2_cycles = 0;
-unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
 unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
+unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
+long _rp_sp1 = -1, _rp_sp2 = -1;
+/* the whole run, so that core cycles from "perf stat" can be apportioned
+ * to the phases: cycles_i = perf_cycles * cyc_i / cyctot */
+unsigned long long _rp_t_start = 0;
+static void _rp_t_begin(void) __attribute__((constructor));
+static void _rp_t_begin(void) { _rp_t_start = __rdtsc(); }
 #ifdef RP_PHASE_COUNTS
+/* bits set on entry to phase 1, after phase 1, and after phase 2;
+ * and the number of units (bit-arrays, or words under
+ * USE_LONG_IN_PHASE_2) that are non-zero after phase 1 */
+unsigned long long _rp_bits_in = 0, _rp_bits_1 = 0, _rp_bits_2 = 0;
 unsigned long long _rp_units_surviving = 0;
-# ifdef USE_LONG_IN_PHASE_2
-#  define RP_UNITS_PER_ARRAY RBA_PACK
-# else
-#  define RP_UNITS_PER_ARRAY 1
-# endif
+
+static inline unsigned _rp_popcnt(const ratpoints_bit_array *a)
+{ unsigned long w[RBA_PACK]; unsigned i, c = 0;
+
+  memcpy(w, a, sizeof(*a));
+  for(i = 0; i < RBA_PACK; i++) { c += __builtin_popcountl(w[i]); }
+  return c;
+}
 #endif
 
 # define RP_TIC(t) unsigned long long t = __rdtsc()
@@ -74,49 +91,30 @@ unsigned long long _rp_units_surviving = 0;
 static void _rp_phase_report(void) __attribute__((destructor));
 
 static void _rp_phase_report(void)
-{ unsigned long long total = _rp_phase1_cycles + _rp_phase2_cycles;
+{ unsigned long long c2;
 
-  if(total == 0) { return; }
-  fprintf(stderr, "\n[phases] width = %d bits, RATPOINTS_CHUNK = %d, "
-                  "phase 2 on %s\n",
+  if(_rp_phase1_cycles + _rp_phase2_cycles == 0) { return; }
+  c2 = _rp_phase2_cycles - _rp_check_cycles;
+  /* one parseable line; "bits_*" are only meaningful with RP_PHASE_COUNTS */
+  fprintf(stderr,
+          "[phasedata] width=%d chunk=%d long2=%d sp1=%ld sp2=%ld"
+          " calls=%llu arrays=%llu bits_in=%llu bits_1=%llu bits_2=%llu"
+          " units_1=%llu checks=%llu cyc1=%llu cyc2=%llu cyc3=%llu"
+          " cyctot=%llu\n",
           (int)(8*(int)sizeof(ratpoints_bit_array)), (int)RATPOINTS_CHUNK,
 #ifdef USE_LONG_IN_PHASE_2
-          "unsigned long"
+          1,
 #else
-          "bit-arrays"
+          0,
 #endif
-          );
-  fprintf(stderr, "[phases] sift0 calls %llu, bit-arrays swept %llu"
-                  " (%.1f per call)\n",
-          _rp_sift0_calls, _rp_arrays_swept,
-          _rp_sift0_calls ? (double)_rp_arrays_swept/_rp_sift0_calls : 0.0);
+          _rp_sp1, _rp_sp2, _rp_sift0_calls, _rp_arrays_swept,
 #ifdef RP_PHASE_COUNTS
-  { double units = (double)RP_UNITS_PER_ARRAY*(double)_rp_arrays_swept;
-    double words = (double)RBA_PACK*(double)_rp_arrays_swept;
-
-    /* "units" are what phase 2 looks at: bit-arrays, or single words when
-     * USE_LONG_IN_PHASE_2 is set.  The count per numerator word is the
-     * quantity that should be independent of the register width. */
-    fprintf(stderr, "[phases] surviving phase 1: %llu"
-                    " (%.3f%% of units, %.3e per numerator word)\n",
-            _rp_units_surviving,
-            units ? 100.0*_rp_units_surviving/units : 0.0,
-            words ? _rp_units_surviving/words : 0.0);
-  }
+          _rp_bits_in, _rp_bits_1, _rp_bits_2, _rp_units_surviving,
+#else
+          0ULL, 0ULL, 0ULL, 0ULL,
 #endif
-  fprintf(stderr, "[phases] phase 1 %15llu  %5.2f%%\n",
-          _rp_phase1_cycles, 100.0*_rp_phase1_cycles/total);
-  fprintf(stderr, "[phases] phase 2 %15llu  %5.2f%%\n",
-          _rp_phase2_cycles, 100.0*_rp_phase2_cycles/total);
-  /* _ratpoints_check_point runs inside phase 2; for curves with many
-   * rational points it can dominate it, and it is the same work for
-   * every register width, so report it separately. */
-  fprintf(stderr, "[phases]  of which exact check %llu (%.2f%% of all,"
-                  " %llu calls)\n",
-          _rp_check_cycles, 100.0*_rp_check_cycles/total, _rp_check_calls);
-  fprintf(stderr, "[phases] phase 2 sieve only %llu  %5.2f%%\n",
-          _rp_phase2_cycles - _rp_check_cycles,
-          100.0*(_rp_phase2_cycles - _rp_check_cycles)/total);
+          _rp_check_calls, _rp_phase1_cycles, c2, _rp_check_cycles,
+          __rdtsc() - _rp_t_start);
 }
 
 #else
@@ -218,6 +216,14 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_TIMING
   _rp_sift0_calls++;
   _rp_arrays_swept += w_high - w_low;
+  _rp_sp1 = sp1; _rp_sp2 = sp2;
+#endif
+#ifdef RP_PHASE_COUNTS
+  { long n_;
+
+    for(n_ = 0; n_ < w_high - w_low; n_++)
+    { _rp_bits_in += _rp_popcnt(&survivors[n_]); }
+  }
 #endif
   RP_TIC(_rp_t1);
 
@@ -571,7 +577,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       long n;
 
 #ifdef RP_PHASE_COUNTS
-      if(nums) { _rp_units_surviving++; }
+      if(nums)
+      { _rp_units_surviving++; _rp_bits_1 += __builtin_popcountl(nums); }
 #endif
 
 #ifdef DEBUG
@@ -596,6 +603,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         ssp++;
       }
+
+#ifdef RP_PHASE_COUNTS
+      _rp_bits_2 += __builtin_popcountl(nums);
+#endif
 
       /* Check the survivors of the sieve if they really give points */
       if(nums)
@@ -655,7 +666,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       long n;
 
 #ifdef RP_PHASE_COUNTS
-      if(TEST(nums)) { _rp_units_surviving++; }
+      if(TEST(nums))
+      { _rp_units_surviving++; _rp_bits_1 += _rp_popcnt(&nums); }
 #endif
 
 #ifdef DEBUG
@@ -684,6 +696,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         ssp++;
       }
+
+#ifdef RP_PHASE_COUNTS
+      _rp_bits_2 += _rp_popcnt(&nums);
+#endif
 
       /* Check the survivors of the sieve if they really give points. */
       if(TEST(nums))
