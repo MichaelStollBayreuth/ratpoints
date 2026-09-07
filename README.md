@@ -17,9 +17,10 @@ The number of primes used in each of the two sieving stages is no longer a fixed
 modulo the small primes that the program computes anyway. That is worth about 14% on random curves
 and about 36% on curves with many rational points, which sieve very differently. Two
 machine-dependent constants govern the choice; they can be set with the `-r` and `-R` options, so
-they can be retuned for your machine without recompiling, by minimising the sum of the times of
-`make test1` (random curves) and `make test1many` (curves with many points). See the documentation
-for the details.
+`make tune` retunes them for your machine automatically, by minimising the sum of the times of
+`make test1` (random curves) and `make test1many` (curves with many points); it writes what it finds
+to `tuning.mk`, which the Makefile picks up, and touches no source file. See the documentation for
+the details.
 
 There is also a variant that uses 512-bit AVX registers, which needs a CPU with AVX512F capability;
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I

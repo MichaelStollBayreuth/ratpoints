@@ -76,7 +76,26 @@ CCFLAGS512 = -DUSE_AVX512 -mavx512f
 # CCFLAGS1 = ${CCFLAGS128}
 CCFLAGS1 = ${CCFLAGS256}
 
-CCFLAGS_0 = ${CCFLAGS0} ${CCFLAGS1}
+# Machine-dependent tuning of the two constants that decide how many primes
+# each sieving stage uses.  "make tune" writes tuning.mk; without it the
+# values compiled into ratpoints.h are used.  This needs GNU make for the
+# conditionals; if yours is not GNU make, delete the block and either leave
+# tuning.mk out or trust it unconditionally.
+-include tuning.mk
+
+TUNE_CONFIG = ${CCFLAGS1} / PRIME_SIZE=${PRIME_SIZE}
+ifdef TUNED_FOR
+ifneq (${TUNED_FOR},${TUNE_CONFIG})
+$(warning tuning.mk was measured for "${TUNED_FOR}", but this build is)
+$(warning "${TUNE_CONFIG}" -- ignoring it; run "make tune" again)
+TUNEFLAGS =
+endif
+endif
+
+# CCFLAGS_H is the part that decides what the generated headers must contain
+# (the register width and PRIME_SIZE); the tuning flags do not affect them.
+CCFLAGS_H = ${CCFLAGS0} ${CCFLAGS1}
+CCFLAGS_0 = ${CCFLAGS_H} ${TUNEFLAGS}
 
 # Further compiler flags for linking
 CCFLAGS2 = -lgmp -lgcc -lc
@@ -89,7 +108,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
-            gpl-2.0.txt testbase2 testdata-many.h testbase-many
+            gpl-2.0.txt testbase2 testdata-many.h testbase-many tune.sh
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
@@ -110,6 +129,14 @@ all: ratpoints libratpoints.a doc
 doc: ratpoints-doc-2.2.pdf
 
 test: test1 test1many test2 timing
+
+# Measure good values for the two machine-dependent constants and write them
+# to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
+# couple of minutes, wants an otherwise idle machine, and must not run under
+# "make -j".  Run "make all" afterwards to rebuild with the result.
+.PHONY: tune
+tune: rptest rptest-many
+	@TUNE_CONFIG='${TUNE_CONFIG}' ./tune.sh
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
@@ -168,7 +195,7 @@ clean:
 	${RM} ${TEMPFILES}
 
 distclean: clean
-	${RM} ${TARGETFILES}
+	${RM} ${TARGETFILES} tuning.mk
 
 debug: ratpoints-debug
 

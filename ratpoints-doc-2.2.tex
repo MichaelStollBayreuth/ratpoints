@@ -825,18 +825,47 @@ $36\%$ faster on the point-rich curves of \texttt{make test1many}.
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
 The two constants above were tuned on my current laptop by minimising the sum
-of the times of \texttt{make test1} and \texttt{make test1many}; to repeat
-that on your machine, no recompilation is needed:
+of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
+that on your machine, run
+\begin{verbatim}
+> make tune
+\end{verbatim}
+which does the whole thing: it sweeps first the threshold and then the offset
+over both test sets, and writes the values it finds to a file
+\texttt{tuning.mk} that the \texttt{Makefile} includes, so that a subsequent
+\texttt{make all} builds with them. No source file is touched; deleting
+\texttt{tuning.mk} restores the values compiled into \texttt{ratpoints.h}.
+The file records the configuration it was measured for, and is ignored (with a
+warning) if you later build with a different register width or
+\texttt{PRIME\_SIZE}, since the best values may differ.
+
+It takes a few minutes, wants an otherwise idle machine, and must not be run
+under \texttt{make -j}. It is deliberately not part of \texttt{make all}.
+
+Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
+some trouble over it. The cost surface is flat --- anything within a factor of
+two of a good threshold costs under $3\%$ --- whereas a laptop under sustained
+load slows by a quarter as it warms up, so a straight sweep would measure the
+clock rather than the settings. Each candidate is therefore timed back to back
+with the current settings and only the ratio is kept, the median over several
+rounds is used, and the current settings are themselves among the candidates,
+so that the ratio they measure against themselves shows how much noise is
+left. If that is more than $2\%$ the run is declared inconclusive, and
+nothing is written unless the winner is better by more than $3\%$ --- a noisy
+run should leave a good default alone rather than replace it with a worse one.
+
+Should you prefer to do it by hand, the two constants can be set directly:
 \begin{verbatim}
 > ./rptest -r 0.03 -R 5 -z
 > ./rptest-many -r 0.03 -R 5 -z
 \end{verbatim}
 for a few values of each, minimising the sum of the two times; then put the
-values you found into \texttt{ratpoints.h}. The threshold \verb+-r+ matters
-considerably more than the offset \verb+-R+, which at large height bounds
-hardly matters at all. Use both tests:
-they cover the two regimes that occur in practice, and a value that suits one
-of them can be a poor choice for the other.
+values you found into \texttt{ratpoints.h}. The option \verb+-T+ makes the
+test print the CPU time it used, and nothing else, which is what
+\texttt{tune.sh} uses. The threshold \verb+-r+ matters considerably more
+than the offset \verb+-R+, which at large height bounds hardly matters at
+all. Use both tests: they cover the two regimes that occur in practice, and a
+value that suits one of them can be a poor choice for the other.
 
 For your machine
 and input data, other values may be better. You can replace the
@@ -846,7 +875,8 @@ and then time \texttt{./rptest -z} (the \verb+-z+ option suppresses the output)
 for various combinations of the parameter settings. \texttt{rptest} accepts
 most of the optional parameters of \texttt{ratpoints}, in particular
 the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-F+
-and \verb+-S+ parameters,
+and \verb+-S+ parameters, as well as \verb+-T+ (print the CPU time used, and
+nothing else),
 so you can easily change the parameters used on the command line. In addition,
 there is an option \verb+-h+ $H$ to change the default height bound
 and an option \verb+-m+ $m$ that causes the program to repeat the
