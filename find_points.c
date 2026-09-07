@@ -839,7 +839,7 @@ static int compare_entries(const void *a, const void *b)
 static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
                          ratpoints_sieve_entry **sieve_list,
-                         double bits_per_array)
+                         double bits_per_word)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or else returns 0. */
@@ -1031,17 +1031,17 @@ static long sieving_info(ratpoints_args *args,
    * product of the first n values of r.  Multiplied by the number of bits
    * actually set in a bit-array to begin with, that is the expected number
    * of survivors per bit-array; see the comment on
-   * RATPOINTS_SURVIVORS_PER_ARRAY in ratpoints.h . */
+   * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h . */
   if(args->sp1 < 0)
-  { double target = (args->survivors_per_array > 0.0)
-                      ? args->survivors_per_array
-                      : RATPOINTS_SURVIVORS_PER_ARRAY;
+  { double target = (args->survivors_per_word > 0.0)
+                      ? args->survivors_per_word
+                      : RATPOINTS_SURVIVORS_PER_WORD;
     double rate = 1.0;
     long n;
 
     for(n = 0; n < pnp; n++)
     { rate *= prec[n].r;
-      if(bits_per_array*rate <= target) { break; }
+      if(bits_per_word*rate <= target) { break; }
     }
     args->sp1 = (n < pnp) ? n + 1 : pnp;
     if(args->sp1 < 1) { args->sp1 = 1; }
@@ -1056,9 +1056,9 @@ static long sieving_info(ratpoints_args *args,
   if(args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
   if(args->flags & RATPOINTS_VERBOSE)
-  { printf("  %.1f bits set per bit-array"
+  { printf("  %.1f bits set per word"
            " ==> use %ld primes in the first phase, %ld altogether\n",
-           bits_per_array, args->sp1, args->sp2);
+           bits_per_word, args->sp1, args->sp2);
   }
 
   /* put the sorted entries into sieve_list */
@@ -1666,12 +1666,17 @@ long find_points_work(ratpoints_args *args,
   { printf("Find the points mod p for the first %ld odd primes p:\n",
            args->num_primes);
   }
-  { /* The mean number of bits set in a bit-array on entry to the sieve.
-     * num_bits[b] holds the admissible numerators for denominators
-     * b mod 16, as one word repeated through the bit-array, and the
-     * denominators with no admissible numerator at all are skipped, so the
-     * mean is taken over the non-zero entries only. */
-    double bits_per_array = 0.0;
+  { /* The mean number of bits set in one word of a bit-array on entry to
+     * the sieve.  num_bits[b] holds the admissible numerators for
+     * denominators b mod 16, as one word repeated through the bit-array, so
+     * the population count of that word is what is wanted; the denominators
+     * with no admissible numerator at all are skipped, so the mean is taken
+     * over the non-zero entries only.
+     * Per word rather than per bit-array on purpose: measurements across
+     * register widths show that the survivor rate at the best sp1 is
+     * constant per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD
+     * in ratpoints.h). */
+    double bits_per_word = 0.0;
     { long i, nz = 0, tot = 0;
 
       for(i = 0; i < 16; i++)
@@ -1679,10 +1684,10 @@ long find_points_work(ratpoints_args *args,
 
         if(c) { tot += c; nz++; }
       }
-      if(nz) { bits_per_array = ((double)tot/(double)nz)*(double)RBA_PACK; }
+      if(nz) { bits_per_word = (double)tot/(double)nz; }
     }
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
-                              bits_per_array);
+                              bits_per_word);
 
     if(ret)
     {

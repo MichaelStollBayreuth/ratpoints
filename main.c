@@ -68,7 +68,7 @@ char *usage_str =
     "                 [-f format] [-fs str] [-fm str] [-fe str] [-y] [-Y]\n"
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
-    "                 [-r survivors_per_array] [-R extra_primes]\n"
+    "                 [-r survivors_per_word] [-R extra_primes]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -249,7 +249,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->b_high        = -1;
   args->sp1           = -1; /* negative: choose from the curve */
   args->sp2           = -1; /* negative: choose from the curve */
-  args->survivors_per_array = -1.0; /* negative: compiled-in default */
+  args->survivors_per_word = -1.0; /* negative: compiled-in default */
   args->sp2_extra     = -1; /* negative: compiled-in default */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
@@ -346,7 +346,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * bit array; decides sp1 when -n is absent */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->survivors_per_array)) != 1)
+          if(sscanf(argv[i], " %lf", &(args->survivors_per_word)) != 1)
           { error(6); }
           i++;
           break;

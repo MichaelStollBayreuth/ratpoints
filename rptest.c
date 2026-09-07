@@ -28,6 +28,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "ratpoints.h"
 
@@ -77,8 +78,9 @@ int main(int argc, char *argv[])
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
   long sieve_primes2 = -1;
-  double survivors_per_array = -1.0; /* negative: compiled-in default */
+  double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
+  int print_time = 0;                /* -T: report the CPU time used */
   long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
   long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
   long b_low         = 1;
@@ -144,7 +146,7 @@ int main(int argc, char *argv[])
         case 'r': /* target survivors of the first stage per bit array */
           if(argc == i) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &survivors_per_array) != 1) return(-6);
+          if(sscanf(argv[i], " %lf", &survivors_per_word) != 1) return(-6);
           i++;
           break;
         case 'R': /* primes added to sp1 to get sp2 */
@@ -187,6 +189,11 @@ int main(int argc, char *argv[])
           break;
         case 'z': /* no output */
           no_output = 1;
+          i++;
+          break;
+        case 'T': /* print the CPU time used, in seconds, and nothing else;
+                   * meant to be combined with -z, for tuning scripts */
+          print_time = 1;
           i++;
           break;
         case 'Z': /* do print points */
@@ -246,6 +253,7 @@ int main(int argc, char *argv[])
 
   /* Repeat computation iterations times */
   { long count;
+    clock_t t_start = clock();
 
     for(count = iterations; count; count--)
     { for(n = 0; n < NUM_TEST; n++)
@@ -272,7 +280,7 @@ int main(int argc, char *argv[])
         args.b_high        = b_high;
         args.sp1           = sieve_primes1;
         args.sp2           = sieve_primes2;
-        args.survivors_per_array = survivors_per_array;
+        args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
         args.array_size    = array_size;
         args.sturm         = sturm_iter;
@@ -294,6 +302,8 @@ int main(int argc, char *argv[])
         /* fflush(NULL); */
       }
     }
+    if(print_time)
+    { printf("%.6f\n", (double)(clock() - t_start)/(double)CLOCKS_PER_SEC); }
   }
 
   /* clean up */
