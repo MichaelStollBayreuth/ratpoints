@@ -29,6 +29,25 @@
 
 #include "rp-private.h"
 
+/* The "or" of RATPOINTS_PHASE2_GROUP consecutive bit-arrays, as a balanced
+ * tree so that the loads do not serialise. */
+#if (RATPOINTS_PHASE2_GROUP == 2)
+# define GROUP_OR(p) ORR((p)[0], (p)[1])
+#elif (RATPOINTS_PHASE2_GROUP == 4)
+# define GROUP_OR(p) ORR(ORR((p)[0], (p)[1]), ORR((p)[2], (p)[3]))
+#elif (RATPOINTS_PHASE2_GROUP == 8)
+# define GROUP_OR(p) ORR(ORR(ORR((p)[0], (p)[1]), ORR((p)[2], (p)[3])), \
+                         ORR(ORR((p)[4], (p)[5]), ORR((p)[6], (p)[7])))
+#elif (RATPOINTS_PHASE2_GROUP == 16)
+# define GROUP_OR(p) \
+    ORR(ORR(ORR(ORR((p)[ 0], (p)[ 1]), ORR((p)[ 2], (p)[ 3])), \
+            ORR(ORR((p)[ 4], (p)[ 5]), ORR((p)[ 6], (p)[ 7]))), \
+        ORR(ORR(ORR((p)[ 8], (p)[ 9]), ORR((p)[10], (p)[11])), \
+            ORR(ORR((p)[12], (p)[13]), ORR((p)[14], (p)[15]))))
+#elif (RATPOINTS_PHASE2_GROUP > 1)
+# error "RATPOINTS_PHASE2_GROUP must be 1, 2, 4, 8 or 16"
+#endif
+
 /* ---------------------------------------------------------------------
  * Development instrumentation: split the work of _ratpoints_sift0 into
  * its three stages and record how much survives each of them.  Build
@@ -672,11 +691,29 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   { ratpoints_bit_array *surv0 = &survivors[0];
     long i, base = 0;
 
-    /* Step through the survivors array */
+    /* Step through the survivors array.  sp1 was chosen so that only about
+     * RATPOINTS_SURVIVORS_PER_ARRAY of the bit-arrays are non-empty here, so
+     * most of the work is stepping over empty ones; do that in a tight loop
+     * of its own instead of re-entering the body below every time.  With
+     * RATPOINTS_PHASE2_GROUP > 1, several bit-arrays are or-ed together and
+     * the whole group is stepped over at once. */
     for(i = w_low; i < w_high; i++, base++)
-    { ratpoints_bit_array nums = *surv0++;
+    { ratpoints_bit_array nums;
       sieve_spec *ssp = &sieves[sp1];
       long n;
+
+#if (RATPOINTS_PHASE2_GROUP > 1)
+      while(i + RATPOINTS_PHASE2_GROUP <= w_high && !TEST(GROUP_OR(surv0)))
+      { surv0 += RATPOINTS_PHASE2_GROUP;
+        i     += RATPOINTS_PHASE2_GROUP;
+        base  += RATPOINTS_PHASE2_GROUP;
+      }
+#endif
+#if (RATPOINTS_PHASE2_GROUP >= 1)
+      while(i < w_high && !TEST(*surv0)) { surv0++; i++; base++; }
+      if(i >= w_high) { break; }
+#endif
+      nums = *surv0++;
 
 #ifdef RP_PHASE_COUNTS
       if(TEST(nums))

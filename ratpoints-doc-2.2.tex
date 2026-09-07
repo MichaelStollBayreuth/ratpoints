@@ -787,9 +787,21 @@ property of the machine rather than of the curve. Then \texttt{sp2} is set to
 \texttt{sp1} plus \texttt{RATPOINTS\_SP2\_EXTRA}, capped by the number of
 primes that carry any information at all.
 
-Against the fixed values used up to version~2.2.3, this is about $7\%$ faster
-on the random curves of \texttt{make test1} and about $33\%$ faster on the
-point-rich curves of \texttt{make test1many}.
+Because \texttt{sp1} is chosen this way, the second sieving stage now finds
+only a few per cent of the bit arrays non-empty whatever the curve, and it
+spends most of its time stepping over the empty ones. It does that in a tight
+loop of its own rather than re-entering the main loop body each time, which is
+worth some $7\%$ on its own. A third constant,
+\texttt{RATPOINTS\_PHASE2\_GROUP}, can make that loop test several bit arrays
+at once by or-ing them together; that used to pay when \texttt{sp1} was fixed
+and the proportion of surviving bit arrays therefore varied a great deal, but
+now that the proportion is held down to a couple of per cent it no longer does,
+and the default is~$1$. Setting it to~$0$ removes the skip loop altogether,
+which is what the code did before.
+
+Taken together, and against the fixed values used up to version~2.2.3, this is
+about $14\%$ faster on the random curves of \texttt{make test1} and about
+$36\%$ faster on the point-rich curves of \texttt{make test1many}.
 
 \subsection{Retuning for your machine}
 
@@ -800,10 +812,14 @@ of the times of \texttt{make test1} and \texttt{make test1many}; to repeat
 that on your machine, build with, say,
 \begin{verbatim}
 > make test1 test1many CCFLAGS='-DRATPOINTS_SURVIVORS_PER_ARRAY=0.03 \
-                                -DRATPOINTS_SP2_EXTRA=5'
+                                -DRATPOINTS_SP2_EXTRA=5 \
+                                -DRATPOINTS_PHASE2_GROUP=1'
 \end{verbatim}
 for a few values of each. The threshold matters considerably more than the
-offset, which at large height bounds hardly matters at all. Use both tests:
+offset, which at large height bounds hardly matters at all. The threshold and
+the group size should be tuned together, since the best group size depends on
+how many bit arrays the first stage leaves alive, which is what the threshold
+sets. Use both tests:
 they cover the two regimes that occur in practice, and a value that suits one
 of them can be a poor choice for the other.
 

@@ -247,6 +247,42 @@ phase-1 prime (1.36 cycles per bit-array) stops paying for itself against the
 back-of-the-envelope figure is the right size, which is the reassuring part;
 the measured 0.02 is what to use.
 
+## What this does to the phase-2 group size
+
+`PERFORMANCE-NOTES.md` (branch `interface-phase1-phase2`) tabulated the
+phase-2 group size against `sp1` and concluded that a group of four was the
+right default.  **That conclusion does not survive the change above**, and the
+reason is instructive: it was measured with `sp1` held fixed, so the proportion
+of bit-arrays still alive at the start of phase 2 varied over a factor of
+twenty with the curve, and the best group size varied with it.  Now that `sp1`
+is chosen to hold that proportion down to a couple of per cent whatever the
+curve, the group size no longer has to adapt -- and at that proportion the
+group of one is best.
+
+Measured with the two test sets, minimum of six interleaved rounds:
+
+| threshold / group | `test1` (random) | `test1many` (point-rich) |
+|---|---|---|
+| 0.03 / **1** | **7.025 G** | **7.223 G** |
+| 0.04 / 1 | 7.031 G (+0.1%) | 7.247 G (+0.3%) |
+| 0.02 / 1 | 7.157 G (+1.9%) | 7.259 G (+0.5%) |
+| 0.02 / 2 | 7.214 G (+2.7%) | 7.434 G (+2.9%) |
+| 0.04 / 2 | 7.188 G (+2.3%) | 7.521 G (+4.1%) |
+
+and against a group size of 0, which removes the skip loop altogether, every
+one of these is 6 to 10% faster.  So the *skip loop* is worth having and the
+*grouping* is not: with only a few per cent of the bit-arrays alive, a group
+that contains a survivor has wasted its whole `or` tree, and that happens often
+enough to cost more than the saved tests.  This is the same ridge as before,
+read at the point where the survivor rate now sits.
+
+The whole change, against the fixed `11/19` and no skip loop of version 2.2.3:
+
+| | 2.2.3 | now | |
+|---|---|---|---|
+| `test1` (random curves) | 8.232 G | 7.062 G | **-14.2%** |
+| `test1many` (point-rich) | 11.386 G | 7.233 G | **-36.5%** |
+
 ## Caveats
 
 * The 79% median penalty of the default is a statement about **point-rich

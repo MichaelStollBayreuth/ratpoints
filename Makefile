@@ -25,6 +25,12 @@
 PRIME_SIZE = 7
 VERSION = 2.2.3
 
+# The test targets time their runs with the shell's "time".  That is a shell
+# built-in, and dash -- which is /bin/sh on Debian and Ubuntu -- does not have
+# it, so name a shell that does rather than relying on whatever /bin/sh is.
+# Override on the command line if bash lives elsewhere on your system.
+SHELL = /bin/bash
+
 CC = gcc
 RM = rm -f
 INSTALL = cp
