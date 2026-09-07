@@ -191,11 +191,14 @@ CCFLAGS1 = ${CCFLAGS512}
 which requires a CPU with AVX512F capability. Note that this variant has
 so far only been tested indirectly (see the change log entry below), since
 I have no such CPU available; you should therefore run \texttt{make test}
-before relying on it. Be aware that AVX-512 is not a safe bet for a
-speed-up: the sieving loop is limited by memory bandwidth rather than by
-arithmetic, and some Intel server processors reduce their clock frequency
-when 512-bit instructions are used. It is worth timing the 256-bit and the
-512-bit version against each other on your machine.
+before relying on it. It is also worth timing the 256-bit and the 512-bit
+version against each other on your machine: the sieving loop is limited by
+memory bandwidth rather than by arithmetic, so wider registers do not
+automatically pay off, and some Intel server processors reduce their clock
+frequency when 512-bit instructions are used. The one data point available
+so far is encouraging, though: on an AMD Ryzen~9 9950X3D (Zen~5 architecture),
+\textbf{Drew Sutherland} measured a speed-up of 13 to 14\% over the 256-bit
+version, for a curve with many rational points.
 
 If you leave out \verb+-mavx512f+ and compile with just
 \verb+-DUSE_AVX512+, then \texttt{gcc} will express the 64-byte vectors
@@ -982,8 +985,10 @@ This exercises the whole code path (in particular \verb+RBA_PACK == 8+
 and the two mask macros); \texttt{make test1} and \texttt{make test2}
 both reproduce the reference output exactly, as do 400 randomly generated
 comparisons against the 256-bit version. What this cannot check is the
-genuine 512-bit instructions, so a first run on real hardware is still
-wanted.
+genuine 512-bit instructions. In the meantime, \textbf{Drew Sutherland} has
+run the two variants against each other on an AMD Ryzen~9 9950X3D (Zen~5
+architecture), for a curve with many rational points and a height bound
+of~$10^6$; the 512-bit version was faster by 13 to 14\%.
 
 %=========================================================================
 
