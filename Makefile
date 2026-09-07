@@ -139,7 +139,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
 TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
-            rptest.out rptest-many.out config.stamp \
+            rptest.out rptest-many.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out
 
 # Executables and library produced when building
@@ -226,66 +226,86 @@ debug: ratpoints-debug
 libratpoints.a: sift.o init.o sturm.o find_points.o
 	ar rs libratpoints.a sift.o init.o sturm.o find_points.o
 
-ratpoints: libratpoints.a main.c ratpoints.h
+ratpoints: libratpoints.a main.c ratpoints.h build.stamp
 	${CC} main.c -o ratpoints ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
-main.o: main.c ratpoints.h
+main.o: main.c ratpoints.h build.stamp
 	${CC} main.c -c -o main.o ${CCFLAGS_0} -O3 ${CCFLAGS}
 
-ratpoints-debug: sift-debug.o init.o sturm.o find_points-debug.o main.o
+ratpoints-debug: sift-debug.o init.o sturm.o find_points-debug.o main.o build.stamp
 	${CC} sift-debug.o init.o sturm.o find_points-debug.o main.o \
               -o ratpoints-debug ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}
 
-sift.o: sift.c ratpoints.h rp-private.h
+sift.o: sift.c ratpoints.h rp-private.h build.stamp
 	${CC} sift.c -c -o sift.o ${CCFLAGS_0} -funroll-loops ${CCFLAGS}
 
-sift-debug.o: sift.c ratpoints.h rp-private.h
+sift-debug.o: sift.c ratpoints.h rp-private.h build.stamp
 	${CC} sift.c -c -o sift-debug.o ${CCFLAGS_0} -funroll-loops -DDEBUG ${CCFLAGS}
 
-sift.s: sift.c ratpoints.h rp-private.h
+sift.s: sift.c ratpoints.h rp-private.h build.stamp
 	${CC} sift.c -S -o sift.s ${CCFLAGS_0} -funroll-loops ${CCFLAGS}
 
-sift.i: sift.c ratpoints.h rp-private.h
+sift.i: sift.c ratpoints.h rp-private.h build.stamp
 	${CC} sift.c -E -o sift.i ${CCFLAGS_0} -funroll-loops ${CCFLAGS}
 
-init.o: init.c ratpoints.h rp-private.h init_sieve.h
+init.o: init.c ratpoints.h rp-private.h init_sieve.h build.stamp
 	${CC} init.c -c -o init.o ${CCFLAGS_0} -funroll-loops -O3 ${CCFLAGS}
 
-init.s: init.c ratpoints.h rp-private.h init_sieve.h
+init.s: init.c ratpoints.h rp-private.h init_sieve.h build.stamp
 	${CC} init.c -S -o init.s ${CCFLAGS_0} -funroll-loops -O3 ${CCFLAGS}
 
-sturm.o: sturm.c ratpoints.h rp-private.h
+sturm.o: sturm.c ratpoints.h rp-private.h build.stamp
 	${CC} sturm.c -c -o sturm.o ${CCFLAGS_0} ${CCFLAGS}
 
-find_points.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h
+find_points.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h build.stamp
 	${CC} find_points.c -c -o find_points.o ${CCFLAGS_0} ${CCFLAGS}
 
-find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h
+find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points.h build.stamp
 	${CC} find_points.c -c -o find_points-debug.o ${CCFLAGS_0} -DDEBUG ${CCFLAGS}
 
 # Correctness check and benchmark for the sieve table set-up (see bench_init.c).
-bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h
+bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h build.stamp
 	${CC} bench_init.c -o bench_init ${CCFLAGS_0} -O3 -funroll-loops \
               ${CCFLAGS3} ${CCFLAGS2} ${CCFLAGS}
 
-rptest: libratpoints.a rptest.c ratpoints.h testdata.h
+rptest: libratpoints.a rptest.c ratpoints.h testdata.h build.stamp
 	${CC} rptest.c -o rptest ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
-rptest-many: libratpoints.a rptest.c ratpoints.h testdata-many.h
+rptest-many: libratpoints.a rptest.c ratpoints.h testdata-many.h build.stamp
 	${CC} rptest.c -o rptest-many -DRATPOINTS_TESTDATA='"testdata-many.h"' \
 	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
-# The generated headers depend on the configuration (the register width set
-# by CCFLAGS1, and PRIME_SIZE), which make cannot see by itself.  Keep the
-# current flags in a stamp file so that they are regenerated when the flags
-# change; without this, a stale find_points.h would be compiled against a
-# different RBA_PACK.  (The headers also carry a compile-time check of their
-# own, for the case that they are used outside this Makefile.)
+# What is compiled depends on flags, which make cannot see by itself: change
+# CCFLAGS1 or PRIME_SIZE, or retune, and every file must be built again even
+# though no source file has changed.  Two stamp files record the flags in use,
+# so that a change to either shows up as an out-of-date prerequisite.
+#
+#   config.stamp  the flags the generated headers depend on.  Without this a
+#                 stale find_points.h would be compiled against a different
+#                 RBA_PACK.  (The headers also carry a compile-time check of
+#                 their own, for the case that they are used outside this
+#                 Makefile.)
+#   build.stamp   everything that reaches the compiler, including the tuning
+#                 flags.  Every rule that runs ${CC} depends on it: without it
+#                 a width change would rebuild the generated headers and the
+#                 two objects that include them while leaving the others at
+#                 the old register width -- which links and then crashes --
+#                 and "make tune" would write tuning.mk without anything
+#                 being recompiled to use it.
+#
+# They are separate so that a retune, which changes only build.stamp, does not
+# regenerate the headers: their contents do not depend on the tuning.
 .PHONY: FORCE
 config.stamp: FORCE
 	@echo '${CCFLAGS_H}' > $@.tmp
 	@cmp -s $@.tmp $@ || \
 	  { mv $@.tmp $@; echo "configuration changed; regenerating headers"; }
+	@rm -f $@.tmp
+
+build.stamp: FORCE
+	@echo '${CCFLAGS_0} ${CCFLAGS}' > $@.tmp
+	@cmp -s $@.tmp $@ || \
+	  { mv $@.tmp $@; echo "compilation flags changed; rebuilding"; }
 	@rm -f $@.tmp
 
 gen_init_sieve_h: gen_init_sieve_h.c ratpoints.h rp-private.h primes.h config.stamp

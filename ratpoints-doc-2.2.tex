@@ -172,7 +172,9 @@ CCFLAGS1 = ${CCFLAGS256}
 in \texttt{Makefile}. It can be set to \verb+${CCFLAGS64}+ (word-size
 registers, which works on essentially any machine), \verb+${CCFLAGS128}+,
 \verb+${CCFLAGS256}+ (the default, using 256-bit AVX registers) or
-\verb+${CCFLAGS512}+; do a \texttt{make distclean} after changing it. Wider
+\verb+${CCFLAGS512}+. The \texttt{Makefile} notices that the setting has
+changed and rebuilds everything that depends on it, so a \texttt{make
+distclean} in between is not necessary. Wider
 registers help the first phase of the sieve, where most of the time goes on a
 curve with few rational points, but they help the second phase much less and
 the sieve tables not at all, so the gain is nowhere near proportional to the
