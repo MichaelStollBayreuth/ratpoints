@@ -83,7 +83,10 @@
 # define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
 #endif
 
-#define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes */
+#define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
+     Unless num_primes is set explicitly, this is where the search starts:
+     sieving_info() looks at further primes when a curve does not leave
+     enough of them informative for sp2 to be sp1 + RATPOINTS_SP2_EXTRA. */
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
 
 #define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
