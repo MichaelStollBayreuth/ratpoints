@@ -52,7 +52,8 @@
  * measurements over curves spanning a factor of 600 in density show that
  * the best sp1 is where the expected number of surviving numerators per
  * bit-array falls below the constant below -- almost independently of the
- * curve.  See PARAMETER-MODEL.md for the measurements.
+ * curve.  The measurements behind this are in PARAMETER-MODEL.md on the
+ * phases-by-register-width branch of the git repository.
  *
  * The constant is a property of the machine, not of the curve: it is where
  * one more first-phase prime stops paying for itself against the cost of a

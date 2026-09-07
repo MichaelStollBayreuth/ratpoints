@@ -97,12 +97,12 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
 TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
-            rptest.out rptest-many.out \
+            rptest.out rptest-many.out config.stamp \
             sift-debug.o find_points-debug.o main.o test2.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many ratpoints-debug \
-              ratpoints-doc-2.2.pdf
+              bench_init ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
 
