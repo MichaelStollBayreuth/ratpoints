@@ -73,7 +73,9 @@ unsigned long long _rp_bits_in = 0, _rp_bits_1 = 0, _rp_bits_2 = 0;
 unsigned long long _rp_units_surviving = 0;
 /* work actually done in phase 2: AND steps in the sp2-sp1 loop (which
  * stops early once nums is empty) and iterations of the bit-extraction
- * loops (which run up to the highest set bit, not once per set bit) */
+ * loops.  The latter is now one per set bit: the loops used to run up to the
+ * highest set bit, and the gap between ext2 and bits_2 was what said that was
+ * worth changing. */
 unsigned long long _rp_and2 = 0, _rp_ext2 = 0;
 
 static inline unsigned _rp_popcnt(const ratpoints_bit_array *a)
@@ -167,6 +169,35 @@ static void _rp_sink_report(void) __attribute__((destructor));
 static void _rp_sink_report(void)
 { fprintf(stderr, "[stopafter] level=%d sink=%lu\n", RP_STOP_AFTER, _rp_sink); }
 #endif
+
+/* Walking the set bits of a word of survivors.
+ *
+ * The bits still set after the second sieving stage are the numerators that
+ * have to be checked exactly; bit t of a word stands for the numerator
+ * a0 + d*t.  Stepping through every bit position up to the highest one set
+ * costs about thirty iterations for each bit that is actually there, at the
+ * survival rate the parameters aim at, so go straight to the set bits
+ * instead: the lowest is at __builtin_ctzl(w), and w &= w-1 clears it.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+# define RP_CTZL(w) ((long)__builtin_ctzl(w))
+#else
+/* Only reached on a compiler without the builtin; the rest of this file
+ * needs gcc anyway once bit-arrays are used, but the plain unsigned long
+ * build does not, so keep it buildable. */
+static long RP_CTZL(unsigned long w)
+{ long t = 0;
+
+  while(!(w & 1UL)) { w >>= 1; t++; }
+  return(t);
+}
+#endif
+
+/* Body runs once per set bit of w, with a set to that bit's numerator and t
+ * to its position.  w is consumed. */
+#define RP_EACH_SET_BIT(w, first, step, a, t) \
+  for(; (w) && (((t) = RP_CTZL(w)), ((a) = (first) + (step)*(t)), 1); \
+      (w) &= (w) - 1UL)
 
 /**************************************************************************
  * check if m and n are relatively prime                                  *
@@ -676,7 +707,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
         for(k = 0; k < RBA_PACK; k++)
         { unsigned long numsk = EXT(nums, k);
           sieve_spec *sspk = &sieves[sp1];
-          long a, a0k = a0 + k*da;  /* first numerator of word no. k */
+          long a, t, a0k = a0 + k*da;  /* first numerator of word no. k */
 
           if(!numsk) { continue; }
 
@@ -700,12 +731,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           _rp_bits_2 += __builtin_popcountl(numsk);
 #endif
 
-          for(a = a0k; numsk; a += d, numsk >>= 1)
+          RP_EACH_SET_BIT(numsk, a0k, d, a, t)
           {
 #ifdef RP_PHASE_COUNTS
             _rp_ext2++;
 #endif
-            if((numsk & 1) && relprime(a, b))
+            if(relprime(a, b))
             { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total);
             }
@@ -745,15 +776,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
       /* Check the survivors of the sieve if they really give points. */
       if(TEST(nums))
-      { long a0, a, da, d;
+      { long a0, a, da, d, t;
         /* a  := the numerator corresponding to the selected bit
          * a0 := numerator corresponding to the lowest bit
          * d  := step size in numerators from one bit to the next
          * da := step size in numerators from one word to the next */
-
-#ifdef DEBUG
-        long bit = 0; /* counter for the bits, used for output */
-#endif
 
         /* Set d, a0, da according to which_bits. */
         if(which_bits == num_all)
@@ -766,30 +793,27 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
         { /* extract the first word */
           unsigned long nums0 = EXT0(nums);
 
-          for(a = a0; nums0; a += d, nums0 >>= 1)
-          { /* test one bit */
+          RP_EACH_SET_BIT(nums0, a0, d, a, t)
+          { /* one bit that is set */
 
 #ifdef RP_PHASE_COUNTS
             _rp_ext2++;
 #endif
 
 #ifdef DEBUG
-            if(nums0 & 1)
-            { printf("\nsurviving bit no. %ld --> a = %ld. ", bit, a);
-              if(relprime(a, b))
-              { printf("Check point...\n");
-                fflush(NULL);
-                total += RP_CHECK_POINT(a, b);
-                if(*quit) return(total); /* if quit was set, stop */
-              }
-              else
-              { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
+            printf("\nsurviving bit no. %ld --> a = %ld. ", t, a);
+            if(relprime(a, b))
+            { printf("Check point...\n");
+              fflush(NULL);
+              total += RP_CHECK_POINT(a, b);
+              if(*quit) return(total); /* if quit was set, stop */
             }
-            bit++;
+            else
+            { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
 #else
-            if((nums0 & 1) && relprime(a, b))
-            /* bit is set and fraction a/b is in lowest terms:
-             * check if we really get a point, and if so, process it. */
+            if(relprime(a, b))
+            /* the fraction a/b is in lowest terms: check if we really get a
+             * point, and if so, process it. */
             { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total); /* if quit was set, stop */
             }
@@ -804,33 +828,27 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             {
               unsigned long nums1 = EXT(nums,k);
 
-#ifdef DEBUG
-              bit = LONG_LENGTH * k;
-#endif
-
               a0 += da; /* numerator corresponding to first bit of word no. k */
-              for (a = a0; nums1; a += d, nums1 >>= 1)
-              { /* test one bit */
+              RP_EACH_SET_BIT(nums1, a0, d, a, t)
+              { /* one bit that is set */
 
 #ifdef RP_PHASE_COUNTS
-            _rp_ext2++;
+                _rp_ext2++;
 #endif
 
 #ifdef DEBUG
-                if(nums1 & 1)
-                { printf("\nsurviving bit no. %ld --> a = %ld. ", bit, a);
-                  if(relprime(a, b))
-                  { printf("Check point...\n");
-                    fflush(NULL);
-                    total += RP_CHECK_POINT(a, b);
-                    if(*quit) return(total); /* if quit was set, stop */
-                  }
-                  else
-                  { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
+                printf("\nsurviving bit no. %ld --> a = %ld. ",
+                       LONG_LENGTH*k + t, a);
+                if(relprime(a, b))
+                { printf("Check point...\n");
+                  fflush(NULL);
+                  total += RP_CHECK_POINT(a, b);
+                  if(*quit) return(total); /* if quit was set, stop */
                 }
-                bit++;
+                else
+                { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
 #else
-                if((nums1 & 1) && relprime(a, b))
+                if(relprime(a, b))
                 { total += RP_CHECK_POINT(a, b);
                   if(*quit) return(total);
                 }
