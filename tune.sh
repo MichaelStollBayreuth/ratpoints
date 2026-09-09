@@ -9,6 +9,14 @@
 # practice (random curves, and curves with many rational points), and a value
 # that suits one of them can be a poor choice for the other.
 #
+# Which pair of tests, and at what height bound, is set by TUNE_TESTS and
+# TUNE_HEIGHT below.  The default is the pair "make test" uses, at their own
+# height of 16383.  That is a short run in which a fifth of the time goes into
+# building sieve tables rather than into sieving, so a setting is judged partly
+# on work it does not affect; "make tunehigh" measures the same thing on the
+# large-height suites instead, where the sieve is nearly all of it.  Use that
+# one if the runs that matter are long.
+#
 # Measuring is the delicate part, and naive timing does not work.  The cost
 # surface is flat -- anything within a factor of two of a good threshold costs
 # under 3% -- while a laptop under sustained load drifts by 25% as it heats
@@ -37,9 +45,19 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
 E_VALUES=${E_VALUES:-"3 5 7 10"}
 
-for f in ./rptest ./rptest-many testbase testbase-many ratpoints.h; do
-  [ -e "$f" ] || { echo "tune.sh: $f is missing; run 'make rptest rptest-many' first" >&2; exit 1; }
+# The suites to tune on, as "program:reference" pairs, and the height bound to
+# run them at (empty: each test's own default).  Set by "make tune" and
+# "make tunehigh"; see the Makefile.
+TUNE_TESTS=${TUNE_TESTS:-"./rptest:testbase ./rptest-many:testbase-many"}
+TUNE_HEIGHT=${TUNE_HEIGHT:-}
+[ -n "$TUNE_HEIGHT" ] && HFLAG="-h $TUNE_HEIGHT" || HFLAG=""
+
+for t in $TUNE_TESTS; do
+  for f in "${t%%:*}" "${t#*:}"; do
+    [ -e "$f" ] || { echo "tune.sh: $f is missing; build it first" >&2; exit 1; }
+  done
 done
+[ -e ratpoints.h ] || { echo "tune.sh: ratpoints.h is missing" >&2; exit 1; }
 
 # The settings to measure against.  These are passed explicitly to every run,
 # including the baseline, so that the comparison never depends on what happens
@@ -65,19 +83,26 @@ TMP=`mktemp -d` || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 echo "checking that the tests still pass ..."
-./rptest      | cmp -s - testbase      || { echo "tune.sh: rptest disagrees with testbase" >&2; exit 1; }
-./rptest-many | cmp -s - testbase-many || { echo "tune.sh: rptest-many disagrees with testbase-many" >&2; exit 1; }
+for t in $TUNE_TESTS; do
+  prog=${t%%:*}; base=${t#*:}
+  $prog $HFLAG | cmp -s - "$base" \
+    || { echo "tune.sh: $prog disagrees with $base" >&2; exit 1; }
+done
 
-# one timing = both tests, so that a setting is judged on both regimes at once
-time_both() {
-  t1=`$PIN ./rptest      $1 -z -T` || exit 1
-  t2=`$PIN ./rptest-many $1 -z -T` || exit 1
-  awk -v a="$t1" -v b="$t2" 'BEGIN{printf "%.6f", a+b}'
+# one timing = every test in TUNE_TESTS, so that a setting is judged on all of
+# the regimes at once and not just on the one it happens to suit
+time_tests() {
+  tot=0
+  for t in $TUNE_TESTS; do
+    tt=`$PIN ${t%%:*} $HFLAG $1 -z -T` || exit 1
+    tot=`awk -v a="$tot" -v b="$tt" 'BEGIN{printf "%.6f", a+b}'`
+  done
+  echo "$tot"
 }
 
 printf 'warming up (%ss) ' "$WARMUP"
 end=`expr \`date +%s\` + $WARMUP`
-while [ `date +%s` -lt $end ]; do time_both "$BASE" > /dev/null; printf '.'; done
+while [ `date +%s` -lt $end ]; do time_tests "$BASE" > /dev/null; printf '.'; done
 echo
 
 # measure(): "label<TAB>args" lines from $1 -> "label median_ratio" in $2
@@ -93,8 +118,8 @@ measure() {
       true
     } > "$TMP/order"
     while IFS='	' read -r label args; do
-      tc=`time_both "$args"`
-      tb=`time_both "$BASE"`     # the current settings, right next to it
+      tc=`time_tests "$args"`
+      tb=`time_tests "$BASE"`     # the current settings, right next to it
       echo "$label `awk -v c="$tc" -v b="$tb" 'BEGIN{printf "%.5f", c/b}'`" >> "$TMP/raw"
       printf ' .'
     done < "$TMP/order"

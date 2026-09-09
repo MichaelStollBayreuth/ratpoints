@@ -81,7 +81,11 @@ int main(int argc, char *argv[])
   double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */
-  long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
+  long num_primes    = -1; /* negative: let ratpoints choose, as main.c
+                            * does.  This matters: an explicit value is
+                            * a hard limit, so passing the default here
+                            * would stop sieving_info from looking past
+                            * it on the curves that run out of primes. */
   long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
   long b_low         = 1;
   long b_high        = height;
