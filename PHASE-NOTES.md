@@ -161,8 +161,9 @@ it, not the sieve, is what a further optimization would have to attack.
 * *"The optimal `sp1` should rise with the register width."*  It should not,
   and with the per-word rule it does not: the choice is width-independent by
   construction and nothing here argues against that.
-* *"A mixed build -- phase 1 wide, phase 2 on 64-bit words."*  That is exactly
-  `USE_LONG_IN_PHASE_2`, and it loses at every width.
+* *"A mixed build -- phase 1 wide, phase 2 on 64-bit words."*  Not the same
+  thing as `USE_LONG_IN_PHASE_2`, which narrows the scan as well.  The genuine
+  hybrid has since been built and measured; see the section on it below.
 
 ## What the measurement turned up instead
 
@@ -451,6 +452,64 @@ Adding the loop to the plain 64-bit build, where the long path is the only
 path, is **not** a clear win: -3.6% on the sparse curve but +10% on the
 point-rich one, since when many words survive its bookkeeping is wasted.  Left
 alone for that reason.
+
+## The hybrid: wide scan, 64-bit second phase
+
+`RP_HYBRID_PHASE2` keeps the first phase and the scan at the full register
+width and does everything after it one 64-bit word at a time: of a surviving
+bit-array, only the words that are themselves non-zero are sieved with the
+next `sp2-sp1` primes and then extracted.  This is what
+`USE_LONG_IN_PHASE_2` is *not* -- that one narrows the scan too, and steps over
+every word of the array whether or not anything survived in it.
+
+No new table layout is needed.  The tables already hold `RBA_PACK` copies of
+the pattern, so the word at index `RBA_PACK*base + k` is the right one, which
+is what `USE_LONG_IN_PHASE_2` has always relied on.  All three widths reproduce
+`testbase`, `testbase-many` and the point lists of the baseline exactly.
+
+Cycles, hybrid divided by the all-wide build of the same width, median of three
+paired runs, `sp1` fixed and `d = sp2 - sp1` varied:
+
+| | d=0 | 1 | 2 | 3 | 5 | 8 |
+|---|---|---|---|---|---|---|
+| sparse, 128 | 0.992 | 1.041 | 1.019 | 1.029 | 1.029 | 1.042 |
+| sparse, 256 | 0.964 | 1.004 | 1.013 | 1.023 | 1.021 | 1.023 |
+| sparse, 512 emulated | 0.996 | 0.994 | 0.996 | 0.990 | 0.994 | 0.987 |
+| point-rich, 128 | 0.997 | 0.998 | 1.006 | 1.010 | 1.017 | 1.025 |
+| point-rich, 256 | 0.982 | 0.987 | 0.993 | 0.994 | 1.001 | 1.019 |
+| point-rich, 512 emulated | 0.978 | 0.987 | 0.983 | 0.988 | 0.955 | 0.998 |
+
+**It buys nothing.**  At 128 and 256 bits it is 1 to 4% *worse* as soon as
+there is an `AND` loop at all, and the `d = 0` column -- no `AND` loop, so
+only the different extraction structure -- is if anything slightly better, so
+the deficit is the per-word `AND` loop itself, which walks the prime list and
+its pointer separately for each word.  Only the emulated 512-bit build gains,
+by 1 to 4%, and that is the compiler lowering a 64-byte `AND` into eight
+64-bit ones rather than anything real hardware would do.
+
+The counters say exactly why, and this is the part that settles it.  At 256
+bits on the sparse curve, baseline against hybrid:
+
+| d | `and2` base | `and2` hybrid | `bits_2` | `ext2` |
+|---|---|---|---|---|
+| 1 | 1964468 | 1984759 | identical | identical |
+| 3 | 3604017 | 3631567 | identical | identical |
+| 5 | 4190466 | 4218722 | identical | identical |
+| 8 | 4608745 | 4637242 | identical | identical |
+
+The number of `AND` steps is the same to within 1%, and the hybrid's is
+*higher*, not lower: on the rare array with bits in two different words it
+runs the loop twice.  Narrowing does not make the early exit fire sooner,
+because the other `RBA_PACK-1` words were zero to begin with -- a survivor
+essentially never has a companion.  The bits removed and the extraction work
+are bit-for-bit identical.
+
+So the wide `AND` was never doing more work in any sense that costs: the same
+number of steps, the same result, and the same memory traffic, since 8 bytes
+and 32 bytes at the same address come from one cache line either way.  All the
+extra width buys is ALU width that was not the constraint.  The idea that
+fetching fewer bits for the `AND`s should be faster is dead, and it is dead
+for the cache-line reason rather than for any subtlety about the early exit.
 
 ## Open questions
 

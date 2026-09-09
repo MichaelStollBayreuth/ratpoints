@@ -68,6 +68,11 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  (to 3% and 5%) without reversing it. (At 64 bits this is what the code
 #  does anyway, and there such a loop is worth -4% on a sparse curve but
 #  +10% on a point-rich one, so it has not been added.)
+# Add "-DRP_HYBRID_PHASE2" to keep the first phase and the scan at the register
+#  width but do the second phase one 64-bit word at a time. Measured a wash to
+#  4% slower at 128 and 256 bits: the number of AND steps is unchanged, and a
+#  narrow and a wide read of the same table come from one cache line either
+#  way. A development switch, kept for the record.
 # Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
 #  separately and write a report to stderr when the program exits; add
 #  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1.

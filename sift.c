@@ -739,8 +739,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * cost more than the tests it saves.) */
     for(i = w_low; i < w_high; i++, base++)
     { ratpoints_bit_array nums;
-      sieve_spec *ssp = &sieves[sp1];
       long n;
+#ifndef RP_HYBRID_PHASE2
+      sieve_spec *ssp = &sieves[sp1];
+#endif
 
       while(i < w_high && !TEST(*surv0)) { surv0++; i++; base++; }
       if(i >= w_high) { break; }
@@ -765,6 +767,65 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       }
 #endif
 
+#ifdef RP_HYBRID_PHASE2
+      /* Development variant: keep the first phase and the scan at the full
+       * register width, but do the rest one 64-bit word at a time.  The
+       * tables need no different layout -- they hold RBA_PACK copies of the
+       * pattern, so they can be read as words at index RBA_PACK*base + k,
+       * which is what USE_LONG_IN_PHASE_2 already does -- what is new here is
+       * that only the words of a surviving bit-array that are themselves
+       * non-zero are looked at.  The point is to measure whether the wide
+       * AND, which reads RBA_PACK words of table for what is nearly always a
+       * single surviving word, is paying for itself. */
+      { long a0, da, d, k;
+
+        if(which_bits == num_all)
+        { d = 1; a0 = i << RBA_SHIFT; da = LONG_LENGTH; }
+        else
+        { d = 2; a0 = i << (RBA_SHIFT+1); da = 2*LONG_LENGTH;
+          if(which_bits == num_odd) { a0++; }
+        }
+
+        for(k = 0; k < RBA_PACK; k++)
+        { unsigned long numsk = EXT(nums, k);
+          sieve_spec *sspk = &sieves[sp1];
+          long a, a0k = a0 + k*da;  /* first numerator of word no. k */
+
+          if(!numsk) { continue; }
+
+          for(n = sp2-sp1; n && numsk; n--)
+          { unsigned long *ptr = (unsigned long *)sspk->start;
+            long pp = RBA_PACK*sspk->p;
+
+#ifdef RP_PHASE_COUNTS
+            _rp_and2++;
+#endif
+            ptr += RBA_PACK*base + k;
+            while(ptr >= (unsigned long *)sspk->end) { ptr -= pp; }
+            numsk &= *ptr;
+            sspk++;
+          }
+
+#if RP_STOP_AFTER == 3
+          _rp_sink += numsk; continue;
+#endif
+#ifdef RP_PHASE_COUNTS
+          _rp_bits_2 += __builtin_popcountl(numsk);
+#endif
+
+          for(a = a0k; numsk; a += d, numsk >>= 1)
+          {
+#ifdef RP_PHASE_COUNTS
+            _rp_ext2++;
+#endif
+            if((numsk & 1) && relprime(a, b))
+            { total += RP_CHECK_POINT(a, b);
+              if(*quit) return(total);
+            }
+          }
+        }
+      }
+#else
       /* Sieve with the next sp2-sp1 primes while some bits are set. */
       for(n = sp2-sp1; n && TEST(nums); n--)
       {
@@ -893,6 +954,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           }
         }
       }
+#endif /* RP_HYBRID_PHASE2 */
       /* Attempt to save some subtractions, but no improvement... */
       /*
       if(base == BASE_REPEAT)
