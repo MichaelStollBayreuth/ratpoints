@@ -60,13 +60,19 @@ INSTALL_DIR = /usr/local
 
 CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
-# Add "-DUSE_LONG_IN_PHASE_2" to work with unsigned long's instead of bit-arrays
-#  in phase 2 of the sieving. This is slower at every register width that has
-#  a choice: measured 3% at 128 and 15% at 256 bits on a curve with few points,
-#  and a wash on one with many. (At 64 bits it is what the code does anyway.)
+# Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first phase one
+#  64-bit word at a time instead of a whole bit-array at a time. The first
+#  phase and the scan for survivors stay at the full register width either
+#  way. It is a wash to 4% slower at 128 and 256 bits, and the reason is worth
+#  knowing: the number of AND steps is the same either way, because the other
+#  words of a surviving bit-array were already zero, and a narrow and a wide
+#  read of the same table come from one cache line. At 64 bits the two are the
+#  same code.
 # Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
 #  separately and write a report to stderr when the program exits; add
-#  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1.
+#  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1, or
+#  "-DRP_STOP_AFTER=<n>" to cut the pipeline short after a chosen stage, so
+#  that the cost of a stage can be had as a difference of two runs.
 #  These are development aids; see the comment at the top of sift.c.
 # Add "-DRATPOINTS_CHUNK=<n>" to force the use of 2 <= n <= 16 registers
 #  in phase 1 of sieving. For n=1, this reverts to the code used previously.
