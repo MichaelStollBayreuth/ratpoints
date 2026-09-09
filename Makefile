@@ -74,6 +74,14 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  "-DRP_STOP_AFTER=<n>" to cut the pipeline short after a chosen stage, so
 #  that the cost of a stage can be had as a difference of two runs.
 #  These are development aids; see the comment at the top of sift.c.
+# Add "-DRP_INIT_BRANCH" or "-DRP_INIT_ONEWAY" to put back, one at a time, the
+#  two things the sieve table set-up used to do: test is_f_square with a branch
+#  rather than shifting the value into place, and step the residue one row at a
+#  time rather than four.  Between them they cost 13% of "make test1"; the two
+#  flags are there to measure that again on another machine.  init.c also has
+#  three other ways of filling in a table and two probes that leave a stage out,
+#  all of them dead ends; INIT-NOTES.md on this branch says what they cost and
+#  why, and bench_init checks and times any of them.
 # When comparing two builds whose *source* differs, be aware that where gcc
 #  happens to place the hot loops is worth about 10% here, reproducibly, so
 #  repeating the runs will not reveal it. Rebuild both with, say,
