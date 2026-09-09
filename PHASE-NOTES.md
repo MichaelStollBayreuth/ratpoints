@@ -514,6 +514,40 @@ extra width buys is ALU width that was not the constraint.  The idea that
 fetching fewer bits for the `AND`s should be faster is dead, and it is dead
 for the cache-line reason rather than for any subtlety about the early exit.
 
+## Finding the set bits instead of walking past them
+
+The `ext2` counter was put there to count iterations of the bit-extraction
+loops, against `bits_2` for the bits those loops actually find.  The gap is the
+whole point: 3.7 million iterations for 164 thousand bits on the sparse curve
+at `sp2 = sp1 + 5`, and on the record curve 185.6 million for 5.8 million.
+Twenty to thirty positions walked for every bit that is there, which is just
+where a single random bit sits in a word.
+
+`__builtin_ctzl` goes to the lowest set bit and `w &= w-1` clears it, so the
+loop runs once per bit instead.  The three copies of it -- word 0, the
+remaining words, and the `USE_LONG_IN_PHASE_2` variant -- became one macro,
+`RP_EACH_SET_BIT`.  Done on branch `ctz-extraction` and merged into `v2.3`.
+
+| | ratio to before |
+|---|---|
+| `make test1` | 0.988 |
+| `make test1many` | 0.951 |
+| sparse curve, h=400000 | 0.980 |
+| point-rich curve, h=400000 | 0.976 |
+
+Two things worth recording.  The estimate on the TODO list was "a few per cent
+in the point-rich regime, nothing in the sparse one"; the sparse curve gains
+about as much, so the estimate was wrong in a way the counters had not
+suggested -- `ext2` is large in both regimes, and it was the *ratio* to
+`bits_2`, not the absolute count, that had drawn attention.  And `make
+test1many` gains twice what a single point-rich curve does, so the suites and
+the individual curves are measuring different mixtures; this is the one place
+so far where the suites show more than the curves rather than less.
+
+Checked at `-falign-functions/loops` of 32 and 64 as well as the default,
+per the warning below, since 2% is inside what code layout alone is worth
+here.  It holds at all three: 0.972 to 0.990, never a loss.
+
 ## A warning about small differences on this machine
 
 Replacing the old `USE_LONG_IN_PHASE_2` with the new one appeared to cost the
