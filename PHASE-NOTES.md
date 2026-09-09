@@ -357,6 +357,101 @@ So the two constants want to move differently:
   it: nothing in `testdata.h` is ever starved, and the starved fifth of
   `testdata-many.h` is exactly the set that gains.
 
+## Phase 2 stage by stage, by register width
+
+The tables above measure phase 2 as a whole, with a timer bracketing it.  This
+section takes it apart, using differences of whole-program cycle counts rather
+than a timer inside the loop.  `-DRP_STOP_AFTER=<n>` cuts the pipeline short:
+1 leaves out the second phase entirely, 2 stops after locating the survivors,
+3 after sieving them with the next `sp2-sp1` primes, 4 after extracting the
+bits but before the exact check, and 0 is the real program.  Every level does
+the set-up and the whole first phase identically, so both cancel out of every
+difference.
+
+Two things about this need care, and both bit.
+
+**A truncated loop is not the loop.**  At level 2 the long-word path, which has
+no skip loop, becomes `sum += *p++` over the whole array -- which gcc
+vectorises, so its "scan" measured *faster* than the skip-loop build's, which
+is backwards.  Guarding the sink with `if(nums)` restores a data-dependent
+branch and the artefact goes away.  Anything cut out of a loop has to be
+replaced by something the compiler cannot see through.
+
+**`sp2 = sp1` is the worst possible baseline.**  It is the obvious way to
+measure the sieving of phase 2 by difference, and it does not work: with no
+primes in the second stage nothing is removed, so every bit that survived the
+first phase reaches the extraction loop.  On the sparse curve below that takes
+the bits entering extraction from 0.69 to 13.6 million and the extraction
+iterations from 18 to some 400 million.  The difference would be dominated by
+extraction work that the baseline does and the candidate does not, with the
+opposite sign to the thing being measured.  Levels 3 and 2 differ only in the
+`AND` loop, which is what makes them the right pair.
+
+Sparse curve `1 0 126 0 441`, h=200000, `sp1 = 12`, `sp2 = 17`, core cycles in
+units of 10^9, median of five rounds with the five levels run back to back
+inside each round; the spread over rounds follows each figure:
+
+| build | phase 1 | scan | AND | extract | check |
+|---|---|---|---|---|---|
+| 64 | 3.434 ±.04 | 0.863 ±.04 | 0.822 ±.05 | 0.002 | -0.036 |
+| 64 + skip loop | 3.429 ±.04 | 1.034 ±.05 | 0.226 ±.03 | 0.162 | 0.048 |
+| 128 AVX128 | 2.763 ±.04 | 0.656 ±.05 | 0.310 ±.02 | 0.030 | -0.013 |
+| 256 AVX2 | 2.406 ±.08 | 0.418 ±.07 | 0.390 ±.09 | 0.055 | 0.027 |
+| 512 emulated | 7.203 ±.17 | 0.457 ±.27 | 0.590 ±.17 | 0.020 | 0.003 |
+
+The two 64-bit rows split scan and `AND` differently because without a skip
+loop the `for(n = sp2-sp1; n && nums; n--)` header is evaluated once for every
+*empty* word too, so part of the scan is charged to `AND`; only their sum,
+1.685 against 1.260, compares.
+
+**The scan falls with the width and the `AND` loop rises**, 0.656 -> 0.418 and
+0.310 -> 0.390 from 128 to 256, and that is the whole story of phase 2 here:
+the two move against each other and nearly cancel, which is why the totals in
+the earlier tables look flat.  Extraction and the exact check are negligible on
+this curve.
+
+**Why the `AND` loop costs more is not what the TODO item guessed.**  The guess
+was that a wider `nums` holds more bits and so takes more primes to clear, the
+early exit firing later.  It does not: the counters say the number of `AND`
+steps executed is 7.231, 7.215, 7.182 and 7.118 million at 64, 128, 256 and 512
+bits -- constant to 1.5%, and if anything falling.  The number of surviving
+units is 3.483 million at every width, to three decimals, because a survivor
+essentially never has a companion in its array.  The early exit fires in the
+same place; each step simply reads four times as much sieve table at 256 bits
+as at 64 for the same one survivor.  The rise is well under linear in the width
+(1.37, 1.26, 1.51 per doubling) because a 64-bit read already pulls a whole
+cache line.
+
+The point-rich curve at h=300000, `sp1 = 22`, `sp2 = 27`, behaves the same way
+in the scan and the `AND` loop; extraction and the check are no longer
+negligible there (0.7-1.1 and 0.3-1.4), but their spreads are of the same order,
+so that curve wants a longer run before anything is read into them.
+
+## What this says about `USE_LONG_IN_PHASE_2`
+
+The comparison in "What follows for the build" above was not quite fair: the
+bit-array path steps over the empty units in a tight loop of its own and the
+long-word path has never had one, so the two differed by an optimisation as
+well as by the representation.  Giving the long path the same loop
+(`-DRP_LONG_SKIP`) closes about half the gap:
+
+| | sparse | point-rich |
+|---|---|---|
+| 128, long | 1.102 | 1.015 |
+| 128, long + skip loop | 1.033 | 0.997 |
+| 256, long | 1.150 | 1.048 |
+| 256, long + skip loop | 1.053 | 1.018 |
+
+(ratios to the bit-array build of the same width, median of five paired runs).
+So the recommendation stands -- `USE_LONG_IN_PHASE_2` is still a loss at both
+widths on both curves -- but the margin is 3-5%, not 10-15%, and the earlier
+figures were partly measuring the missing loop.
+
+Adding the loop to the plain 64-bit build, where the long path is the only
+path, is **not** a clear win: -3.6% on the sparse curve but +10% on the
+point-rich one, since when many words survive its bookkeeping is wasted.  Left
+alone for that reason.
+
 ## Open questions
 
 * The bit-extraction loop `for(a = a0; nums; a += d, nums >>= 1)` walks from

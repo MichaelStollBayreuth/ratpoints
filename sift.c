@@ -131,6 +131,43 @@ static void _rp_phase_report(void)
 
 #endif /* RP_PHASE_TIMING */
 
+/* ---------------------------------------------------------------------
+ * Development instrumentation: cut the pipeline short, so that the cost
+ * of one stage can be had as a difference of two whole-program cycle
+ * counts and nothing has to be attributed by a timer inside the loop.
+ * Build with -DRP_STOP_AFTER=<n>:
+ *   1  stop after the first phase (no second phase at all)
+ *   2  ... after locating the survivors (no sieving, no extraction)
+ *   3  ... after sieving them with the next sp2-sp1 primes
+ *   4  ... after extracting the bits, but without the exact check
+ *   0 or unset: the whole thing, i.e. the real program.
+ * Differences between consecutive levels give the stages, and because
+ * every level sieves the first phase identically, level 1 cancels out of
+ * all of them.  The truncated levels accumulate what they would have
+ * used into _rp_sink, which is printed at exit so that the compiler
+ * cannot drop the work whose cost is being measured.
+ * --------------------------------------------------------------------- */
+#ifndef RP_STOP_AFTER
+# define RP_STOP_AFTER 0
+#endif
+
+#if RP_STOP_AFTER == 4
+/* level 4 runs the extraction loop and its relprime test, but not the exact
+ * check that they lead to */
+# define RP_CHECK_POINT(a, b) (_rp_sink += 1 + (unsigned long)(a), 0L)
+#else
+# define RP_CHECK_POINT(a, b) \
+    RP_CHECK(_ratpoints_check_point((a), (b), args, quit, process, info))
+#endif
+
+#if RP_STOP_AFTER
+#include <stdio.h>
+unsigned long _rp_sink = 0;
+static void _rp_sink_report(void) __attribute__((destructor));
+static void _rp_sink_report(void)
+{ fprintf(stderr, "[stopafter] level=%d sink=%lu\n", RP_STOP_AFTER, _rp_sink); }
+#endif
+
 /**************************************************************************
  * check if m and n are relatively prime                                  *
  **************************************************************************/
@@ -570,6 +607,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   RP_TIC(_rp_t2);
 
+#if RP_STOP_AFTER != 1
 #ifdef USE_LONG_IN_PHASE_2
   /* Work with unsigned longs instead of bit-arrays */
   /* Second phase of the sieve: test each surviving word in the bit-array
@@ -578,9 +616,23 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     long i, base = 0;
 
     for(i = RBA_PACK*w_low; i < RBA_PACK*w_high; i++, base++)
-    { unsigned long nums = *surv0++;
-      sieve_spec *ssp = &sieves[sp1];
+    { sieve_spec *ssp = &sieves[sp1];
       long n;
+      unsigned long nums;
+
+#ifdef RP_LONG_SKIP
+      /* the counterpart of the skip loop the bit-array path has: step over
+       * the empty words without re-entering the body.  Only defined for the
+       * development builds, to see what that loop is worth here. */
+      while(i < RBA_PACK*w_high && !*surv0) { surv0++; i++; base++; }
+      if(i >= RBA_PACK*w_high) { break; }
+#endif
+      nums = *surv0++;
+
+#if RP_STOP_AFTER == 2
+      if(nums) { _rp_sink += nums; }
+      continue;
+#endif
 
 #ifdef RP_PHASE_COUNTS
       if(nums)
@@ -613,6 +665,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         ssp++;
       }
+
+#if RP_STOP_AFTER == 3
+      _rp_sink += nums; continue;
+#endif
 
 #ifdef RP_PHASE_COUNTS
       _rp_bits_2 += __builtin_popcountl(nums);
@@ -648,7 +704,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             if(relprime(a, b))
             { printf("Check point...\n");
               fflush(NULL);
-              total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+              total += RP_CHECK_POINT(a, b);
               if(*quit) return(total); /* if quit was set, stop */
             }
             else
@@ -657,7 +713,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           bit++;
 #else
           if((nums & 1) && relprime(a, b))
-          { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+          { total += RP_CHECK_POINT(a, b);
             if(*quit) return(total); /* if quit was set, stop */
           }
 #endif
@@ -689,6 +745,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       while(i < w_high && !TEST(*surv0)) { surv0++; i++; base++; }
       if(i >= w_high) { break; }
       nums = *surv0++;
+
+#if RP_STOP_AFTER == 2
+      if(TEST(nums)) { _rp_sink += EXT0(nums); }
+      continue;
+#endif
 
 #ifdef RP_PHASE_COUNTS
       if(TEST(nums))
@@ -725,6 +786,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         ssp++;
       }
+
+#if RP_STOP_AFTER == 3
+      _rp_sink += EXT0(nums); continue;
+#endif
 
 #ifdef RP_PHASE_COUNTS
       _rp_bits_2 += _rp_popcnt(&nums);
@@ -766,7 +831,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
               if(relprime(a, b))
               { printf("Check point...\n");
                 fflush(NULL);
-                total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+                total += RP_CHECK_POINT(a, b);
                 if(*quit) return(total); /* if quit was set, stop */
               }
               else
@@ -777,7 +842,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             if((nums0 & 1) && relprime(a, b))
             /* bit is set and fraction a/b is in lowest terms:
              * check if we really get a point, and if so, process it. */
-            { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+            { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total); /* if quit was set, stop */
             }
 #endif
@@ -809,7 +874,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                   if(relprime(a, b))
                   { printf("Check point...\n");
                     fflush(NULL);
-                    total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+                    total += RP_CHECK_POINT(a, b);
                     if(*quit) return(total); /* if quit was set, stop */
                   }
                   else
@@ -818,7 +883,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 bit++;
 #else
                 if((nums1 & 1) && relprime(a, b))
-                { total += RP_CHECK(_ratpoints_check_point(a, b, args, quit, process, info));
+                { total += RP_CHECK_POINT(a, b);
                   if(*quit) return(total);
                 }
 #endif
@@ -843,6 +908,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     }
   }
 #endif /* USE_LONG_IN_PHASE_2 */
+#endif /* RP_STOP_AFTER != 1 */
 
   RP_TOC(_rp_t2, _rp_phase2_cycles);
 

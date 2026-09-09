@@ -61,8 +61,13 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to work with unsigned long's instead of bit-arrays
 #  in phase 2 of the sieving. This is slower at every register width that has
-#  a choice: measured 3% at 128 and 15% at 256 bits on a curve with few points,
-#  and a wash on one with many. (At 64 bits it is what the code does anyway.)
+#  a choice: 10% at 128 and 15% at 256 bits on a curve with few rational
+#  points, 0 to 5% on one with many. Part of that is not the representation
+#  but that the bit-array path steps over the empty units in a tight loop of
+#  its own and this path does not; giving it one closes about half the gap
+#  (to 3% and 5%) without reversing it. (At 64 bits this is what the code
+#  does anyway, and there such a loop is worth -4% on a sparse curve but
+#  +10% on a point-rich one, so it has not been added.)
 # Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
 #  separately and write a report to stderr when the program exits; add
 #  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1.
