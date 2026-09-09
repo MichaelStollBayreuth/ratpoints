@@ -532,6 +532,28 @@ not needed when the two builds differ only in a `-D` that changes no code
 layout, and it was not needed for any of the tables above, which compare
 register widths at identical source.
 
+**No `-falign` setting is worth adopting**, which was the obvious next
+question.  Each candidate against the default build of the same width, median
+of three paired runs:
+
+| width | curve | `-falign-loops=32` | `=64` | `-falign-functions=32 -falign-loops=32` |
+|---|---|---|---|---|
+| 64 | sparse | 0.999 | 0.999 | 1.000 |
+| 64 | point-rich | 1.004 | 1.009 | 1.007 |
+| 128 | sparse | 1.008 | 1.007 | 1.014 |
+| 128 | point-rich | 1.010 | 1.040 | 1.010 |
+| 256 | sparse | 0.999 | 0.998 | 0.987 |
+| 256 | point-rich | 0.992 | 1.006 | 0.989 |
+
+No setting has a consistent sign: `-falign-loops=32` wins three of the six and
+loses three, and averages 1.002; `=64` averages 1.010; adding
+`-falign-functions=32` changes nothing systematic.  The 128-bit build is
+worse with more alignment in all four of its entries.  So the flags earn their
+place as a *check* on a measurement and not as a build setting -- gcc's own
+target-tuned default is as good as any of them, and a value pinned now would be
+re-rolled by the next edit to the source or the next compiler version anyway,
+on hardware that may not be this one.
+
 ## Open questions
 
 * The bit-extraction loop `for(a = a0; nums; a += d, nums >>= 1)` walks from
