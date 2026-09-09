@@ -219,8 +219,10 @@ typedef __v2di ratpoints_bit_array;
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (ratpoints_bit_array)__builtin_ia32_andps((__v4sf)(a), (__v4sf)(b)))
 #define EXT0(a) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 0))
-/* the following is a hack (here i is always 1) */
-#define EXT(a,i) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 1))
+/* This used to ignore i and always extract word 1, which was safe only as
+ * long as the one caller asked for nothing else.  It is a vector type, so
+ * subscript it like the other variants do. */
+#define EXT(a,i) ((unsigned long)(a)[i])
 #define TEST(a) (EXT0(a) || EXT(a,1))
 #define MASKL(a,s) { unsigned long *survl = (unsigned long *)(a); long sh = (s); \
                      if(sh >= LONG_LENGTH) { survl[0] = 0UL; survl[1] &= (~0UL)<<(sh - LONG_LENGTH); } \
@@ -250,9 +252,10 @@ typedef unsigned long ratpoints_bit_array;
 #ifndef RATPOINTS_CHUNK
 # define RATPOINTS_CHUNK 1  /* Leave optimization to the compiler... */
 #endif
-#ifndef USE_LONG_IN_PHASE_2 /* Use simpler code in sift.c */
-# define USE_LONG_IN_PHASE_2
-#endif
+/* USE_LONG_IN_PHASE_2 used to be forced here, to select a simpler second
+ * phase in sift.c.  It no longer means that: it now sieves the survivors one
+ * 64-bit word at a time instead of a whole bit-array at a time, and with
+ * RBA_PACK == 1 the two are the same code.  Nothing to set. */
 
 #endif /* various register lengths */
 

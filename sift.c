@@ -608,122 +608,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   RP_TIC(_rp_t2);
 
 #if RP_STOP_AFTER != 1
-#ifdef USE_LONG_IN_PHASE_2
-  /* Work with unsigned longs instead of bit-arrays */
-  /* Second phase of the sieve: test each surviving word in the bit-array
-   * with more primes */
-  { unsigned long *surv0 = (unsigned long *)survivors;
-    long i, base = 0;
-
-    for(i = RBA_PACK*w_low; i < RBA_PACK*w_high; i++, base++)
-    { sieve_spec *ssp = &sieves[sp1];
-      long n;
-      unsigned long nums;
-
-#ifdef RP_LONG_SKIP
-      /* the counterpart of the skip loop the bit-array path has: step over
-       * the empty words without re-entering the body.  Only defined for the
-       * development builds, to see what that loop is worth here. */
-      while(i < RBA_PACK*w_high && !*surv0) { surv0++; i++; base++; }
-      if(i >= RBA_PACK*w_high) { break; }
-#endif
-      nums = *surv0++;
-
-#if RP_STOP_AFTER == 2
-      if(nums) { _rp_sink += nums; }
-      continue;
-#endif
-
-#ifdef RP_PHASE_COUNTS
-      if(nums)
-      { _rp_units_surviving++; _rp_bits_1 += __builtin_popcountl(nums); }
-#endif
-
-#ifdef DEBUG
-      if(nums)
-      { printf("\nsurviving word %*.*lx @ i = %ld\n", WIDTH, WIDTH, nums, i);
-        fflush(NULL);
-      }
-#endif
-
-      for(n = sp2-sp1; n && nums; n--)
-      {
-#ifdef RP_PHASE_COUNTS
-        _rp_and2++;
-#endif
-        unsigned long *ptr = (unsigned long *)ssp->start;
-        long pp = RBA_PACK*ssp->p;
-
-        ptr += base;
-        while(ptr >= (unsigned long *)ssp->end) { ptr -= pp; }
-        nums &= *ptr;
-
-#ifdef DEBUG
-        printf("after prime p = %ld: %*.*lx\n ", ssp->p, WIDTH, WIDTH, nums);
-        fflush(NULL);
-#endif
-
-        ssp++;
-      }
-
-#if RP_STOP_AFTER == 3
-      _rp_sink += nums; continue;
-#endif
-
-#ifdef RP_PHASE_COUNTS
-      _rp_bits_2 += __builtin_popcountl(nums);
-#endif
-
-      /* Check the survivors of the sieve if they really give points */
-      if(nums)
-      { long a0, a, d;
-             /* a will be the numerator corresponding to the selected bit */
-#ifdef DEBUG
-        long bit = 0;
-#endif
-
-        /* a0 := numerator corresponding to lowest bit,
-         * d  := step size in numerators from one bit to the next */
-        if(which_bits == num_all)
-        { d = 1; a0 = i << LONG_SHIFT; }
-        else
-        { d = 2; a0 = i << (LONG_SHIFT+1);
-          if(which_bits == num_odd) { a0++; }
-        }
-
-        for(a = a0; nums; a += d, nums >>= 1)
-        { /* test one bit */
-
-#ifdef RP_PHASE_COUNTS
-            _rp_ext2++;
-#endif
-
-#ifdef DEBUG
-          if(nums & 1)
-          { printf("\nsurviving bit no. %ld --> a = %ld. ", bit, a);
-            if(relprime(a, b))
-            { printf("Check point...\n");
-              fflush(NULL);
-              total += RP_CHECK_POINT(a, b);
-              if(*quit) return(total); /* if quit was set, stop */
-            }
-            else
-            { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
-          }
-          bit++;
-#else
-          if((nums & 1) && relprime(a, b))
-          { total += RP_CHECK_POINT(a, b);
-            if(*quit) return(total); /* if quit was set, stop */
-          }
-#endif
-
-        }
-      }
-    }
-  }
-
-#else /* not defined(USE_LONG_IN_PHASE_2) */
 
   /* Second phase of the sieve: test each surviving bit array with more primes */
   { ratpoints_bit_array *surv0 = &survivors[0];
@@ -740,7 +624,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     for(i = w_low; i < w_high; i++, base++)
     { ratpoints_bit_array nums;
       long n;
-#ifndef RP_HYBRID_PHASE2
+#ifndef USE_LONG_IN_PHASE_2
       sieve_spec *ssp = &sieves[sp1];
 #endif
 
@@ -767,16 +651,19 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       }
 #endif
 
-#ifdef RP_HYBRID_PHASE2
-      /* Development variant: keep the first phase and the scan at the full
-       * register width, but do the rest one 64-bit word at a time.  The
-       * tables need no different layout -- they hold RBA_PACK copies of the
-       * pattern, so they can be read as words at index RBA_PACK*base + k,
-       * which is what USE_LONG_IN_PHASE_2 already does -- what is new here is
-       * that only the words of a surviving bit-array that are themselves
-       * non-zero are looked at.  The point is to measure whether the wide
-       * AND, which reads RBA_PACK words of table for what is nearly always a
-       * single surviving word, is paying for itself. */
+#ifdef USE_LONG_IN_PHASE_2
+      /* Keep the first phase and the scan at the full register width, but do
+       * the rest one 64-bit word at a time: of a surviving bit-array, only
+       * the words that are themselves non-zero are sieved with the remaining
+       * primes and then extracted.  No different table layout is needed --
+       * the tables hold RBA_PACK copies of the pattern, so the word wanted is
+       * the one at index RBA_PACK*base + k.
+       * This is slower than sieving the whole bit-array at once, by a few per
+       * cent at 128 and 256 bits, and it is instructive that it is: the
+       * number of AND steps is the same either way, because the other words
+       * of the array were already zero, and a narrow and a wide read of the
+       * same table come from one cache line.  See PHASE-NOTES.md on the
+       * phases-by-register-width branch. */
       { long a0, da, d, k;
 
         if(which_bits == num_all)
@@ -954,7 +841,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           }
         }
       }
-#endif /* RP_HYBRID_PHASE2 */
+#endif /* USE_LONG_IN_PHASE_2 */
       /* Attempt to save some subtractions, but no improvement... */
       /*
       if(base == BASE_REPEAT)
@@ -969,7 +856,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       */
     }
   }
-#endif /* USE_LONG_IN_PHASE_2 */
 #endif /* RP_STOP_AFTER != 1 */
 
   RP_TOC(_rp_t2, _rp_phase2_cycles);

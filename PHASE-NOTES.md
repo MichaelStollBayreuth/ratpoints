@@ -448,19 +448,22 @@ So the recommendation stands -- `USE_LONG_IN_PHASE_2` is still a loss at both
 widths on both curves -- but the margin is 3-5%, not 10-15%, and the earlier
 figures were partly measuring the missing loop.
 
-Adding the loop to the plain 64-bit build, where the long path is the only
-path, is **not** a clear win: -3.6% on the sparse curve but +10% on the
-point-rich one, since when many words survive its bookkeeping is wasted.  Left
-alone for that reason.
+Adding the loop to the plain 64-bit build appeared to be -3.6% on the sparse
+curve and +10% on the point-rich one.  Both figures were code alignment: at
+`-falign-loops=32` and `=64` the same comparison gives 0.998/1.016 and
+1.000/1.002.  The loop is neutral there, and the 64-bit build now has it like
+every other width.  See the warning at the end of this file.
 
-## The hybrid: wide scan, 64-bit second phase
+## `USE_LONG_IN_PHASE_2`: wide scan, 64-bit second phase
 
-`RP_HYBRID_PHASE2` keeps the first phase and the scan at the full register
-width and does everything after it one 64-bit word at a time: of a surviving
-bit-array, only the words that are themselves non-zero are sieved with the
-next `sp2-sp1` primes and then extracted.  This is what
-`USE_LONG_IN_PHASE_2` is *not* -- that one narrows the scan too, and steps over
-every word of the array whether or not anything survived in it.
+`USE_LONG_IN_PHASE_2` now means this: keep the first phase and the scan at the
+full register width and do everything after it one 64-bit word at a time --
+of a surviving bit-array, only the words that are themselves non-zero are
+sieved with the next `sp2-sp1` primes and then extracted.  It used to mean
+something else, a second phase that narrowed the scan as well and stepped over
+every word of the array whether or not anything had survived in it; that
+version has been removed, since the flag now covers the question it was there
+to ask, and the experiment can be re-run by setting it.
 
 No new table layout is needed.  The tables already hold `RBA_PACK` copies of
 the pattern, so the word at index `RBA_PACK*base + k` is the right one, which
@@ -510,6 +513,24 @@ and 32 bytes at the same address come from one cache line either way.  All the
 extra width buys is ALU width that was not the constraint.  The idea that
 fetching fewer bits for the `AND`s should be faster is dead, and it is dead
 for the cache-line reason rather than for any subtlety about the early exit.
+
+## A warning about small differences on this machine
+
+Replacing the old `USE_LONG_IN_PHASE_2` with the new one appeared to cost the
+64-bit build 9% on a point-rich curve, reproducibly, over five paired runs with
+a spread under 1%.  It was code alignment.  The same pair of binaries built
+with `-falign-functions=32 -falign-loops=32` gives 0.980, and with `=64` gives
+1.002, against 1.093 at gcc's default; a build with `-DRP_PHASE_TIMING`, whose
+code is laid out differently again, put the two within 1.3%.
+
+So on this machine a hot loop landing badly can be worth about 10%, which is
+larger than most of the effects in this file and is perfectly reproducible, so
+neither repetition nor pairing will reveal it.  **Before believing a difference
+of under about 10% between two builds of different source, rebuild both at two
+or three explicit alignments and check that the difference survives.**  It is
+not needed when the two builds differ only in a `-D` that changes no code
+layout, and it was not needed for any of the tables above, which compare
+register widths at identical source.
 
 ## Open questions
 
