@@ -74,6 +74,14 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  "-DRP_STOP_AFTER=<n>" to cut the pipeline short after a chosen stage, so
 #  that the cost of a stage can be had as a difference of two runs.
 #  These are development aids; see the comment at the top of sift.c.
+# When comparing two builds whose *source* differs, be aware that where gcc
+#  happens to place the hot loops is worth about 10% here, reproducibly, so
+#  repeating the runs will not reveal it. Rebuild both with, say,
+#  "-falign-loops=32" and "-falign-loops=64" and check that the difference
+#  survives. Those flags are not set by default because no value is reliably
+#  better: measured against the default over three register widths and two
+#  curves, -falign-loops=32 lands between 0.992 and 1.010 with no consistent
+#  sign, and 64 is worse.
 # Add "-DRATPOINTS_CHUNK=<n>" to force the use of 2 <= n <= 16 registers
 #  in phase 1 of sieving. For n=1, this reverts to the code used previously.
 #  If SSE/AVX registers are used and this is not set, 16 registers will be used.
