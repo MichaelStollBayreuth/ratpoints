@@ -203,7 +203,7 @@ tune: rptest rptest-many
 # -- which is to say from what "make tune" found, since it reads the same
 # tuning.mk -- and asks only whether a factor of two in the threshold either
 # way, or two more or fewer primes in the second stage, is better.  That is
-# seven timings a round rather than ten, and it rests on the two regimes not
+# seven settings a round rather than ten, and it rests on the two regimes not
 # wanting wildly different values.  If it moves a value, run it again from
 # there.  Expect an hour and a half at the default three rounds;
 # "ROUNDS=1 make tunehigh" is the short version.

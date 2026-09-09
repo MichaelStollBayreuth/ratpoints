@@ -53,8 +53,9 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # Which to use depends on what a run costs.  "make tune" sweeps the ladder,
 # since one timing there is three seconds.  "make tunehigh" costs two minutes a
 # timing, so it starts from what "make tune" found and only asks whether a step
-# either way is better, which is most of an hour saved.  The assumption is that
-# the two regimes do not want wildly different values; if a neighbourhood run
+# either way is better: seven settings a round rather than ten, which is half
+# an hour off a run of two.  The assumption is that the two regimes do not want
+# wildly different values; if a neighbourhood run
 # moves a value, it has not finished looking, and should be run again from
 # there.
 R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
