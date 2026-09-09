@@ -196,14 +196,23 @@ tune: rptest rptest-many
 # testhighmany below).  Which one to use depends on the runs that matter: at
 # the 16383 of "make test" a fifth of the time is spent building sieve tables,
 # which the two constants have no effect on, so a short-run tuning judges them
-# partly on work they do not touch.  This takes correspondingly longer: one
-# timing is two minutes here against three seconds there, so the default three
-# rounds are a couple of hours.  "ROUNDS=1 make tunehigh" is the short version.
+# partly on work they do not touch.
+#
+# One timing here is two minutes against three seconds there, so this does not
+# sweep the whole ladder of candidates.  It starts from the settings in force
+# -- which is to say from what "make tune" found, since it reads the same
+# tuning.mk -- and asks only whether a factor of two in the threshold either
+# way, or two more or fewer primes in the second stage, is better.  That is
+# seven timings a round rather than ten, and it rests on the two regimes not
+# wanting wildly different values.  If it moves a value, run it again from
+# there.  Expect an hour and a half at the default three rounds;
+# "ROUNDS=1 make tunehigh" is the short version.
 .PHONY: tunehigh
 tunehigh: rptest rptest-high-many
-	@TUNE_CONFIG='${TUNE_CONFIG} / h=${TESTHEIGHT}' \
+	@TUNE_CONFIG='${TUNE_CONFIG}' \
 	 TUNE_TESTS='./rptest:testbase ./rptest-high-many:testbase-high-many' \
-	 TUNE_HEIGHT='${TESTHEIGHT}' ./tune.sh
+	 TUNE_HEIGHT='${TESTHEIGHT}' \
+	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' ./tune.sh
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output

@@ -15,7 +15,9 @@
 # building sieve tables rather than into sieving, so a setting is judged partly
 # on work it does not affect; "make tunehigh" measures the same thing on the
 # large-height suites instead, where the sieve is nearly all of it.  Use that
-# one if the runs that matter are long.
+# one if the runs that matter are long.  The two write the same tuning.mk and
+# each starts from what the other left, so the cheap sweep can be run first and
+# the expensive one asked only whether it wants to move.
 #
 # Measuring is the delicate part, and naive timing does not work.  The cost
 # surface is flat -- anything within a factor of two of a good threshold costs
@@ -40,10 +42,25 @@ MARGIN=${MARGIN:-0.97}     # accept only if the best ratio is below this
 NOISE=${NOISE:-0.02}       # ... and the baseline's self-ratio is within this
 WARMUP=${WARMUP:-20}       # seconds of load before measuring
 
-# candidates for the threshold, bracketing the compiled-in 0.0075 either way;
-# a factor of two in it is worth about one prime in the first phase
+# The candidates for each constant.  There are two ways to say what they are.
+# R_VALUES and E_VALUES are an absolute ladder, bracketing the compiled-in
+# 0.0075 and 5 either way; a factor of two in the threshold is worth about one
+# prime in the first phase.  R_FACTORS and E_DELTAS instead describe a
+# neighbourhood of the settings being measured against -- multiples of the
+# threshold and offsets added to the other constant -- and take precedence when
+# they are set.
+#
+# Which to use depends on what a run costs.  "make tune" sweeps the ladder,
+# since one timing there is three seconds.  "make tunehigh" costs two minutes a
+# timing, so it starts from what "make tune" found and only asks whether a step
+# either way is better, which is most of an hour saved.  The assumption is that
+# the two regimes do not want wildly different values; if a neighbourhood run
+# moves a value, it has not finished looking, and should be run again from
+# there.
 R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
 E_VALUES=${E_VALUES:-"3 5 7 10"}
+R_FACTORS=${R_FACTORS:-}
+E_DELTAS=${E_DELTAS:-}
 
 # The suites to tune on, as "program:reference" pairs, and the height bound to
 # run them at (empty: each test's own default).  Set by "make tune" and
@@ -76,6 +93,20 @@ then
   echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E"
 fi
 BASE="-r $DEF_R -R $DEF_E"
+
+# a neighbourhood of those, if that is what was asked for
+if [ -n "$R_FACTORS" ]; then
+  R_VALUES=`awk -v r="$DEF_R" -v f="$R_FACTORS" \
+    'BEGIN { n = split(f, a, " ")
+             for (i = 1; i <= n; i++) printf "%.4g ", r*a[i] }'`
+fi
+if [ -n "$E_DELTAS" ]; then
+  E_VALUES=`awk -v e="$DEF_E" -v d="$E_DELTAS" \
+    'BEGIN { n = split(d, a, " ")
+             for (i = 1; i <= n; i++) { v = e + a[i]
+                                        if (v >= 0) printf "%d ", v } }'`
+fi
+[ -n "$R_FACTORS$E_DELTAS" ] && echo "candidates: $R_VALUES/ $E_VALUES"
 
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
@@ -198,6 +229,10 @@ case $verdict in
 # Delete this file to go back to the values compiled into ratpoints.h.
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
+# Measured on $TUNE_TESTS${TUNE_HEIGHT:+ at height $TUNE_HEIGHT}, starting
+# from $DEF_R / $DEF_E.  That is a note to the reader, not something the
+# Makefile looks at: "make tune" and "make tunehigh" write the same file and
+# each takes the other's result as its starting point.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
 TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E
 EOF

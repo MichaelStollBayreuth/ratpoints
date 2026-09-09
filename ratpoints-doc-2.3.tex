@@ -934,12 +934,28 @@ Which tests it measures on is worth a thought. At the height bound
 \texttt{test1} and \texttt{test1many} use, a fifth of the time on the random
 curves goes into building sieve tables, which neither constant has any effect
 on, so a setting is judged partly on work it does not touch. \texttt{make
-tunehigh} does the same sweep on the large-height tests instead, where the
-sieve is nearly all of the run; use it if the runs that matter to you are long
-ones. It is correspondingly slower --- one timing is two minutes rather than
-three seconds, so the default three rounds take a couple of hours, and
-\texttt{ROUNDS=1 make tunehigh} is the short version. The two write the same
-\texttt{tuning.mk}, each recording which of them measured it.
+tunehigh} measures on the large-height tests instead, where the sieve is nearly
+all of the run; use it if the runs that matter to you are long ones.
+
+One timing there is two minutes rather than three seconds, so it does not sweep
+the whole ladder of candidates. It starts from the settings in force --- which
+is to say from what \texttt{make tune} found, since the two read and write the
+same \texttt{tuning.mk} --- and asks only whether a factor of two in the
+threshold either way, or two more or fewer primes in the second stage, is
+better. That is seven timings in a round rather than ten, and it rests on the
+assumption that the two regimes do not want wildly different values. If it
+moves a value it has not finished looking, and should be run again from there.
+Expect an hour and a half at the default three rounds;
+\texttt{ROUNDS=1 make tunehigh} is the short version. The intended order is
+\texttt{make tune} first, for a value from a full sweep cheaply, and then
+\texttt{make tunehigh} to ask whether the long runs want something else.
+
+The candidates themselves can be chosen too. \texttt{R\_VALUES} and
+\texttt{E\_VALUES} give an absolute ladder, which is
+what \texttt{make tune} uses, and \texttt{R\_FACTORS} and
+\texttt{E\_DELTAS} give a neighbourhood of the current settings --- multiples
+of the threshold and offsets added to the other constant --- which is what
+\texttt{make tunehigh} uses and which takes precedence when set.
 
 Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
 some trouble over it. The cost surface is flat --- anything within a factor of
