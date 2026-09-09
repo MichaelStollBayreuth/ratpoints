@@ -25,7 +25,7 @@
  * in init.c .  Not part of the library; build it with                 *
  *   make bench_init                                                   *
  * and run it as                                                       *
- *   ./bench_init [reps [pmin [pmax]]]                                 *
+ *   ./bench_init [reps [pmin [pmax [hot]]]]                           *
  *                                                                     *
  * It first rebuilds every sieve table (all primes, all denominator    *
  * classes) and compares it word for word against a reference computed *
@@ -33,8 +33,19 @@
  *   si[x] bit i  <==>  is_f_square[((x*LONG_LENGTH + i) * b^-1) mod p] *
  * so that a faster implementation of sieve_init can be checked        *
  * without running the whole test suite; then it times the same sweep. *
- * Restricting the primes with pmin/pmax is useful because the primes  *
+ * pmin and pmax restrict both the check and the benchmark, which is   *
+ * useful because the primes                                           *
  * above LONG_LENGTH (CODE_INIT_SIEVE2) dominate the total cost.       *
+ *                                                                     *
+ * "hot" says where the tables are written.  With hot = 0, the default,*
+ * each table goes after the last, as in the library, so a sweep of every*
+ * prime writes 5.3 MB and the largest primes measure how fast this    *
+ * machine writes to memory rather than how fast a table is built.  With*
+ * hot = 1 each table is written over the previous one and the         *
+ * destination stays in L1.  Neither is quite the truth: a real run    *
+ * rebuilds the tables for one curve, some tens of kilobytes, and then *
+ * reuses them, so it lies between the two and much nearer the hot end.*
+ * Quote both when judging a change.                                   *
  *                                                                     *
  * Michael Stoll, Sep 6, 2026                                          *
  ***********************************************************************/
@@ -74,6 +85,7 @@ int main(int argc, char *argv[])
   long reps = (argc > 1) ? atol(argv[1]) : 40;
   long pmin = (argc > 2) ? atol(argv[2]) : 0;
   long pmax = (argc > 3) ? atol(argv[3]) : 1000;
+  int  hot  = (argc > 4) ? atoi(argv[4]) : 0;
   long need = 0, pn, b, seed = 12345;
   int  *isfs_buf = malloc(RATPOINTS_NUM_PRIMES*(RATPOINTS_MAX_PRIME+1)*sizeof(int));
   long *inv_buf  = malloc(RATPOINTS_NUM_PRIMES*RATPOINTS_MAX_PRIME*sizeof(long));
@@ -107,6 +119,7 @@ int main(int argc, char *argv[])
   /* ---- correctness: every prime, every denominator class ---- */
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
   { long p = prime[pn];
+    if(p < pmin || p > pmax) continue;
     for(b = 1; b < p; b++)
     { unsigned long *si;
       long w = p*RBA_PACK + (RATPOINTS_CHUNK-1)*RBA_PACK, j;
@@ -131,14 +144,17 @@ int main(int argc, char *argv[])
       for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
       { long p = prime[pn];
         if(p < pmin || p > pmax) continue;
-        for(b = 1; b < p; b++) (*(se[pn].init))(&se[pn], b, &args);
+        for(b = 1; b < p; b++)
+        { if(hot) { args.ba_next = args.ba_buffer; }
+          (*(se[pn].init))(&se[pn], b, &args); }
       }
     }
   }
   t = now() - t;
   { long nt = 0; for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
     { if(prime[pn] >= pmin && prime[pn] <= pmax) nt += prime[pn]-1; }
-    printf("  %ld reps x %ld tables : %7.4f s  -> %7.1f ns/table\n",
-         reps, nt, t, 1e9*t/(reps*(double)nt)); }
+    printf("  %ld reps x %ld tables%s: %7.4f s  -> %7.1f ns/table\n",
+         reps, nt, hot ? " (hot)" : "      ", t,
+         1e9*t/(reps*(double)nt)); }
   return bad ? 1 : 0;
 }

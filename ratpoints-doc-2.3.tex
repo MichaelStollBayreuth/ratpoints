@@ -1232,6 +1232,18 @@ that may actually be used, rather than the whole compiled-in table. This
 matters because of the raised prime bound: at the largest supported bound the
 old reservation would have been 1.7~GB.
 
+Building the sieve tables is faster by a factor of nearly four, which is worth
+13\% of \texttt{make test1} and little on a run with a large height bound,
+where the tables were never a large part of the work. Two things were wrong
+with the loop that turns the table of squares into a bit pattern. It tested
+that table with a branch, and which residues are squares has no pattern, so
+about half of those branches were mispredicted; shifting the value into place
+has nothing to miss. What is left is then a chain --- one row could not start
+until the residue for the row before had been reduced --- and four rows are now
+taken at a time, with four residues stepping by $4b^{-1} \bmod p$, so that the
+four chains overlap. \verb+-DRP_INIT_BRANCH+ and \verb+-DRP_INIT_ONEWAY+ put
+the old forms back, should you want to measure this on your own machine.
+
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
 
