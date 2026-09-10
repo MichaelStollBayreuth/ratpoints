@@ -85,6 +85,43 @@
 # define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
 #endif
 
+/* The third sieving stage tests one surviving numerator at a time against
+ * further primes, computing (a * b^-1) mod p instead of reading a table.
+ * It needs no table, so it can use primes that would never be worth
+ * building one for; what it costs is a multiplication and a reduction per
+ * survivor and prime, and one subtraction per denominator and prime to
+ * carry b along.  How many primes it should use therefore depends on how
+ * many survivors a denominator has, which is what the two constants below
+ * express, both as fractions of what one exact check costs: the first is
+ * the per-survivor cost of testing one prime, the second the per-denominator
+ * cost of carrying it.  A prime is worth adding while
+ *   S * (1 - q_s - r) > q_d ,
+ * where S is the expected number of survivors per denominator still in play
+ * and r is the prime's density.  The second of the two decides whether the
+ * stage runs at all, so it is the one to tune; it can be set per call through
+ * the sp3_per_denom field of ratpoints_args, and with -Q on the command line.
+ * Since S falls by a factor of r with every prime added, this stops of its
+ * own accord; with survivors thin on the ground it stops at once, which is
+ * what should happen, because then the per-denominator cost is all there is.
+ * The number of primes can also be fixed outright, through the sp3_extra
+ * field of ratpoints_args or with -P on the command line. */
+#ifndef RATPOINTS_SP3_PER_SURVIVOR
+# define RATPOINTS_SP3_PER_SURVIVOR 0.055  /* one prime tested, per survivor */
+#endif
+#ifndef RATPOINTS_SP3_PER_DENOM
+# define RATPOINTS_SP3_PER_DENOM 0.013     /* one prime carried, per denom. */
+#endif
+/* What fraction of the survivors of the first two phases the test for common
+ * factors lets through.  It is about 6/pi^2 for the numerators that survive
+ * by chance, a little less because the denominators that keep the most
+ * survivors are those divisible by several of the sieving primes, which are
+ * also the ones with the fewest coprime numerators.  It also carries the
+ * halving that an even denominator brings, since only odd numerators are
+ * then considered; neither factor is worth estimating separately. */
+#ifndef RATPOINTS_SP3_COPRIME
+# define RATPOINTS_SP3_COPRIME 0.7
+#endif
+
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
      Unless num_primes is set explicitly, this is where the search starts:
      sieving_info() looks at further primes when a curve does not leave
@@ -101,8 +138,9 @@ typedef struct {double low; double up;} ratpoints_interval;
 /* main data structure for arguments and local data */
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
-                 long b_low; long b_high; long sp1; long sp2;
+                 long b_low; long b_high; long sp1; long sp2; long sp3;
                  double survivors_per_word; long sp2_extra;
+                 long sp3_extra; double sp3_per_denom;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
@@ -111,7 +149,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *se_buffer; void *se_next;
                  void *ba_buffer; void *ba_next;
                  int *int_buffer; int *int_next;
-                 void *sieve_list;
+                 void *sieve_list; void *stage3_list;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
                  void *ba_buffer_na; long ba_buffer_primes;

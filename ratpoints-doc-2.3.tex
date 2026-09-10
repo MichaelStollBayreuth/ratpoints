@@ -519,6 +519,29 @@ line means they can be retuned without recompiling; the compiled-in defaults
 are \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
 and \texttt{RATPOINTS\_SP2\_EXTRA} in \texttt{ratpoints.h}.
 
+A third sieving stage runs after those two, on the numerators that survive
+them. It tests each of them against further primes one at a time, computing
+the position in the table of admissible residues rather than reading a bit
+out of a sieving table, so it needs no table and can use primes for which
+building one would be out of the question. How many primes it uses is
+chosen from the curve, and \\
+\strut\quad\verb+-P+ $k$ \\
+overrides that with exactly $k$ of them; \verb+-P 0+ switches the stage off,
+and \\
+\strut\quad\verb+-Q+ $q$ \\
+sets instead the machine constant the choice turns on, namely what carrying
+one more prime through the denominators costs as a fraction of one exact
+test. It is to \verb+-P+ what \verb+-r+ is to \verb+-n+.
+The choice weighs what a prime removes, which is a fraction of the survivors,
+against what it costs, which is a little work per survivor and a little more
+per denominator, so it depends on how many survivors a denominator has left
+by then --- many for a curve with many rational points, few for a random one,
+and more at a large height bound than at a small one. On a random curve at
+the default height bound the stage does nothing at all, which is as it should
+be. Section~\ref{sec:sp3choice} has the rule; the two machine constants in it
+are \texttt{RATPOINTS\_SP3\_PER\_SURVIVOR} and
+\texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}.
+
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
 sets the maximal number of `forbidden divisors'. If the degree is even
@@ -654,6 +677,15 @@ command line program does when \verb+-n+ and \verb+-N+ are absent. In
 \texttt{survivors\_per\_word} and \texttt{sp2\_extra} hold the two
 constants that govern that choice (options \verb+-r+ and \verb+-R+); if
 negative, the values compiled into \texttt{ratpoints.h} are used.
+
+\texttt{sp3}
+reports the number of primes used in all three stages together, so that
+\texttt{sp3} $-$ \texttt{sp2} of them belong to the third. It is an output
+field: what goes in is \texttt{sp3\_extra}, which fixes that difference when
+it is non-negative (option \verb+-P+) and otherwise leaves the number to be
+chosen from the curve, and \texttt{sp3\_per\_denom} (option \verb+-Q+),
+which is the machine constant that choice turns on and takes the value
+compiled into \texttt{ratpoints.h} when negative.
 Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
@@ -896,6 +928,49 @@ Taken together, and against the fixed values used up to version~2.2.3, this is
 about $14\%$ faster on the random curves of \texttt{make test1} and about
 $36\%$ faster on the point-rich curves of \texttt{make test1many}.
 
+\subsection{How many primes the third stage uses}\label{sec:sp3choice}
+
+The third stage tests one survivor at a time, so what a prime costs it and
+what a prime saves it are of quite a different shape from the first two
+stages. Saved is a fraction $1 - r_p$ of the survivors that reach the prime,
+each of which would otherwise go to the exact test with its multi-precision
+arithmetic and its integer square root. Spent is a multiplication and a
+reduction for each survivor tested, and one step of the loop that keeps the
+denominator modulo each sieving prime --- and that last is paid for every
+denominator, whether or not it has a survivor left. So a prime is worth
+adding as long as
+\[ S\,(1 - q_s - r_p) > q_d , \]
+where $S$ is the expected number of survivors a denominator still has and
+$q_s$, $q_d$ are the per-survivor and per-denominator costs measured against
+the cost of one exact test. Since $S$ falls by a factor of~$r_p$ with each
+prime added, this stops of its own accord. The two constants are
+\texttt{RATPOINTS\_SP3\_PER\_SURVIVOR} and
+\texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}; like the two
+above they are properties of the machine.
+
+$S$ is estimated from the number of numerators a denominator has to consider
+--- which follows from the positivity intervals, the height bound and the
+range of denominators --- thinned by the sixteen-fold pre-sieve, by the
+primes of the first two stages, and by the proportion of numerators that are
+coprime to the denominator. That last factor is there because the test for
+common factors runs before this stage and not after it. It has to: a
+numerator sharing a factor with the denominator stands for a fraction that a
+smaller denominator has already dealt with, so $f$ takes the same value there
+and every prime accepts it. Those survivors are shadows of the curve's own
+rational points, and there are about $H/b$ of them for each point with
+denominator~$b$, so at a small height bound they can outnumber the survivors
+that die by chance several times over.
+
+The stage also decides how far up the prime list to look. A random curve has
+a dozen or more informative primes left over past \texttt{sp2} among the
+thirty the program looks at by default, but a curve with many rational points
+may have none at all --- these are the curves of the previous section, whose
+small primes say nothing. Since the stage builds no sieving table, a prime
+costs it nothing per curve beyond the table of admissible residues, so it
+looks at further primes when the ones in hand run out, exactly as the choice
+of \texttt{sp2} does. On the curves of \texttt{testdata-high-many.h} that
+turns one available prime into more than twenty.
+
 \subsection{Retuning for your machine}
 
 For large computations, it may be a good idea to try to find the best
@@ -998,8 +1073,8 @@ edit \texttt{rptest.c} if necessary to adapt the degree and height settings)
 and then time \texttt{./rptest -z} (the \verb+-z+ option suppresses the output)
 for various combinations of the parameter settings. \texttt{rptest} accepts
 most of the optional parameters of \texttt{ratpoints}, in particular
-the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-F+
-and \verb+-S+ parameters, as well as \verb+-T+ (print the CPU time used, and
+the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-P+,
+\verb+-Q+, \verb+-F+ and \verb+-S+ parameters, as well as \verb+-T+ (print the CPU time used, and
 nothing else),
 so you can easily change the parameters used on the command line. In addition,
 there is an option \verb+-h+ $H$ to change the default height bound
@@ -1305,6 +1380,23 @@ measures a change to the sieving loops through a filter; at the new one that
 share is half a per cent. \texttt{make tunehigh} tunes the two constants on
 them. The test programs also no longer pass the default number of primes
 explicitly, which had quietly stopped them from ever using the new rule above.
+
+There is a third sieving stage. The two that were there work on bit arrays,
+which is the right shape while a whole array's worth of numerators is still
+in play; once the second stage has finished there are only a handful left per
+denominator, and each of them went straight to the exact test. The new stage
+tests them against further primes first, one numerator at a time, computing
+where to look in the table of admissible residues rather than reading a bit
+out of a sieving table. So it builds no table, which is what makes it worth
+doing at that point --- a table costs work proportional to the prime for
+every denominator, and by then there is about one survivor per denominator to
+show for it --- and it also lets the stage use primes far up the list, which
+matters most for the curves whose small primes say nothing. How many it uses
+is decided per curve; on a random curve at the default height bound it uses
+none, which is right. What it is worth is $1.9\%$ of \texttt{make test1many}
+and $1.6\%$ of \texttt{make testhigh}, and $6.7\%$ of
+\texttt{make testhighmany} --- the point-rich curves at a large height bound,
+which is where the exact test had grown to $8\%$ of the run.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.

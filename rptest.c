@@ -80,6 +80,8 @@ int main(int argc, char *argv[])
   long sieve_primes2 = -1;
   double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
+  long sp3_extra = -1;               /* negative: choose from the curve */
+  double sp3_per_denom = -1.0;       /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */
   long num_primes    = -1; /* negative: let ratpoints choose, as main.c
                             * does.  This matters: an explicit value is
@@ -157,6 +159,18 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
+          i++;
+          break;
+        case 'P': /* primes added to sp2 for the third stage */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &sp3_extra) != 1) return(-6);
+          i++;
+          break;
+        case 'Q': /* what a third-stage prime costs per denominator */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &sp3_per_denom) != 1) return(-6);
           i++;
           break;
         case 'j': /* do not use Jacobi sum test */
@@ -286,6 +300,8 @@ int main(int argc, char *argv[])
         args.sp2           = sieve_primes2;
         args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
+        args.sp3_extra     = sp3_extra;
+        args.sp3_per_denom = sp3_per_denom;
         args.array_size    = array_size;
         args.sturm         = sturm_iter;
         args.num_primes    = num_primes;
