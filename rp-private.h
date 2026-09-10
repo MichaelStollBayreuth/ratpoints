@@ -318,7 +318,8 @@ typedef unsigned long ratpoints_bit_array;
 /* define some datatypes */
 
 /* this is used to hold the preliminary sieving information for one prime p */
-typedef struct { long p; long offset; ratpoints_bit_array *ptr;
+typedef struct { long p; long offset; unsigned long magic;
+                 ratpoints_bit_array *ptr;
                  ratpoints_bit_array *start; ratpoints_bit_array *end; } sieve_spec;
 
 /* What the third stage needs to test one numerator against one prime: the

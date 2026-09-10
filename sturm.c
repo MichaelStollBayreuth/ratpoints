@@ -26,6 +26,8 @@
  * Michael Stoll, Jan 9, 2008                                          *
  ***********************************************************************/
 
+#include <math.h>
+
 #include "ratpoints.h"
 
 /**************************************************************************
@@ -187,8 +189,12 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       /* we have to add/extend an interval if we either know that
          the polynomial is positive on the interval (first condition)
          or the maximal iteration depth has been reached (second condition) */
-      { double l = ((double)nl)/((double)(1<<del));
-        double u = ((double)nr)/((double)(1<<der));
+      { /* nl/2^del and nr/2^der, scaled by ldexp rather than by dividing by
+         * a shifted 1: exact, no division, and defined for every depth --
+         * the shift was an int shift, and args->sturm may be as large as
+         * LONG_LENGTH-2, so it was undefined past a depth of 31. */
+        double l = ldexp((double)nl, -(int)del);
+        double u = ldexp((double)nr, -(int)der);
 
         if(iptr == &ivlocal[0])
         { iptr->low = l; iptr->up  = u; iptr++; }

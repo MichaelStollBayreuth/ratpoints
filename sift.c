@@ -181,6 +181,56 @@ static void _rp_sink_report(void)
 { fprintf(stderr, "[stopafter] level=%d sink=%lu\n", RP_STOP_AFTER, _rp_sink); }
 #endif
 
+/* Reducing modulo one of the sieving primes, by multiplying rather than
+ * dividing.  With m = 2^64/p rounded up, the remainder of u modulo p is the
+ * top half of (m*u mod 2^64) * p; that is exact for every u below 2^32,
+ * which every caller here checks for in its own way.  m is a property of the
+ * prime, computed once per prime and curve and carried in the sieve entry.
+ *
+ * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead, which
+ * is what the two callers cost without this. */
+#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
+# define RP_MULMOD(u, p, m) \
+    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
+                             * (unsigned long)(p)) >> 64))
+#else
+# define RP_MULMOD(u, p, m) ((long)((unsigned long)(u) % (unsigned long)(p)))
+#endif
+
+/* The largest value this file will reduce that way; above it the callers
+ * fall back on the division.  See mod_mul() and stage3(). */
+#define RP_MULMOD_LIMIT 4294967295L
+
+/* Development switch: with -DRP_MOD_CHOICE the two ways of reducing a word
+ * number modulo a prime live in the same binary, chosen by the environment
+ * variable RP_MOD_MUL, so that they can be timed against each other without
+ * the code-alignment difference that two builds would bring (see the note in
+ * the Makefile).  The test is per prime and per call and is perfectly
+ * predicted, and it is present in both arms, so it does not favour either. */
+#ifdef RP_MOD_CHOICE
+#include <stdlib.h>
+int _rp_use_mod_mul = 1;
+static void _rp_mod_choose(void) __attribute__((constructor));
+static void _rp_mod_choose(void)
+{ const char *e = getenv("RP_MOD_MUL");
+
+  if(e) { _rp_use_mod_mul = atoi(e); }
+  fprintf(stderr, "[modchoice] mod_mul=%d\n", _rp_use_mod_mul);
+}
+# define RP_USE_MOD_MUL _rp_use_mod_mul
+#else
+# define RP_USE_MOD_MUL 1
+#endif
+
+/* (a mod p) in [0, p), for |a| <= RP_MULMOD_LIMIT.  The sign is put back
+ * afterwards rather than removed beforehand by a shift, because the callers
+ * cannot bound a tightly enough for a shift to stay inside 32 bits. */
+static inline long mod_mul(long a, long p, unsigned long m)
+{ long r = RP_MULMOD((a < 0) ? -a : a, p, m);
+
+  return((a < 0 && r) ? p - r : r);
+}
+
 /* Walking the set bits of a word of survivors.
  *
  * The bits still set after the second sieving stage are the numerators that
@@ -235,22 +285,6 @@ static long RP_CTZL(unsigned long w)
  * removed by the gcd, and there is no point in testing them here first.
  * --------------------------------------------------------------------- */
 
-/* Reducing modulo p is the whole cost of the stage, and a division would
- * throw away what it saves, so it is done by multiplying: with
- * m = 2^64/p rounded up, the remainder of u modulo p is the top half of
- * (m*u mod 2^64) * p .  This is exact for every u below 2^32, which is what
- * the bias in the spec is arranged to keep it under; where it cannot be,
- * bias is zero and the division is done after all.  Build with
- * -DRP_STAGE3_DIVIDE to use the division everywhere and measure the
- * difference. */
-#if defined(__SIZEOF_INT128__) && !defined(RP_STAGE3_DIVIDE)
-# define RP_STAGE3_MULMOD(u, p, m) \
-    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
-                             * (unsigned long)(p)) >> 64))
-#else
-# define RP_STAGE3_MULMOD(u, p, m) ((long)((u) % (unsigned long)(p)))
-#endif
-
 static inline int stage3(long a, const check_spec *csp, long n)
 { long i;
 
@@ -262,7 +296,7 @@ static inline int stage3(long a, const check_spec *csp, long n)
 
     if(!binv) { continue; } /* p divides the denominator: no information */
     if(bias)
-    { am = RP_STAGE3_MULMOD(a*binv + bias, p, csp[i].magic); }
+    { am = RP_MULMOD(a*binv + bias, p, csp[i].magic); }
     else
     { am = a % p;
       if(am < 0) { am += p; }
@@ -303,15 +337,36 @@ static inline int relprime(long m, long n)
  * Try to avoid divisions                                                 *
  **************************************************************************/
 
+#ifdef RP_MOD_COUNTS
+/* Development instrumentation: how often the helper below actually divides,
+ * and how far outside [-16b, 16b) its argument is when it does. */
+unsigned long long _rp_mod_calls = 0, _rp_mod_divs = 0, _rp_mod_quot = 0;
+static void _rp_mod_report(void) __attribute__((destructor));
+static void _rp_mod_report(void)
+{ fprintf(stderr, "[moddata] sift calls=%llu divs=%llu (%.2f%%)"
+                  " mean|a/b|=%.1f\n",
+          _rp_mod_calls, _rp_mod_divs,
+          _rp_mod_calls ? 100.0*(double)_rp_mod_divs/(double)_rp_mod_calls : 0.0,
+          _rp_mod_divs ? (double)_rp_mod_quot/(double)_rp_mod_divs : 0.0);
+}
+# define RP_MOD_TICK(a, b) do { _rp_mod_calls++; } while(0)
+# define RP_MOD_DIV(a, b) do { _rp_mod_divs++; \
+      _rp_mod_quot += (unsigned long long)(((a) < 0 ? -(a) : (a))/(b)); } while(0)
+#else
+# define RP_MOD_TICK(a, b)
+# define RP_MOD_DIV(a, b)
+#endif
+
 /* returns a mod b (for b positive) in [0,b) */
 static inline long mod(long a, long b)
 {
   long b1 = b << 4; /* b1 = 16*b */
 
+  RP_MOD_TICK(a, b);
   /* if a is outside [-16*b, 16*b), then use divison */
-  if(a < -b1) { a %= b; if(a < 0) { a += b; } return(a); }
+  if(a < -b1) { RP_MOD_DIV(a, b); a %= b; if(a < 0) { a += b; } return(a); }
   if(a < 0) { a += b1; }
-  else { if(a >= b1) { return(a % b); } }
+  else { if(a >= b1) { RP_MOD_DIV(a, b); return(a % b); } }
   /* otherwise subtract 2-power multiples of b if necessary
    * to obtain the remainder. */
   b1 >>= 1; /* b1 = 8*b */
@@ -391,11 +446,31 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * It will need to be extended in the obvious way to allow more,
    * e.g., 32 registers when using 512-bit vector operations. */
 
-  /* first set the start fields for the first and second phases of sieving */
+  /* First set the start fields for the first and second phases of sieving.
+   *
+   * This is the busiest reduction in the program: sp2 of them for every call,
+   * and a call handles at most RATPOINTS_ARRAY_SIZE bit arrays, so at a large
+   * height bound there are of the order of a billion.  mod() is the wrong
+   * shape for it.  Its conditional-subtraction chain only avoids the division
+   * while the word number is within sixteen primes of zero, and the word
+   * number grows with the height bound while the primes do not: at height
+   * 2*10^5 it divides on 13% of the calls, and the rest walk a chain of
+   * data-dependent branches.  Multiplying by the reciprocal does the whole
+   * job in a few cycles and branchlessly. */
   { long n;
+    /* the reduction is exact up to RP_MULMOD_LIMIT, and the offset added
+     * below is less than the prime, so leave room for that */
+    int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
+                  && w_low < RP_MULMOD_LIMIT - RATPOINTS_MAX_PRIME);
 
     for(n = 0; n < sp2; n++)
-    { sieves[n].start = sieves[n].ptr + mod(w_low + sieves[n].offset, sieves[n].p); }
+    { long a = w_low + sieves[n].offset;
+
+      sieves[n].start = sieves[n].ptr
+                          + ((small && RP_USE_MOD_MUL)
+                               ? mod_mul(a, sieves[n].p, sieves[n].magic)
+                               : mod(a, sieves[n].p));
+    }
   }
 
   { ratpoints_bit_array *surv = survivors;

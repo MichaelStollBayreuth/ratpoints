@@ -1410,6 +1410,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
           ssp[n].p = p;
           ssp[n].offset = (which_bits == num_odd) ? se->offset : 0;
+          ssp[n].magic = se->magic; /* to reduce word numbers modulo p */
 
 #ifdef DEBUG
           printf("\np = %ld, bp = %ld, offset = %ld\n", p, bp, ssp[n].offset);
