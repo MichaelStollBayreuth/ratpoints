@@ -458,6 +458,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * data-dependent branches.  Multiplying by the reciprocal does the whole
    * job in a few cycles and branchlessly. */
   { long n;
+    const unsigned long *magics = (const unsigned long *)args->magics;
     /* the reduction is exact up to RP_MULMOD_LIMIT, and the offset added
      * below is less than the prime, so leave room for that */
     int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
@@ -468,7 +469,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
       sieves[n].start = sieves[n].ptr
                           + ((small && RP_USE_MOD_MUL)
-                               ? mod_mul(a, sieves[n].p, sieves[n].magic)
+                               ? mod_mul(a, sieves[n].p, magics[n])
                                : mod(a, sieves[n].p));
     }
   }
@@ -704,12 +705,17 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   { long n;
     long range = w_high - w_low;
+    const unsigned long *magics = (const unsigned long *)args->magics;
+    /* as in the chunked arm above */
+    int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
+                  && w_low < RP_MULMOD_LIMIT - RATPOINTS_MAX_PRIME);
 
     for(n = 0; n < sp1; n++)
     { ratpoints_bit_array *sieve_n = sieves[n].ptr;
         /* points to the bit-array with sieve information */
       long p = sieves[n].p; /* the prime */
-      long r = mod(-w_low - sieves[n].offset, p);
+      long a = -w_low - sieves[n].offset;
+      long r = small ? mod_mul(a, p, magics[n]) : mod(a, p);
         /* r is such that the relevant information starts
          * at sieve_n[p-r] */
       ratpoints_bit_array *surv = survivors;
@@ -768,7 +774,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
     /* initialize pointers in sieve for the second phase */
     for(n = sp1; n < sp2; n++)
-    { sieves[n].start = sieves[n].ptr + mod(w_low + sieves[n].offset, sieves[n].p); }
+    { long a = w_low + sieves[n].offset;
+
+      sieves[n].start = sieves[n].ptr
+                          + (small ? mod_mul(a, sieves[n].p, magics[n])
+                                   : mod(a, sieves[n].p));
+    }
   }
 #endif /* RATPOINTS_CHUNK */
 

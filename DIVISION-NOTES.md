@@ -64,6 +64,44 @@ comparison (see the note in the Makefile):
 | `testhigh`     | 336456271864 | 329627920589 | -2.03% |
 | `testhighmany` | 200398331603 | 195979944981 | -2.20% |
 
+That is the effect of the reduction alone, with the code layout held fixed.
+The effect of the whole change against `v2.3` has to be measured across two
+builds, and therefore at several code alignments (`PHASE-NOTES.md` on
+`phases-by-register-width` says why):
+
+| suite | default | `-falign-loops=32` | `=64` | mean |
+|---|---|---|---|---|
+| `test1`        | -2.41% | -3.28% | -2.71% | -2.80% |
+| `testhigh`     | -0.21% | -2.38% | -0.05% | -0.88% |
+| `testhighmany` | -0.33% | -1.82% | +0.20% | -0.65% |
+
+On `test1` that agrees with the controlled measurement to a tenth of a point.
+**On the two large-height suites it does not, and the reason is that the
+alignment spread there is larger than the effect** -- 2.3 and 2.0 points
+across three alignments, against an effect of about 2.  At height 200000 half
+the run is the innermost loop of the first phase, which is exactly what
+`-falign-loops` moves about, so a source change of this size gets a fresh roll
+of the dice on the layout of code it never touched.
+
+Both numbers are worth stating, because they answer different questions.  The
+reduction itself is worth 2.0% at height 200000: 1.34 billion calls times the
+four cycles the controlled measurement shows, against 3.3e11 cycles, agrees
+with that to within a quarter of a point.  What the shipped binary actually
+does at that height depends on where its loops land, and on this machine that
+is worth more than the change is.  It is not evidence that the change does
+nothing; it is the measurement floor for a whole-program comparison here.
+
+**That agreement had to be worked for.**  The first version of the change
+carried the reciprocal in `sieve_spec`, which took that structure from 40
+bytes to 48 -- and the same across-builds measurement then gave only -1.0% to
+-1.9%, so more than half the gain was going back out.  `sieve_spec` is read in
+the innermost loop of the first phase, and eight bytes tell there.  The
+reciprocal belongs to the prime and not to the denominator anyway, so it now
+lives in a flat array filled once per curve, which also removes the
+per-denominator copy.  The lesson is that a change measured only inside one
+binary can hide a cost that only appears between builds: both measurements are
+needed, and they answer different questions.
+
 ## Why, given that the divider was only 0.6% busy
 
 Not the divisions, and not branch mispredictions either.  On `test1`, where
@@ -91,7 +129,8 @@ frequency where the expensive instruction is rare.
 With `m = 2^64/p` rounded up, `u mod p` is the top half of `(m*u mod 2^64)*p`,
 exact for every `u` below `2^32`.  That reciprocal already existed: the third
 stage (TODO item 10) put it in the sieve entry, one division per prime and
-curve.  `sieve_spec` now carries it too, copied per denominator.
+curve.  It is copied into a flat array in the order the primes are used, once
+per curve, and *not* into `sieve_spec` -- see above for what that cost.
 
 The sign is put back after reducing `|a|` rather than removed beforehand by
 adding a multiple of `p`, because the caller cannot bound the word number

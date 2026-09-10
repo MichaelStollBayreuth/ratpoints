@@ -195,6 +195,12 @@ void find_points_init(ratpoints_args *args)
    * measured to cost several per cent all by itself. */
   args->stage3_list = malloc(RATPOINTS_NUM_PRIMES * sizeof(check_spec));
 
+  /* the reciprocals _ratpoints_sift0 reduces word numbers with.  They belong
+   * to the primes, not to the denominators, so they are filled in once per
+   * curve; and they are kept out of sieve_spec because that structure is read
+   * in the innermost loop of the first phase, where its size tells. */
+  args->magics = malloc(RATPOINTS_NUM_PRIMES * sizeof(unsigned long));
+
   /* allocate remaining data structures */
   args->den_info = malloc((PRIMES1000+2)*sizeof(use_squares1_info));
   args->divisors = malloc((MAX_DIVISORS+1)*sizeof(long));
@@ -228,6 +234,7 @@ void find_points_clear(ratpoints_args *args)
   free(args->int_buffer);
   free(args->sieve_list);
   free(args->stage3_list);
+  free(args->magics);
   free(args->den_info);
   free(args->divisors);
   free(args->forb_ba);
@@ -240,6 +247,7 @@ void find_points_clear(ratpoints_args *args)
   args->ba_buffer = NULL; args->ba_next = NULL;
   args->int_buffer = NULL; args->int_next = NULL;
   args->sieve_list = NULL; args->stage3_list = NULL;
+  args->magics = NULL;
   args->den_info = NULL; args->divisors = NULL;
   args->forb_ba = NULL; args->forbidden = NULL;
 
@@ -1268,6 +1276,14 @@ static long sieving_info(ratpoints_args *args,
     args->sp3 = sp3;
   }
 
+  /* the reciprocals the first phase reduces word numbers with, in the order
+   * the primes are used; see the note in find_points_init */
+  { long n;
+    unsigned long *magics = (unsigned long *)args->magics;
+
+    for(n = 0; n < args->sp3; n++) { magics[n] = sieve_list[n]->magic; }
+  }
+
 
 #ifdef RP_PRIME_STATS
   /* Development instrumentation: one line per curve saying how many primes
@@ -1410,7 +1426,6 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
           ssp[n].p = p;
           ssp[n].offset = (which_bits == num_odd) ? se->offset : 0;
-          ssp[n].magic = se->magic; /* to reduce word numbers modulo p */
 
 #ifdef DEBUG
           printf("\np = %ld, bp = %ld, offset = %ld\n", p, bp, ssp[n].offset);
