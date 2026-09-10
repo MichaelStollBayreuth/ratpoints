@@ -149,7 +149,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *se_buffer; void *se_next;
                  void *ba_buffer; void *ba_next;
                  int *int_buffer; int *int_next;
-                 void *sieve_list; void *stage3_list;
+                 void *sieve_list; void *stage3_list; void *magics;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
                  void *ba_buffer_na; long ba_buffer_primes;

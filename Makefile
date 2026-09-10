@@ -89,9 +89,14 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  yours.  "-DRP_INIT_NOACC" and "-DRP_INIT_NOREP" leave out a stage of
 #  sieve_init altogether, so that its share can be had as a difference of two
 #  runs; they produce wrong tables, and bench_init will say so.
-# Add "-DRP_STAGE3_DIVIDE" to have the third sieving stage reduce modulo p
-#  with a division instead of a multiplication, which is what it costs when
-#  the height bound is too large for the cheap form.
+# Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
+#  than by multiplying with the reciprocal, which is what the third sieving
+#  stage and the start-of-sieve computation cost without that. "-DRP_MOD_CHOICE"
+#  instead builds both forms of the latter into one binary, selected by the
+#  environment variable RP_MOD_MUL, so that they can be timed against each
+#  other without the code-alignment difference two builds would bring; that is
+#  how the 2-3% in DIVISION-NOTES.md was measured. "-DRP_MOD_COUNTS" reports
+#  how often the old form actually divided.
 # When comparing two builds whose *source* differs, be aware that where gcc
 #  happens to place the hot loops is worth about 10% here, reproducibly, so
 #  repeating the runs will not reveal it. Rebuild both with, say,

@@ -1398,6 +1398,29 @@ and $1.6\%$ of \texttt{make testhigh}, and $6.7\%$ of
 \texttt{make testhighmany} --- the point-rich curves at a large height bound,
 which is where the exact test had grown to $8\%$ of the run.
 
+Reducing a word number modulo a sieving prime, which is done for every prime
+at the start of every stretch of the first sieving stage and is therefore one
+of the busiest operations in the program, no longer subtracts multiples of the
+prime one at a time. It multiplies by a precomputed reciprocal instead, which
+is what the third stage above already does. The old form was written to avoid
+divisions and did avoid them, but the chain of conditional subtractions that
+replaced them cost some twenty instructions on every call, against four for a
+multiplication and a shift. Measured against each other inside one binary,
+so that the comparison is not at the mercy of where the compiler happens to
+place the surrounding loops, the new form is 2 to 3\% faster on all four test
+sets; comparing whole builds instead reproduces that on the two sets at the
+default height bound, and at the large one the difference between two code
+layouts of the same program exceeds it. The measurement is worth stating the
+other way round as well: the hardware divider was busy for at most $0.6\%$ of
+the run to begin with, so the divisions were never what cost anything.
+
+While that was being done, an undefined shift came to light in the
+computation of the intervals where the polynomial is positive: an interval
+endpoint was scaled by dividing by \verb+1 << del+ with \texttt{del} the
+bisection depth, which is bounded by the \verb+-S+ setting and so may be as
+large as $62$. It is now scaled by \texttt{ldexp}, which is exact at every
+depth and needs no division.
+
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
 
