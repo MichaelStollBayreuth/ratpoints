@@ -29,6 +29,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -320,6 +321,21 @@ typedef unsigned long ratpoints_bit_array;
 typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                  ratpoints_bit_array *start; ratpoints_bit_array *end; } sieve_spec;
 
+/* What the third stage needs to test one numerator against one prime: the
+ * prime, the inverse of the denominator modulo it, and the table saying
+ * which residues admit points.  There is no sieve table, which is the point
+ * of that stage: a prime costs it nothing per denominator but the inverse.
+ * binv == 0 means the prime divides the denominator, in which case it says
+ * the same thing about every numerator and is skipped. */
+typedef struct { long p; long binv; long bias; unsigned long magic;
+                 const int *is_f_square; } check_spec;
+
+/* The third stage reduces modulo p by multiplying instead of dividing, which
+ * asks the value being reduced to fit in 32 bits; above this height bound it
+ * would not, and the stage divides after all.  With the largest prime that
+ * can be compiled in, that is a height of several million. */
+#define RP_STAGE3_LIMIT 4294967296.0
+
 /* this is used to record whether all / only even / only odd / no numerators
  * need to be considered */
 typedef enum { num_all, num_even, num_odd, num_none } bit_selection;
@@ -330,7 +346,7 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 /* this is used to hold the sieving information for one prime p */
 typedef struct
         { ratpoints_init_fun init; long p; int *is_f_square;
-          const long *inverses;
+          const long *inverses; unsigned long magic;
           long offset; ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
         ratpoints_sieve_entry;
 
@@ -341,7 +357,8 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
 /* The following function is provided in sift.c : */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, sieve_spec *sieves, int *quit,
+           ratpoints_bit_array *survivors, sieve_spec *sieves,
+           check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info);
 
 /* The following function is provided in sturm.c : */

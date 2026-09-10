@@ -58,8 +58,17 @@
 
 unsigned long long _rp_phase1_cycles = 0, _rp_phase2_cycles = 0;
 unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
+/* The part of the exact check that is per denominator rather than per
+ * survivor: the powers of b multiplying the coefficients, recomputed
+ * on the first check for a new b.  A third stage saves that part only
+ * when it removes every survivor of a denominator, so the marginal
+ * cost of one check is (cyc3 - cycbc)/checks, not cyc3/checks.
+ * Written by _ratpoints_check_point in find_points.c . */
+unsigned long long _rp_bc_cycles = 0, _rp_bc_calls = 0;
+/* the per-denominator loop that steps b modulo each sieving prime */
+unsigned long long _rp_bp_cycles = 0, _rp_bp_dens = 0, _rp_bp_steps = 0;
 unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
-long _rp_sp1 = -1, _rp_sp2 = -1;
+long _rp_sp1 = -1, _rp_sp2 = -1, _rp_sp3 = -1;
 /* the whole run, so that core cycles from "perf stat" can be apportioned
  * to the phases: cycles_i = perf_cycles * cyc_i / cyctot */
 unsigned long long _rp_t_start = 0;
@@ -104,25 +113,27 @@ static void _rp_phase_report(void)
   c2 = _rp_phase2_cycles - _rp_check_cycles;
   /* one parseable line; "bits_*" are only meaningful with RP_PHASE_COUNTS */
   fprintf(stderr,
-          "[phasedata] width=%d chunk=%d long2=%d sp1=%ld sp2=%ld"
+          "[phasedata] width=%d chunk=%d long2=%d sp1=%ld sp2=%ld sp3=%ld"
           " calls=%llu arrays=%llu bits_in=%llu bits_1=%llu bits_2=%llu"
-          " units_1=%llu and2=%llu ext2=%llu checks=%llu"
-          " cyc1=%llu cyc2=%llu cyc3=%llu cyctot=%llu\n",
+          " units_1=%llu and2=%llu ext2=%llu checks=%llu bc=%llu"
+          " dens=%llu bpsteps=%llu"
+          " cyc1=%llu cyc2=%llu cyc3=%llu cycbc=%llu cycbp=%llu cyctot=%llu\n",
           (int)(8*(int)sizeof(ratpoints_bit_array)), (int)RATPOINTS_CHUNK,
 #ifdef USE_LONG_IN_PHASE_2
           1,
 #else
           0,
 #endif
-          _rp_sp1, _rp_sp2, _rp_sift0_calls, _rp_arrays_swept,
+          _rp_sp1, _rp_sp2, _rp_sp3, _rp_sift0_calls, _rp_arrays_swept,
 #ifdef RP_PHASE_COUNTS
           _rp_bits_in, _rp_bits_1, _rp_bits_2, _rp_units_surviving,
           _rp_and2, _rp_ext2,
 #else
           0ULL, 0ULL, 0ULL, 0ULL, 0ULL, 0ULL,
 #endif
-          _rp_check_calls, _rp_phase1_cycles, c2, _rp_check_cycles,
-          __rdtsc() - _rp_t_start);
+          _rp_check_calls, _rp_bc_calls, _rp_bp_dens, _rp_bp_steps,
+          _rp_phase1_cycles, c2, _rp_check_cycles, _rp_bc_cycles,
+          _rp_bp_cycles, __rdtsc() - _rp_t_start);
 }
 
 #else
@@ -199,6 +210,69 @@ static long RP_CTZL(unsigned long w)
   for(; (w) && (((t) = RP_CTZL(w)), ((a) = (first) + (step)*(t)), 1); \
       (w) &= (w) - 1UL)
 
+/* ---------------------------------------------------------------------
+ * The third stage.
+ *
+ * What is left after the second phase is a handful of numerators per
+ * denominator, and each of them would go straight to the exact check, which
+ * homogenises f, evaluates it in multi-precision arithmetic and takes an
+ * integer square root.  That is two orders of magnitude dearer than one
+ * more sieving step, so it pays to test a few more primes first -- but not
+ * by building a sieve table for them, which costs O(p) per denominator and
+ * is only worth it while a whole bit array is still in play.  Here the
+ * condition is evaluated one numerator at a time instead:
+ *
+ *   f(a/b) is a square mod p  <==>  is_f_square[(a * b^-1) mod p]
+ *
+ * which is what the tables encode as well, so this rejects exactly what a
+ * table for that prime would have rejected, and never a genuine point --
+ * the table of squares counts zero as a square.
+ *
+ * The stage runs after the test for common factors, not before it.  A
+ * numerator sharing a factor with the denominator stands for a fraction
+ * that a smaller denominator has already dealt with, so f takes the same
+ * value there and every prime accepts it; those survivors can only be
+ * removed by the gcd, and there is no point in testing them here first.
+ * --------------------------------------------------------------------- */
+
+/* Reducing modulo p is the whole cost of the stage, and a division would
+ * throw away what it saves, so it is done by multiplying: with
+ * m = 2^64/p rounded up, the remainder of u modulo p is the top half of
+ * (m*u mod 2^64) * p .  This is exact for every u below 2^32, which is what
+ * the bias in the spec is arranged to keep it under; where it cannot be,
+ * bias is zero and the division is done after all.  Build with
+ * -DRP_STAGE3_DIVIDE to use the division everywhere and measure the
+ * difference. */
+#if defined(__SIZEOF_INT128__) && !defined(RP_STAGE3_DIVIDE)
+# define RP_STAGE3_MULMOD(u, p, m) \
+    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
+                             * (unsigned long)(p)) >> 64))
+#else
+# define RP_STAGE3_MULMOD(u, p, m) ((long)((u) % (unsigned long)(p)))
+#endif
+
+static inline int stage3(long a, const check_spec *csp, long n)
+{ long i;
+
+  for(i = 0; i < n; i++)
+  { long p = csp[i].p;
+    long binv = csp[i].binv;
+    long bias = csp[i].bias;
+    long am;
+
+    if(!binv) { continue; } /* p divides the denominator: no information */
+    if(bias)
+    { am = RP_STAGE3_MULMOD(a*binv + bias, p, csp[i].magic); }
+    else
+    { am = a % p;
+      if(am < 0) { am += p; }
+      am = (am*binv) % p;
+    }
+    if(!csp[i].is_f_square[am]) { return(0); }
+  }
+  return(1);
+}
+
 /**************************************************************************
  * check if m and n are relatively prime                                  *
  **************************************************************************/
@@ -266,12 +340,14 @@ static inline long mod(long a, long b)
  * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, sieve_spec *sieves, int *quit,
+           ratpoints_bit_array *survivors, sieve_spec *sieves,
+           check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
   long sp1 = args->sp1; /* number of primes in first stage */
   long sp2 = args->sp2; /* number of primes in first and second stage combined */
+  long nchecks = args->sp3 - sp2; /* further primes, for the third stage */
 
 #ifdef DEBUG
   { long n, c = 0;
@@ -290,7 +366,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_TIMING
   _rp_sift0_calls++;
   _rp_arrays_swept += w_high - w_low;
-  _rp_sp1 = sp1; _rp_sp2 = sp2;
+  _rp_sp1 = sp1; _rp_sp2 = sp2; _rp_sp3 = args->sp3;
 #endif
 #ifdef RP_PHASE_COUNTS
   { long n_;
@@ -736,7 +812,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_COUNTS
             _rp_ext2++;
 #endif
-            if(relprime(a, b))
+            if(relprime(a, b) && stage3(a, checks, nchecks))
             { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total);
             }
@@ -802,18 +878,19 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
 #ifdef DEBUG
             printf("\nsurviving bit no. %ld --> a = %ld. ", t, a);
-            if(relprime(a, b))
+            if(relprime(a, b) && stage3(a, checks, nchecks))
             { printf("Check point...\n");
               fflush(NULL);
               total += RP_CHECK_POINT(a, b);
               if(*quit) return(total); /* if quit was set, stop */
             }
             else
-            { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
+            { printf("Not in lowest terms, or rejected by the third stage"
+                     " --> skip.\n"); fflush(NULL); }
 #else
-            if(relprime(a, b))
-            /* the fraction a/b is in lowest terms: check if we really get a
-             * point, and if so, process it. */
+            if(relprime(a, b) && stage3(a, checks, nchecks))
+            /* the fraction a/b is in lowest terms and survives the third
+             * stage: check if we really get a point, and if so, process it. */
             { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total); /* if quit was set, stop */
             }
@@ -839,16 +916,17 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef DEBUG
                 printf("\nsurviving bit no. %ld --> a = %ld. ",
                        LONG_LENGTH*k + t, a);
-                if(relprime(a, b))
+                if(relprime(a, b) && stage3(a, checks, nchecks))
                 { printf("Check point...\n");
                   fflush(NULL);
                   total += RP_CHECK_POINT(a, b);
                   if(*quit) return(total); /* if quit was set, stop */
                 }
                 else
-                { printf("Not in lowest terms --> skip.\n"); fflush(NULL); }
+                { printf("Not in lowest terms, or rejected by the third stage"
+                         " --> skip.\n"); fflush(NULL); }
 #else
-                if(relprime(a, b))
+                if(relprime(a, b) && stage3(a, checks, nchecks))
                 { total += RP_CHECK_POINT(a, b);
                   if(*quit) return(total);
                 }

@@ -69,6 +69,7 @@ char *usage_str =
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
     "                 [-r survivors_per_word] [-R extra_primes]\n"
+    "                 [-P stage3_primes] [-Q stage3_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -251,6 +252,8 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->sp2           = -1; /* negative: choose from the curve */
   args->survivors_per_word = -1.0; /* negative: compiled-in default */
   args->sp2_extra     = -1; /* negative: compiled-in default */
+  args->sp3_extra     = -1; /* negative: choose from the curve */
+  args->sp3_per_denom = -1.0; /* negative: compiled-in default */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
@@ -355,6 +358,21 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
+          i++;
+          break;
+        case 'P': /* how many primes the third stage adds to sp2; negative
+                   * means choose it from the curve */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->sp3_extra)) != 1) { error(6); }
+          i++;
+          break;
+        case 'Q': /* what one third-stage prime costs per denominator, as a
+                   * fraction of one exact check; decides -P when it is
+                   * absent */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
           i++;
           break;
         case 'f': /* printing format */
@@ -614,8 +632,10 @@ void message(long n, long total, ratpoints_args *args)
             printf("\n");
             break;
     case 4: printf("%ld primes used for first stage of sieving,\n", args->sp1);
-            printf("%ld primes used for both stages of sieving together.\n",
+            printf("%ld primes used for both stages of sieving together,\n",
                    args->sp2);
+            printf("%ld further primes used in the third stage.\n",
+                   args->sp3 - args->sp2);
             break;
     case 5: printf("\nCurve equation is  y^2 = ");
             print_poly(args->cof, args->degree);

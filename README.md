@@ -20,6 +20,17 @@ many rational points can also leave too few of the small primes saying anything 
 choice to have the primes it wants; the program then looks at a few more of its own accord, which
 is worth up to a factor of two on such curves and is never asked for otherwise.
 
+There is now a third sieving stage as well. The two sieving stages work on bit arrays, which is the
+right shape while a whole array's worth of numerators is still in play; by the time they are done
+there is about one candidate left per denominator, and each of those went straight to the exact
+test, which works in multi-precision arithmetic and takes an integer square root. The third stage
+tests those candidates against further primes first, one at a time, working out where to look in
+the table of admissible residues rather than reading a bit out of a sieving table. So it builds no
+table, which is what makes it worth doing at that point, and it can use primes far up the list for
+which building one would be out of the question. How many it uses is decided per curve; on a random
+curve at a small height bound it uses none, and on curves with many rational points at a large
+height bound it is worth about 7%.
+
 Two machine-dependent constants govern the choice. They can be set with the `-r` and `-R` options,
 reasonable values are compiled in, and `make tune` will measure better ones for your machine if
 you want it to: it minimises the sum of the times of `make test1` (random curves) and

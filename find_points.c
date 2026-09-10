@@ -35,6 +35,7 @@
    long prime[PRIMES1000]; */
 
 #include "find_points.h"
+
 /* defines
 
    static const int squares[RATPOINTS_NUM_PRIMES+1][RATPOINTS_MAX_PRIME];
@@ -58,6 +59,29 @@
      The array carries an alignment attribute, since it is accessed through
      pointers of type  ratpoints_bit_array * ; see gen_find_points_h.c.
  */
+
+/* Development instrumentation, see the head of sift.c .  The exact check
+ * is timed there as a whole; this brackets the part of it that is done once
+ * per denominator, so that the two can be told apart. */
+#ifdef RP_PHASE_TIMING
+#include <x86intrin.h>
+extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
+# define RP_BC_TIC(t) unsigned long long t = __rdtsc()
+# define RP_BC_TOC(t) do { _rp_bc_cycles += __rdtsc() - (t); _rp_bc_calls++; } \
+                      while(0)
+/* and the loop that steps b modulo each sieving prime, which is per
+ * denominator and per prime, so that a third stage using further primes
+ * would pay it whether or not a survivor turns up */
+extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
+# define RP_BP_TIC(t) unsigned long long t = __rdtsc()
+# define RP_BP_TOC(t, n) do { _rp_bp_cycles += __rdtsc() - (t); _rp_bp_dens++; \
+                              _rp_bp_steps += (n); } while(0)
+#else
+# define RP_BC_TIC(t)
+# define RP_BC_TOC(t)
+# define RP_BP_TIC(t)
+# define RP_BP_TOC(t, n)
+#endif
 
 
 #define MAX_DIVISORS 512
@@ -165,6 +189,12 @@ void find_points_init(ratpoints_args *args)
   args->sieve_list = malloc(RATPOINTS_NUM_PRIMES
                              * sizeof(ratpoints_sieve_entry*));
 
+  /* and the third stage's working copy of what it needs per denominator.
+   * It lives here rather than on sift()'s stack because that function is
+   * entered once per denominator, and enlarging its frame by this much was
+   * measured to cost several per cent all by itself. */
+  args->stage3_list = malloc(RATPOINTS_NUM_PRIMES * sizeof(check_spec));
+
   /* allocate remaining data structures */
   args->den_info = malloc((PRIMES1000+2)*sizeof(use_squares1_info));
   args->divisors = malloc((MAX_DIVISORS+1)*sizeof(long));
@@ -197,6 +227,7 @@ void find_points_clear(ratpoints_args *args)
   free(args->ba_buffer_na);
   free(args->int_buffer);
   free(args->sieve_list);
+  free(args->stage3_list);
   free(args->den_info);
   free(args->divisors);
   free(args->forb_ba);
@@ -208,7 +239,7 @@ void find_points_clear(ratpoints_args *args)
   args->ba_buffer_na = NULL; args->ba_buffer_primes = 0;
   args->ba_buffer = NULL; args->ba_next = NULL;
   args->int_buffer = NULL; args->int_next = NULL;
-  args->sieve_list = NULL;
+  args->sieve_list = NULL; args->stage3_list = NULL;
   args->den_info = NULL; args->divisors = NULL;
   args->forb_ba = NULL; args->forbidden = NULL;
 
@@ -861,6 +892,124 @@ static long primes_for_phase_1(entry *prec, long pnp,
   return(pnp > 0 ? pnp : 1);
 }
 
+/* Look at one prime and record what it says about the curve.
+ *
+ * Fills in the table is_f_square[0..p], where entry a says whether f(a) is a
+ * square modulo p and the last entry whether there are points at infinity,
+ * and counts the residues that admit points.  When the prime carries any
+ * information -- that is, when some residue does not -- a sieve entry is
+ * built for it and *prec_entry is filled in with that entry and the density
+ * r of the admissible residues.
+ *
+ * Returns 1 in that case, 0 when the prime says nothing, and -1 when the
+ * curve has no points modulo p at all, so that it has no rational points.
+ * coeffs_mod_p and is_f_square_p hand back what the caller needs for the
+ * test on forbidden divisors of the denominator.
+ */
+static int examine_prime(ratpoints_args *args, long pn,
+                         int use_c_long, long *c_long,
+                         long *coeffs_mod_p, int **is_f_square_p,
+                         entry *prec_entry)
+{
+  mpz_t *c = args->cof;
+  long degree = args->degree;
+  long p = prime[pn];
+  long n, a, np; /* np counts the x-coordinates that give points mod p */
+  int *is_f_square = args->int_next;
+
+  args->int_next += p + 1; /* need space for (p+1) int's */
+  *is_f_square_p = is_f_square;
+
+#ifdef DEBUG
+  printf("\nsieving_info: p = %ld\n", p);
+  fflush(NULL);
+#endif
+
+  /* compute coefficients mod p */
+  if(use_c_long)
+  { for(n = 0; n <= degree; n++)
+    { coeffs_mod_p[n] = mod(c_long[n], p); }
+  }
+  else
+  { for(n = 0; n <= degree; n++)
+    { coeffs_mod_p[n] = mpz_fdiv_r_ui(args->work[0], c[n], p); }
+  }
+
+  /* Determine the x-coords a mod p such that f(a) is a square mod p. */
+  np = squares[pn][coeffs_mod_p[0]]; /* for a = 0, f(a) = constant term */
+  is_f_square[0] = np;
+  for(a = 1 ; a < p; a++)
+  { unsigned long s = coeffs_mod_p[degree];
+    /* try to avoid divisions (by p) */
+    if((degree+1)*RATPOINTS_MAX_BITS_IN_PRIME <= LONG_LENGTH)
+    { for(n = degree - 1 ; n >= 0 ; n--)
+      { s *= a; s += coeffs_mod_p[n]; }
+      /* here, s < p^(degree+1) <= max. long */
+      s %= p;
+    }
+    else
+    { for(n = degree - 1 ; n >= 0 ; n--)
+      { s *= a; s += coeffs_mod_p[n];
+        if(s+1 >= (1UL)<<(LONG_LENGTH - RATPOINTS_MAX_BITS_IN_PRIME))
+        { s %= p; }
+      }
+      s %= p;
+    }
+    if((is_f_square[a] = squares[pn][s])) { np++; }
+  }
+  /* last entry says if there are points at infinity mod p */
+  is_f_square[p] = (degree & 1) || squares[pn][coeffs_mod_p[degree]];
+
+#ifdef DEBUG
+  printf("\nis_f_square(p = %ld) : \n[", p);
+  { long a;
+
+    for(a = 0; a < p; a++) { printf("%d,", is_f_square[a]); }
+    printf("%d]\n", is_f_square[p]);
+  }
+  fflush(NULL);
+#endif
+
+  /* check if there are no solutions mod p */
+  if(np == 0 && !is_f_square[p]) { return(-1); }
+
+  if(np >= p) { return(0); } /* the prime carries no information */
+
+  { double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
+                              : (double)np/(double)p;
+
+    prec_entry->r = r;
+  }
+
+  /* set up sieve_entry :
+     typedef struct
+       { ratpoints_init_fun init; long p; int *is_f_square; int *inverses;
+         long offset; (ratpoints_bit_array *)sieve[RATPOINTS_MAX_PRIME]; }
+       ratpoints_sieve_entry;
+   */
+  { ratpoints_sieve_entry *se = (ratpoints_sieve_entry *)args->se_next;
+    long i;
+
+    args->se_next += sizeof(ratpoints_sieve_entry);
+      /* one entry must be stored - note that se_next is of type void* */
+    se->init = sieve_init[pn];
+    se->p = p;
+    se->is_f_square = is_f_square;
+    se->inverses = &inverses[pn][0];
+    /* the reciprocal the third stage reduces with; see stage3() in sift.c .
+     * One division per prime and curve, against one per survivor saved. */
+    se->magic = ULONG_MAX/(unsigned long)p + 1;
+    se->offset = offsets[pn];
+    /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
+     * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
+    se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
+    for(i = 1; i < p; i++) { se->sieve[i] = NULL; }
+
+    prec_entry->ssp = se;
+  }
+  return(1);
+}
+
 /************************************************************************
  * Collect the sieving information                                      *
  ************************************************************************/
@@ -899,101 +1048,13 @@ static long sieving_info(ratpoints_args *args,
   { long coeffs_mod_p[degree+1];
            /* The coefficients of f reduced modulo p */
     long p = prime[pn];
-    long n, a, np; /* np counts the x-coordinates that give points mod p */
-    int *is_f_square = args->int_next;
+    int *is_f_square;
+    int info = examine_prime(args, pn, use_c_long, c_long,
+                             &coeffs_mod_p[0], &is_f_square, &prec[pnp]);
 
-    args->int_next += p + 1; /* need space for (p+1) int's */
-
-#ifdef DEBUG
-    printf("\nsieving_info: p = %ld\n", p);
-    fflush(NULL);
-#endif
-
-    /* compute coefficients mod p */
-    if(use_c_long)
-    { for(n = 0; n <= degree; n++)
-      { coeffs_mod_p[n] = mod(c_long[n], p); }
-    }
-    else
-    { for(n = 0; n <= degree; n++)
-      { coeffs_mod_p[n] = mpz_fdiv_r_ui(args->work[0], c[n], p); }
-    }
-
-    /* Determine the x-coords a mod p such that f(a) is a square mod p. */
-    np = squares[pn][coeffs_mod_p[0]]; /* for a = 0, f(a) = constant term */
-    is_f_square[0] = np;
-    for(a = 1 ; a < p; a++)
-    { unsigned long s = coeffs_mod_p[degree];
-      /* try to avoid divisions (by p) */
-      if((degree+1)*RATPOINTS_MAX_BITS_IN_PRIME <= LONG_LENGTH)
-      { for(n = degree - 1 ; n >= 0 ; n--)
-        { s *= a; s += coeffs_mod_p[n]; }
-        /* here, s < p^(degree+1) <= max. long */
-        s %= p;
-      }
-      else
-      { for(n = degree - 1 ; n >= 0 ; n--)
-        { s *= a; s += coeffs_mod_p[n];
-          if(s+1 >= (1UL)<<(LONG_LENGTH - RATPOINTS_MAX_BITS_IN_PRIME))
-          { s %= p; }
-        }
-        s %= p;
-      }
-      if((is_f_square[a] = squares[pn][s])) { np++; }
-    }
-    /* last entry says if there are points at infinity mod p */
-    is_f_square[p] = (degree & 1) || squares[pn][coeffs_mod_p[degree]];
-
-#ifdef DEBUG
-    printf("\nis_f_square(p = %ld) : \n[", p);
-    { long a;
-
-      for(a = 0; a < p; a++) { printf("%d,", is_f_square[a]); }
-      printf("%d]\n", is_f_square[p]);
-    }
-    fflush(NULL);
-#endif
-
-    /* check if there are no solutions mod p */
-    if(np == 0 && !is_f_square[p])
-    {
-      return(p); /* if yes, return p --> no rational points */
-    }
-
-    /* Fill arrays with info for p */
-    if(np < p)
-    { /* only when there is some information */
-      { double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
-                                  : (double)np/(double)p;
-
-        prec[pnp].r = r;
-      }
-
-      /* set up sieve_entry :
-         typedef struct
-           { ratpoints_init_fun init; long p; int *is_f_square; int *inverses;
-             long offset; (ratpoints_bit_array *)sieve[RATPOINTS_MAX_PRIME]; }
-           ratpoints_sieve_entry;
-       */
-      { ratpoints_sieve_entry *se = (ratpoints_sieve_entry *)args->se_next;
-        long i;
-
-        args->se_next += sizeof(ratpoints_sieve_entry);
-          /* one entry must be stored - note that se_next is of type void* */
-        se->init = sieve_init[pn];
-        se->p = p;
-        se->is_f_square = is_f_square;
-        se->inverses = &inverses[pn][0];
-        se->offset = offsets[pn];
-        /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
-         * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
-        se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
-        for(i = 1; i < p; i++) { se->sieve[i] = NULL; }
-
-        prec[pnp].ssp = se;
-      }
-      pnp++;
-    }
+    if(info < 0)
+    { return(p); /* no points mod p, hence no rational points */ }
+    if(info > 0) { pnp++; }
 
     if((args->flags & RATPOINTS_CHECK_DENOM)
          && fba + fdc < args->max_forbidden
@@ -1107,17 +1168,128 @@ static long sieving_info(ratpoints_args *args,
   if(args->sp2 > pnp) { args->sp2 = pnp; }
   if(args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
-  if(args->flags & RATPOINTS_VERBOSE)
-  { printf("  %.1f bits set per word, %ld primes looked at"
-           " ==> use %ld primes in the first phase, %ld altogether\n",
-           bits_per_word, pn_lim, args->sp1, args->sp2);
-  }
 
   /* put the sorted entries into sieve_list */
   { long n;
 
     for(n = 0; n < args->sp2; n++)
     { sieve_list[n] = prec[n].ssp; }
+  }
+
+  /* Choose sp3, the number of primes the third stage adds to those two.
+   * That stage tests one surviving numerator at a time and needs no sieve
+   * table, so a prime costs it one test per survivor and one subtraction per
+   * denominator, and nothing per curve beyond what has been done here.  A
+   * prime is therefore worth adding as long as the survivors it removes are
+   * worth more than the denominators it is carried through, which is the
+   * rule below; see RATPOINTS_SP3_PER_SURVIVOR in ratpoints.h .
+   *
+   * S is the expected number of survivors a denominator still has when the
+   * stage begins.  It is the number of numerators the denominator considers,
+   * thinned by the sixteen-fold pre-sieve and by the primes of the first two
+   * phases, and thinned again by the test for common factors, which runs
+   * before this stage and which no prime can help with: a numerator sharing
+   * a factor with the denominator stands for a fraction that has already
+   * been looked at with a smaller denominator, so it passes every prime.
+   */
+  { long sp3 = args->sp2;
+    long sp3_want = (args->sp3_extra >= 0) ? args->sp2 + args->sp3_extra
+                                           : RATPOINTS_NUM_PRIMES;
+    double per_denom = (args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
+                                                    : RATPOINTS_SP3_PER_DENOM;
+    double S;
+
+    if(sp3_want > RATPOINTS_NUM_PRIMES) { sp3_want = RATPOINTS_NUM_PRIMES; }
+
+    /* the average number of numerators a denominator has to consider,
+     * sampled over the range of denominators */
+    { long i, k;
+      double sum = 0.0, H = (double)args->height;
+      double b0 = (double)args->b_low, b1 = (double)args->b_high;
+
+      for(i = 0; i < 64; i++)
+      { double b = b0 + ((double)i + 0.5)*(b1 - b0)/64.0;
+
+        for(k = 0; k < args->num_inter; k++)
+        { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
+
+          if(lo < -H) { lo = -H; }
+          if(up > H) { up = H; }
+          if(up > lo) { sum += up - lo; }
+        }
+      }
+      S = sum/64.0;
+    }
+    { long n;
+
+      S *= bits_per_word/(double)LONG_LENGTH;
+      for(n = 0; n < args->sp2; n++) { S *= prec[n].r; }
+      S *= RATPOINTS_SP3_COPRIME;
+    }
+
+    while(sp3 < sp3_want)
+    { double r;
+
+      if(sp3 >= pnp)
+      { /* the primes looked at so far are used up: look at one more */
+        long coeffs_mod_p[degree+1];
+        int *is_f_square;
+        int info;
+
+        if(!may_extend || pn_lim >= RATPOINTS_NUM_PRIMES) { break; }
+        info = examine_prime(args, pn_lim, use_c_long, c_long,
+                             &coeffs_mod_p[0], &is_f_square, &prec[pnp]);
+        pn_lim++;
+        if(info < 0)
+        { return(prime[pn_lim-1]); /* no points mod p */ }
+        if(info == 0) { continue; } /* it says nothing; try the next one */
+        pnp++;
+      }
+
+      /* the best of the primes not yet spoken for; only the ones this stage
+       * takes need to be in order, so this is a selection sort that stops
+       * as soon as the rule below does */
+      { long m, best = sp3;
+
+        for(m = sp3 + 1; m < pnp; m++)
+        { if(prec[m].r < prec[best].r) { best = m; } }
+        if(best != sp3)
+        { entry t = prec[sp3]; prec[sp3] = prec[best]; prec[best] = t; }
+      }
+
+      r = prec[sp3].r;
+      if(args->sp3_extra < 0
+          && S*(1.0 - RATPOINTS_SP3_PER_SURVIVOR - r) <= per_denom)
+      { break; }
+      S *= r;
+      sieve_list[sp3] = prec[sp3].ssp;
+      sp3++;
+    }
+    args->sp3 = sp3;
+  }
+
+
+#ifdef RP_PRIME_STATS
+  /* Development instrumentation: one line per curve saying how many primes
+   * carried information, how the three stages divide them up, and the
+   * density r of each. */
+  { long n;
+
+    fprintf(stderr, "[primestats] pn_lim=%ld pnp=%ld sp1=%ld sp2=%ld sp3=%ld"
+            " bpw=%.2f", pn_lim, pnp, args->sp1, args->sp2, args->sp3,
+            bits_per_word);
+    for(n = 0; n < pnp; n++)
+    { fprintf(stderr, " %ld:%.4f", prec[n].ssp->p, prec[n].r); }
+    fprintf(stderr, "\n");
+  }
+#endif
+
+  if(args->flags & RATPOINTS_VERBOSE)
+  { printf("  %.1f bits set per word, %ld primes looked at"
+           " ==> use %ld primes in the first phase, %ld altogether,\n"
+           "  and %ld more in the third stage\n",
+           bits_per_word, pn_lim, args->sp1, args->sp2,
+           args->sp3 - args->sp2);
   }
 
   /* terminate array of forbidden divisors */
@@ -1173,6 +1345,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
   /* typedef struct { long p; long offset; ratpoints_bit_array *ptr; }
              sieve_spec; */
   sieve_spec ssp[args->sp2];
+  /* what the third stage needs per denominator; see find_points_init on why
+   * it is not an array here */
+  check_spec *csp = (check_spec *)args->stage3_list;
   int do_setup = 1;
 
 #ifdef DEBUG
@@ -1262,6 +1437,30 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 #endif
 
         }
+
+        /* and the primes of the third stage, which need no table: only the
+         * inverse of b modulo each of them.  It is a table lookup, not a
+         * division, because the inverses modulo every prime that can be used
+         * are compiled in (see gen_find_points_h.c).  Note that bp is the
+         * denominator itself here, not halved as it is above: the third
+         * stage tests the numerator, not the bit that stands for it. */
+        for(n = args->sp2; n < args->sp3; n++)
+        { ratpoints_sieve_entry *se = sieve_list[n];
+          long bp = bp_list[n];
+          long m = n - args->sp2;
+
+          csp[m].p = se->p;
+          csp[m].is_f_square = se->is_f_square;
+          csp[m].binv = bp ? se->inverses[bp] : 0;
+          csp[m].magic = se->magic;
+          /* the numerator is shifted by this multiple of p to make it
+           * non-negative, so that the reduction can be the cheap one; a zero
+           * says the shifted value would not fit and the slow path is to be
+           * taken (see stage3() in sift.c) */
+          csp[m].bias = ((double)se->p*(double)(2*args->height)
+                           < RP_STAGE3_LIMIT)
+                          ? se->p*args->height : 0;
+        }
       }
 
       switch(which_bits)
@@ -1324,7 +1523,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 #endif
 
           total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
-                                    survivors, &ssp[0], quit, process, info);
+                                    survivors, &ssp[0], &csp[0],
+                                    quit, process, info);
           if(*quit) return(total);
       } }
   } }
@@ -1860,7 +2060,7 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_USE_SQUARES)
       /* need only take squares as denoms */
       { long b, bb;
-        long bp_list[args->sp2];
+        long bp_list[args->sp3];
         long last_b = args->b_low;
 
 #ifdef DEBUG
@@ -1870,7 +2070,7 @@ long find_points_work(ratpoints_args *args,
 
         { long n;
 
-          for(n = 0; n < args->sp2; n++)
+          for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
         }
 
@@ -1883,8 +2083,10 @@ long find_points_work(ratpoints_args *args,
               long d = bb - last_b;
 
               /* fill bp_list */
-              for(n = 0; n < args->sp2; n++)
+              RP_BP_TIC(t_bp);
+              for(n = 0; n < args->sp3; n++)
               { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+              RP_BP_TOC(t_bp, args->sp3);
               last_b = bb;
 
               total += sift(bb, survivors, args, which_bits, bits,
@@ -1905,7 +2107,7 @@ long find_points_work(ratpoints_args *args,
       else /* args->flags & RATPOINTS_USE_SQUARES1 */
       { long *div = &divisors[0];
         long b, bb;
-        long bp_list[args->sp2];
+        long bp_list[args->sp3];
 
 #ifdef DEBUG
         printf("\n  using squares times divisors of leading coefficient\n");
@@ -1922,7 +2124,7 @@ long find_points_work(ratpoints_args *args,
 
           { long n;
 
-            for(n = 0; n < args->sp2; n++)
+            for(n = 0; n < args->sp3; n++)
             { bp_list[n] = mod(*div, sieve_list[n]->p); }
           }
 
@@ -1937,8 +2139,10 @@ long find_points_work(ratpoints_args *args,
                 long d = bb - last_b;
 
                 /* fill bp_list */
-                for(n = 0; n < args->sp2; n++)
+                RP_BP_TIC(t_bp);
+                for(n = 0; n < args->sp3; n++)
                 { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+                RP_BP_TOC(t_bp, args->sp3);
                 last_b = bb;
 
                 for(i = 0; den_info[i].p; i++)
@@ -1971,7 +2175,7 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_CHECK_DENOM)
       { long *forb;
         long b;
-        long bp_list[args->sp2];
+        long bp_list[args->sp3];
         long last_b = args->b_low;
         unsigned long b_bits;
 
@@ -1982,7 +2186,7 @@ long find_points_work(ratpoints_args *args,
 
         { long n;
 
-          for(n = 0; n < args->sp2; n++)
+          for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
         }
 
@@ -2052,13 +2256,15 @@ long find_points_work(ratpoints_args *args,
               long d = b - last_b;
 
               /* fill bp_list */
-              for(n = 0; n < args->sp2; n++)
+              RP_BP_TIC(t_bp);
+              for(n = 0; n < args->sp3; n++)
               { long bp = bp_list[n] + d;
                 long p = sieve_list[n]->p;
 
                 while(bp >= p) { bp -= p; }
                 bp_list[n] = bp;
               }
+              RP_BP_TOC(t_bp, args->sp3);
               last_b = b;
 
               total += sift(b, survivors, args, which_bits, bits,
@@ -2080,12 +2286,12 @@ long find_points_work(ratpoints_args *args,
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
       { long b;
-        long bp_list[args->sp2];
+        long bp_list[args->sp3];
         long last_b = args->b_low;
 
         { long n;
 
-          for(n = 0; n < args->sp2; n++)
+          for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
         }
 
@@ -2097,13 +2303,15 @@ long find_points_work(ratpoints_args *args,
             long d = b - last_b;
 
             /* fill bp_list */
-            for(n = 0; n < args->sp2; n++)
+            RP_BP_TIC(t_bp);
+            for(n = 0; n < args->sp3; n++)
             { long bp = bp_list[n] + d;
               long p = sieve_list[n]->p;
 
               while(bp >= p) { bp -= p; }
               bp_list[n] = bp;
             }
+            RP_BP_TOC(t_bp, args->sp3);
             last_b = b;
 
             total += sift(b, survivors, args, which_bits, bits,
@@ -2177,6 +2385,7 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
        of smallest possible even degree  */
     if(args->flags & RATPOINTS_COMPUTE_BC)
     { /* compute entries bc[k] = c[k] * b^(degree-k), k < degree */
+      RP_BC_TIC(t_bc);
 
 #ifdef DEBUG
       printf("\ncheck_point: compute bc[] (b = %ld)\n", b);
@@ -2190,6 +2399,7 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
       }
       /* note that bc[] has been computed for the current b */
       args->flags &= ~RATPOINTS_COMPUTE_BC;
+      RP_BC_TOC(t_bc);
     }
 
 #ifdef DEBUG
