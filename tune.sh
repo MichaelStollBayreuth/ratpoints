@@ -9,6 +9,16 @@
 # practice (random curves, and curves with many rational points), and a value
 # that suits one of them can be a poor choice for the other.
 #
+# Which pair of tests, and at what height bound, is set by TUNE_TESTS and
+# TUNE_HEIGHT below.  The default is the pair "make test" uses, at their own
+# height of 16383.  That is a short run in which a fifth of the time goes into
+# building sieve tables rather than into sieving, so a setting is judged partly
+# on work it does not affect; "make tunehigh" measures the same thing on the
+# large-height suites instead, where the sieve is nearly all of it.  Use that
+# one if the runs that matter are long.  The two write the same tuning.mk and
+# each starts from what the other left, so the cheap sweep can be run first and
+# the expensive one asked only whether it wants to move.
+#
 # Measuring is the delicate part, and naive timing does not work.  The cost
 # surface is flat -- anything within a factor of two of a good threshold costs
 # under 3% -- while a laptop under sustained load drifts by 25% as it heats
@@ -32,14 +42,40 @@ MARGIN=${MARGIN:-0.97}     # accept only if the best ratio is below this
 NOISE=${NOISE:-0.02}       # ... and the baseline's self-ratio is within this
 WARMUP=${WARMUP:-20}       # seconds of load before measuring
 
-# candidates for the threshold, bracketing the compiled-in 0.0075 either way;
-# a factor of two in it is worth about one prime in the first phase
+# The candidates for each constant.  There are two ways to say what they are.
+# R_VALUES and E_VALUES are an absolute ladder, bracketing the compiled-in
+# 0.0075 and 5 either way; a factor of two in the threshold is worth about one
+# prime in the first phase.  R_FACTORS and E_DELTAS instead describe a
+# neighbourhood of the settings being measured against -- multiples of the
+# threshold and offsets added to the other constant -- and take precedence when
+# they are set.
+#
+# Which to use depends on what a run costs.  "make tune" sweeps the ladder,
+# since one timing there is three seconds.  "make tunehigh" costs two minutes a
+# timing, so it starts from what "make tune" found and only asks whether a step
+# either way is better: seven settings a round rather than ten, which is half
+# an hour off a run of two.  The assumption is that the two regimes do not want
+# wildly different values; if a neighbourhood run
+# moves a value, it has not finished looking, and should be run again from
+# there.
 R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
 E_VALUES=${E_VALUES:-"3 5 7 10"}
+R_FACTORS=${R_FACTORS:-}
+E_DELTAS=${E_DELTAS:-}
 
-for f in ./rptest ./rptest-many testbase testbase-many ratpoints.h; do
-  [ -e "$f" ] || { echo "tune.sh: $f is missing; run 'make rptest rptest-many' first" >&2; exit 1; }
+# The suites to tune on, as "program:reference" pairs, and the height bound to
+# run them at (empty: each test's own default).  Set by "make tune" and
+# "make tunehigh"; see the Makefile.
+TUNE_TESTS=${TUNE_TESTS:-"./rptest:testbase ./rptest-many:testbase-many"}
+TUNE_HEIGHT=${TUNE_HEIGHT:-}
+[ -n "$TUNE_HEIGHT" ] && HFLAG="-h $TUNE_HEIGHT" || HFLAG=""
+
+for t in $TUNE_TESTS; do
+  for f in "${t%%:*}" "${t#*:}"; do
+    [ -e "$f" ] || { echo "tune.sh: $f is missing; build it first" >&2; exit 1; }
+  done
 done
+[ -e ratpoints.h ] || { echo "tune.sh: ratpoints.h is missing" >&2; exit 1; }
 
 # The settings to measure against.  These are passed explicitly to every run,
 # including the baseline, so that the comparison never depends on what happens
@@ -59,25 +95,46 @@ then
 fi
 BASE="-r $DEF_R -R $DEF_E"
 
+# a neighbourhood of those, if that is what was asked for
+if [ -n "$R_FACTORS" ]; then
+  R_VALUES=`awk -v r="$DEF_R" -v f="$R_FACTORS" \
+    'BEGIN { n = split(f, a, " ")
+             for (i = 1; i <= n; i++) printf "%.4g ", r*a[i] }'`
+fi
+if [ -n "$E_DELTAS" ]; then
+  E_VALUES=`awk -v e="$DEF_E" -v d="$E_DELTAS" \
+    'BEGIN { n = split(d, a, " ")
+             for (i = 1; i <= n; i++) { v = e + a[i]
+                                        if (v >= 0) printf "%d ", v } }'`
+fi
+[ -n "$R_FACTORS$E_DELTAS" ] && echo "candidates: $R_VALUES/ $E_VALUES"
+
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
 TMP=`mktemp -d` || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 echo "checking that the tests still pass ..."
-./rptest      | cmp -s - testbase      || { echo "tune.sh: rptest disagrees with testbase" >&2; exit 1; }
-./rptest-many | cmp -s - testbase-many || { echo "tune.sh: rptest-many disagrees with testbase-many" >&2; exit 1; }
+for t in $TUNE_TESTS; do
+  prog=${t%%:*}; base=${t#*:}
+  $prog $HFLAG | cmp -s - "$base" \
+    || { echo "tune.sh: $prog disagrees with $base" >&2; exit 1; }
+done
 
-# one timing = both tests, so that a setting is judged on both regimes at once
-time_both() {
-  t1=`$PIN ./rptest      $1 -z -T` || exit 1
-  t2=`$PIN ./rptest-many $1 -z -T` || exit 1
-  awk -v a="$t1" -v b="$t2" 'BEGIN{printf "%.6f", a+b}'
+# one timing = every test in TUNE_TESTS, so that a setting is judged on all of
+# the regimes at once and not just on the one it happens to suit
+time_tests() {
+  tot=0
+  for t in $TUNE_TESTS; do
+    tt=`$PIN ${t%%:*} $HFLAG $1 -z -T` || exit 1
+    tot=`awk -v a="$tot" -v b="$tt" 'BEGIN{printf "%.6f", a+b}'`
+  done
+  echo "$tot"
 }
 
 printf 'warming up (%ss) ' "$WARMUP"
 end=`expr \`date +%s\` + $WARMUP`
-while [ `date +%s` -lt $end ]; do time_both "$BASE" > /dev/null; printf '.'; done
+while [ `date +%s` -lt $end ]; do time_tests "$BASE" > /dev/null; printf '.'; done
 echo
 
 # measure(): "label<TAB>args" lines from $1 -> "label median_ratio" in $2
@@ -93,8 +150,8 @@ measure() {
       true
     } > "$TMP/order"
     while IFS='	' read -r label args; do
-      tc=`time_both "$args"`
-      tb=`time_both "$BASE"`     # the current settings, right next to it
+      tc=`time_tests "$args"`
+      tb=`time_tests "$BASE"`     # the current settings, right next to it
       echo "$label `awk -v c="$tc" -v b="$tb" 'BEGIN{printf "%.5f", c/b}'`" >> "$TMP/raw"
       printf ' .'
     done < "$TMP/order"
@@ -173,6 +230,10 @@ case $verdict in
 # Delete this file to go back to the values compiled into ratpoints.h.
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
+# Measured on $TUNE_TESTS${TUNE_HEIGHT:+ at height $TUNE_HEIGHT}, starting
+# from $DEF_R / $DEF_E.  That is a note to the reader, not something the
+# Makefile looks at: "make tune" and "make tunehigh" write the same file and
+# each takes the other's result as its starting point.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
 TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E
 EOF
