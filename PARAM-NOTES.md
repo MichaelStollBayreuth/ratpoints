@@ -451,3 +451,24 @@ The one loss is the random curves at the large height bound, half a per cent,
 and it is the known cost of the offset pair: they want 9 and are given 11.
 Against that, the point-rich half at the same bound gains 11.85%, and the two
 together are 4.0% faster.
+
+## Against the released 2.2.3
+
+Built in a worktree at `main`, given this branch's curve sets, each version
+at its own defaults, 256-bit registers.  Every baseline binary was checked by
+its *output* -- line count and a byte comparison against the reference --
+before being timed, which is what the last attempt at this failed to do.
+
+| regime | 2.2.3 | this branch | speedup |
+|---|---|---|---|
+| random curves, 16383 | 8.213e9 | 5.779e9 | **1.42x** |
+| point-rich, 16383 | 1.136e10 | 5.897e9 | **1.93x** |
+| random curves, 200000 | 3.967e11 | 3.331e11 | **1.19x** |
+| prime-starved, 200000 | 7.647e11 | 1.666e11 | **4.59x** |
+
+The last row is the one that had never been established.  It is the regime
+where everything compounds: the automatic choice of `sp1` and `sp2`, the
+prime extension for a curve that runs out of informative primes,
+`PRIME_SIZE` 8, the third stage, and now the offset scaled by the length of
+the run.  `v2.3` alone was already 4.05x there; this branch takes it to
+4.59x.
