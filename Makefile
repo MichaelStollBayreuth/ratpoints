@@ -38,6 +38,8 @@
 #               tuning.mk (see tune.sh); takes several minutes, wants an idle
 #               machine, and must not be run under -j
 #   bench_init  correctness check and benchmark for the sieve table set-up
+#   bench_check benchmark for the exact check, and how to remeasure the four
+#               RATPOINTS_CHECK_* constants
 #   clean       remove the intermediate files; distclean also the executables
 #               and any tuning.mk
 
@@ -177,7 +179,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
-            bench_init.c tune.sh
+            bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
@@ -191,7 +193,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               rptest-degrees ratpoints-debug \
-              bench_init ratpoints-doc-2.2.pdf
+              bench_init bench_check ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
 
@@ -382,6 +384,14 @@ find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points
 bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h build.stamp
 	${CC} bench_init.c -o bench_init ${CCFLAGS_0} -O3 -funroll-loops \
               ${CCFLAGS3} ${CCFLAGS2} ${CCFLAGS}
+
+# Benchmark for the exact check (see bench_check.c).  It links nothing from
+# the library -- it reproduces the gmp calls the check makes -- but it reads
+# the four RATPOINTS_CHECK_* constants out of ratpoints.h to print beside
+# what it measures.
+bench_check: bench_check.c ratpoints.h build.stamp
+	${CC} bench_check.c -o bench_check ${CCFLAGS_0} ${CCFLAGS2} -lm ${CCFLAGS}
+
 
 rptest: libratpoints.a rptest.c ratpoints.h testdata.h build.stamp
 	${CC} rptest.c -o rptest ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}

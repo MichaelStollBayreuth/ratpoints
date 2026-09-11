@@ -192,6 +192,64 @@
 #ifndef RATPOINTS_COST_SURVIVOR
 # define RATPOINTS_COST_SURVIVOR 1400.0
 #endif
+/* and what the exact check contributes to that, for the reference curve of
+ * check_cost() below.  It is the one term of COST_SURVIVOR that the degree
+ * moves, and it is a small one: three per cent of a survivor at a height
+ * bound of 200000 and eighteen per cent at 16383, because only one survivor
+ * in twenty-five ever reaches the check.  In the same units as the line
+ * above, so 306 rdtsc cycles divided by what one first-phase AND per word
+ * costs, which is between 0.16 and 0.21 at the large bound. */
+#ifndef RATPOINTS_COST_CHECK
+# define RATPOINTS_COST_CHECK 1600.0
+#endif
+
+/* What one exact check costs, in rdtsc cycles, for the curve in hand.  The
+ * two third-stage constants above are fractions of it, and what they are
+ * fractions of is not the same for every curve: the check evaluates the
+ * binary form F(a,b) at one numerator by Horner from the coefficients
+ * bc[k] = c[k]*b^(degree-k), which are computed once per denominator, and
+ * then takes an integer square root.  So it costs
+ *   - one multiplication by a single word and one addition per Horner step,
+ *     that is per degree, on numbers whose size runs from one limb up to the
+ *     size of F and so averages half of it;
+ *   - one more multiplication when the degree is odd, to make the form even;
+ *   - a square root, which is nearly free while the root fits in one limb
+ *     and costs about a fixed amount per further limb of the root after that.
+ * F(a,b) has about  cbits + degree*hbits  bits, where cbits is the size of
+ * the largest coefficient and hbits that of the height bound, so the degree
+ * and the coefficients between them fix every quantity in the formula, and
+ * all of it is known before the first prime is looked at.
+ *
+ * The four constants were measured by timing exactly the gmp calls the check
+ * makes, over degrees 2 to 20, coefficients of 4 to 250 bits and height
+ * bounds of 2^14 and 2^18, and then setting CHECK_CALL so that the ratios
+ * agree with what the sieve itself shows; see PARAM-NOTES.md.  Only the
+ * ratio of one curve's check to another's is used, so a machine on which
+ * every check is dearer needs no change here.  The estimate can be
+ * overridden per call through the check_cost field of ratpoints_args, and
+ * with -W on the command line; -W 306 is what versions before 2.3 did, which
+ * is to assume every curve costs what a degree-6 one with small coefficients
+ * does. */
+#ifndef RATPOINTS_CHECK_STEP
+# define RATPOINTS_CHECK_STEP 29.0   /* one Horner step */
+#endif
+#ifndef RATPOINTS_CHECK_LIMB
+# define RATPOINTS_CHECK_LIMB 8.0    /* and per limb it carries */
+#endif
+#ifndef RATPOINTS_CHECK_CALL
+# define RATPOINTS_CHECK_CALL 94.0   /* the call, and a one-limb square root */
+#endif
+#ifndef RATPOINTS_CHECK_ROOT
+# define RATPOINTS_CHECK_ROOT 170.0  /* each further limb of the root */
+#endif
+/* What the formula gives for the curves the third-stage constants were
+ * tuned on: degree 6, coefficients of a few bits, height bound between 2^14
+ * and 2^18, where it ranges from 303 to 311.  The two fractions are divided
+ * by the estimate over this, so they are unchanged on such a curve and
+ * smaller on one whose check costs more. */
+#ifndef RATPOINTS_CHECK_REFERENCE
+# define RATPOINTS_CHECK_REFERENCE 306.0
+#endif
 
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
      Unless num_primes is set explicitly, this is where the search starts:
@@ -212,7 +270,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long b_low; long b_high; long sp1; long sp2; long sp3;
                  double survivors_per_word; long sp2_extra; double sp2_u0;
                  double cost_table; long adapt;
-                 long sp3_extra; double sp3_per_denom;
+                 long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
@@ -231,6 +289,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  unsigned long n_checks; unsigned long n_sifts;
                  unsigned long n_words_2;
                  unsigned long adapt_at; long sp3_max; long sp3_valid;
+                 double check_rel;
                }
         ratpoints_args;
 

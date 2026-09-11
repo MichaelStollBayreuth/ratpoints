@@ -42,6 +42,18 @@ the sieve is actually finding and corrects the third stage from the count — wh
 thing no prediction can, namely that the non-reduced forms `(ka, kb)` of a rational point pass
 every prime test, so a floor of survivors outlives any amount of sieving.
 
+How many primes the third stage uses is settled by weighing what a prime removes against what it
+costs, and what it removes is exact tests — so it depends on what one exact test costs, which is a
+property of the curve and not only of the machine. The test evaluates a binary form of the given
+degree and takes an integer square root, so it costs about 15 cycles per degree plus a step for
+each further limb the square root needs, and over the range from degree 3 with small coefficients
+to degree 14 with 400-bit ones it varies by a factor of ten. The program estimates it from the
+degree, the largest coefficient and the height bound before it sieves anything, and `-W` overrides
+the estimate. Measured against the old assumption that every curve costs the same, this changes no
+running time by as much as half a per cent on any test set, because the rule it feeds sits at its
+own optimum; what it buys is that the constants mean what they are documented to mean for curves
+outside the ones they were tuned on.
+
 Three machine-dependent constants govern the choice. They can be set with the `-r`, `-R` and `-U`
 options,
 reasonable values are compiled in, and `make tune` will measure better ones for your machine if

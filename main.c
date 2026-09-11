@@ -70,7 +70,7 @@ char *usage_str =
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
     "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
     "                 [-C table_cost] [-A adapt]\n"
-    "                 [-P stage3_primes] [-Q stage3_cost]\n"
+    "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -258,6 +258,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->adapt         = -1; /* negative: adapt when free to */
   args->sp3_extra     = -1; /* negative: choose from the curve */
   args->sp3_per_denom = -1.0; /* negative: compiled-in default */
+  args->check_cost    = -1.0; /* negative: estimate it from the curve */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
@@ -401,6 +402,15 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles; negative
+                   * means estimate it from the degree and the coefficients,
+                   * and 306 is what earlier versions assumed for every
+                   * curve */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }
           i++;
           break;
         case 'f': /* printing format */

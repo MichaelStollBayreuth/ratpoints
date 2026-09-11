@@ -950,6 +950,54 @@ static double prime_key(double r, long p, double per_word, int tabled,
   return(prime_cost(p, per_word, tabled, cost_table, u_words, n_denoms)/info);
 }
 
+/* What one exact check costs for this curve, in the units of
+ * RATPOINTS_CHECK_REFERENCE.  The two third-stage constants are fractions of
+ * one check, so they have to be divided by this; see the comment on
+ * RATPOINTS_CHECK_STEP in ratpoints.h for what the formula is counting.
+ *
+ * Everything it needs is known before the first prime is looked at: the
+ * degree, the largest coefficient and the height bound fix the size of
+ * F(a,b) = c[degree]*a^degree + ... + c[0]*b^degree, and with it the size of
+ * every number the check touches.  The height bound is used for both a and
+ * b, which is what they are bounded by; a denominator range narrower than
+ * that makes the estimate a little high, and by less than the rounding to
+ * whole limbs does.
+ */
+static double check_cost(const ratpoints_args *args)
+{ mpz_t *c = args->cof;
+  long degree = args->degree;
+  long k;
+  double hbits = log((double)args->height + 1.0)/log(2.0);
+  double cbits = 1.0;
+  double fbits, limbs, mid, root, cost;
+
+  if(args->check_cost > 0.0) { return(args->check_cost); }
+
+  for(k = 0; k <= degree; k++)
+  { if(mpz_sgn(c[k]) != 0)
+    { double b = (double)mpz_sizeinbase(c[k], 2);
+
+      if(b > cbits) { cbits = b; }
+  } }
+
+  fbits = cbits + (double)degree*hbits;
+  limbs = fbits/(double)LONG_LENGTH;          /* the size of F, in limbs */
+  mid = 0.5*(cbits + fbits)/(double)LONG_LENGTH; /* the mean over the loop */
+  root = ceil(0.5*limbs);                     /* limbs of the square root */
+  if(root < 1.0) { root = 1.0; }
+
+  cost = (double)degree*(RATPOINTS_CHECK_STEP + RATPOINTS_CHECK_LIMB*mid)
+          + RATPOINTS_CHECK_CALL + RATPOINTS_CHECK_ROOT*(root - 1.0);
+  /* An odd degree needs one more multiplication, by b, to make the form of
+   * even degree.  The term is larger than that multiplication alone, because
+   * it was fitted to what the sieve shows and an odd degree also restricts
+   * the denominators to squares, which leaves fewer survivors per
+   * denominator and so a colder check. */
+  if(degree & 1)
+  { cost += RATPOINTS_CHECK_STEP + RATPOINTS_CHECK_LIMB*limbs; }
+  return(cost);
+}
+
 /* ----------------------------------------------------------------------
  * Correcting the number of primes from what the sieve is actually doing
  *
@@ -1040,6 +1088,12 @@ static void adapt_primes(ratpoints_args *args)
    * estimate that nothing else supplies. */
   if(mode >= 2)
   { long want = sp2;
+    /* what a survivor costs downstream.  The exact check is one term of it,
+     * and the only one the degree moves; how many survivors reach the check
+     * is measured rather than assumed, since the counters are here anyway. */
+    double cost_surv = RATPOINTS_COST_SURVIVOR
+                        + ((double)args->n_checks/(double)args->n_bits)
+                           *RATPOINTS_COST_CHECK*(args->check_rel - 1.0);
 
     rate = r2;
     s = level + chance*rate;
@@ -1049,7 +1103,7 @@ static void adapt_primes(ratpoints_args *args)
       double cost = prime_cost(sieve_list[n]->p, RATPOINTS_COST_PHASE2*s, 1,
                                cost_table, u, d);
 
-      if((s - next)*RATPOINTS_COST_SURVIVOR <= cost) { break; }
+      if((s - next)*cost_surv <= cost) { break; }
       rate *= r; s = next; want++;
     }
     if(want == sp2)
@@ -1061,7 +1115,7 @@ static void adapt_primes(ratpoints_args *args)
                                  RATPOINTS_COST_PHASE2*prev, 1,
                                  cost_table, u, d);
 
-        if((prev - s)*RATPOINTS_COST_SURVIVOR > cost) { break; }
+        if((prev - s)*cost_surv > cost) { break; }
         rate /= r; s = prev; want--;
       }
     }
@@ -1080,8 +1134,12 @@ static void adapt_primes(ratpoints_args *args)
    * it replaces both the predicted rate and the fitted fraction that stood
    * for the coprimality test. */
   if(args->sp3_extra < 0 && args->n_sifts > 0)
-  { double per_denom = (args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
-                                                    : RATPOINTS_SP3_PER_DENOM;
+  { /* both fractions are of one exact check, which is dearer at a high
+     * degree or with large coefficients: see check_cost() */
+    double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
+                                                     : RATPOINTS_SP3_PER_DENOM)
+                         /args->check_rel;
+    double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
     double S = (double)args->n_coprime/(double)args->n_sifts;
     double sp2_old = level + chance*r2;
     long sp3;
@@ -1092,7 +1150,7 @@ static void adapt_primes(ratpoints_args *args)
     for(sp3 = args->sp2; sp3 < max; sp3++)
     { double r = sieve_list[sp3]->r;
 
-      if(S*(1.0 - RATPOINTS_SP3_PER_SURVIVOR - r) <= per_denom) { break; }
+      if(S*(1.0 - per_surv - r) <= per_denom) { break; }
       S *= r;
     }
     args->sp3 = sp3;
@@ -1487,6 +1545,13 @@ static long sieving_info(ratpoints_args *args,
                      ? RP_ADAPT_WORDS : ULONG_MAX;
   args->sp3_valid = 0;
 
+  /* What one exact check costs on this curve, relative to the curves the
+   * third-stage constants were tuned on.  It is what those constants are
+   * fractions of, so a curve whose check is dearer -- a high degree, or
+   * large coefficients, or both -- is worth more third-stage primes. */
+  args->check_rel = check_cost(args)/RATPOINTS_CHECK_REFERENCE;
+  if(args->check_rel <= 0.0) { args->check_rel = 1.0; }
+
   /* How big the run is.  This is wanted before the first prime is looked at,
    * because the rule that decides whether to look past the primes we were
    * given uses the same offset as the final choice does; it is computed
@@ -1710,7 +1775,11 @@ static long sieving_info(ratpoints_args *args,
    * denominator, and nothing per curve beyond what has been done here.  A
    * prime is therefore worth adding as long as the survivors it removes are
    * worth more than the denominators it is carried through, which is the
-   * rule below; see RATPOINTS_SP3_PER_SURVIVOR in ratpoints.h .
+   * rule below; see RATPOINTS_SP3_PER_SURVIVOR in ratpoints.h .  Both costs
+   * are fractions of one exact check, and what one check costs depends on
+   * the curve, so both are divided by check_rel: at a high degree or with
+   * large coefficients the check is dearer and more primes are worth having,
+   * and at degree 3 or 4 it is cheaper and fewer are.
    *
    * S is the expected number of survivors a denominator still has when the
    * stage begins.  It is the number of numerators the denominator considers,
@@ -1723,8 +1792,10 @@ static long sieving_info(ratpoints_args *args,
   { long sp3 = args->sp2;
     long sp3_want = (args->sp3_extra >= 0) ? args->sp2 + args->sp3_extra
                                            : RATPOINTS_NUM_PRIMES;
-    double per_denom = (args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
-                                                    : RATPOINTS_SP3_PER_DENOM;
+    double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
+                                                     : RATPOINTS_SP3_PER_DENOM)
+                        /args->check_rel;
+    double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
     double S;
 
     if(sp3_want > RATPOINTS_NUM_PRIMES) { sp3_want = RATPOINTS_NUM_PRIMES; }
@@ -1775,8 +1846,7 @@ static long sieving_info(ratpoints_args *args,
       }
 
       r = prec[sp3].r;
-      if(args->sp3_extra < 0
-          && S*(1.0 - RATPOINTS_SP3_PER_SURVIVOR - r) <= per_denom)
+      if(args->sp3_extra < 0 && S*(1.0 - per_surv - r) <= per_denom)
       { break; }
       S *= r;
       sieve_list[sp3] = prec[sp3].ssp;
@@ -2525,7 +2595,12 @@ long find_points_work(ratpoints_args *args,
     printf("\n  use %ld primes for second stage:\n   ", args->sp2 - args->sp1);
     for( ; n < args->sp2; n++)
     { printf(" %ld", sieve_list[n]->p); }
-    printf("\n\n");
+    printf("\n  use %ld primes for third stage:\n   ", args->sp3 - args->sp2);
+    for( ; n < args->sp3; n++)
+    { printf(" %ld", sieve_list[n]->p); }
+    printf("\n  one exact check is put at %.0f cycles, %.2f times what it"
+           " costs\n    on the curves the third stage was tuned on\n\n",
+           args->check_rel*RATPOINTS_CHECK_REFERENCE, args->check_rel);
   }
 #endif
 

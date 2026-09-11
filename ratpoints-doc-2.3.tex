@@ -364,10 +364,17 @@ The archive contains the following files.
   \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
         and \texttt{rptest} executables, respectively
   \item \texttt{testdata.h}, \texttt{testdata-many.h},
-        \texttt{testdata-high-many.h} --- the curves used by the test runs
+        \texttt{testdata-high-many.h}, \texttt{testdata-degrees.h} ---
+        the curves used by the test runs
   \item \texttt{testbase}, \texttt{testbase-many},
-        \texttt{testbase-high-many}, \texttt{testbase2} --- the output they
-        are expected to produce
+        \texttt{testbase-high-many}, \texttt{testbase-degrees},
+        \texttt{testbase2} --- the output they are expected to produce
+  \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
+        machine-dependent constants (Section~\ref{sec:tuning})
+  \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
+        two parts that are timed on their own: building the sieving tables,
+        and the exact test.  Neither is part of the library; the second is
+        how to remeasure the constants of Section~\ref{sec:sp3choice}
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
@@ -559,6 +566,20 @@ be. Section~\ref{sec:sp3choice} has the rule; the two machine constants in it
 are \texttt{RATPOINTS\_SP3\_PER\_SURVIVOR} and
 \texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}.
 
+Both of those constants are fractions of what one exact test costs, and that
+is not the same number for every curve: the test evaluates a binary form of
+the given degree at one pair of integers and takes an integer square root, so
+it costs more at a high degree, and more again when the coefficients are
+large enough to push the arithmetic into another limb. The program estimates
+it from the degree, the largest coefficient and the height bound, all of
+which it knows before it looks at a single prime, and \\
+\strut\quad\verb+-W+ $w$ \\
+overrides the estimate with $w$ rdtsc cycles. \verb+-W 306+ is what versions
+before~2.3 did in effect, namely assume that every curve costs what a
+degree-6 curve with small coefficients costs; it is the way to measure what
+the estimate is worth. Section~\ref{sec:sp3choice} has the formula, and
+\verb+-v+ prints what it gives for the curve in hand.
+
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
 sets the maximal number of `forbidden divisors'. If the degree is even
@@ -644,7 +665,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long b_low; long b_high; long sp1; long sp2; long sp3;
                  double survivors_per_word; long sp2_extra; double sp2_u0;
                  double cost_table; long adapt;
-                 long sp3_extra; double sp3_per_denom;
+                 long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags; ...}
@@ -711,7 +732,11 @@ field: what goes in is \texttt{sp3\_extra}, which fixes that difference when
 it is non-negative (option \verb+-P+) and otherwise leaves the number to be
 chosen from the curve, and \texttt{sp3\_per\_denom} (option \verb+-Q+),
 which is the machine constant that choice turns on and takes the value
-compiled into \texttt{ratpoints.h} when negative.
+compiled into \texttt{ratpoints.h} when negative. \texttt{check\_cost}
+(option \verb+-W+) says what one exact test costs, in rdtsc cycles, and both
+of those constants are fractions of it; when negative, which is the usual
+case, the program estimates it from the degree, the coefficients and the
+height bound as described in Section~\ref{sec:sp3choice}.
 Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
@@ -1018,6 +1043,36 @@ prime added, this stops of its own accord. The two constants are
 \texttt{RATPOINTS\_SP3\_PER\_SURVIVOR} and
 \texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}; like the two
 above they are properties of the machine.
+
+They are fractions of one exact test, and what one exact test costs is a
+property of the curve rather than of the machine alone. The test computes
+\[ F(a,b) = c_d a^d + c_{d-1} a^{d-1} b + \dots + c_0 b^d \]
+by Horner's rule from the $c_k b^{d-k}$, which are formed once per
+denominator, and then takes the integer square root of the result. So it
+costs one multiplication by a single word and one addition per step of the
+Horner loop, that is one per degree, on numbers that grow from one limb to
+the size of $F$; one more multiplication when the degree is odd, to make the
+form of even degree; and a square root, which is nearly free while the root
+fits in one limb and costs a fixed amount for each further limb of the root
+after that. Since $F(a,b)$ has about $\log_2|c| + d\log_2 H$ bits, the degree,
+the largest coefficient and the height bound fix every quantity in that
+count, and the program forms the estimate before it looks at a prime. Both
+fractions are then divided by the estimate over its value for a degree-6
+curve with small coefficients, so they are unchanged on such a curve, smaller
+on one whose test costs more, and larger on one whose test costs less --- and
+a curve with an expensive test is worth more third-stage primes, because each
+one it adds is spared more.
+
+The four constants of the estimate are \texttt{RATPOINTS\_CHECK\_STEP},
+\texttt{RATPOINTS\_CHECK\_LIMB}, \texttt{RATPOINTS\_CHECK\_CALL} and
+\texttt{RATPOINTS\_CHECK\_ROOT}, with the reference value in
+\texttt{RATPOINTS\_CHECK\_REFERENCE}; only the ratio of one curve's test to
+another's is used, so a machine on which every test is dearer needs no change
+to any of them. On this machine the estimate agrees with what the sieve
+itself shows to within about six per cent over degrees 3 to~12 and
+coefficients of 4 to 120 bits, the exceptions being the curves whose $F$ sits
+within a few bits of a limb boundary, where the square root may or may not
+take the further limb.
 
 $S$ is estimated from the number of numerators a denominator has to consider
 --- which follows from the positivity intervals, the height bound and the
@@ -1572,6 +1627,23 @@ to~8 had broken: it moved the boundary of the division-free path from
 degree~8 down to degree~7, so that a genus~3 curve with an even model was
 taking a conditional division inside every step of the evaluation. Nothing
 had noticed, because every test curve in the package has degree~6.
+
+The two constants that say how many primes the third stage should use are
+fractions of what one exact test costs, and that is a property of the curve,
+not of the machine alone: the test evaluates a binary form of the given
+degree and takes an integer square root, so it costs about 15~cycles per
+degree plus a step for every further limb the root needs, and over the range
+from degree~3 with small coefficients to degree~14 with 400-bit ones it
+varies by a factor of ten. The program now estimates it from the degree, the
+largest coefficient and the height bound before it looks at a prime
+(Section~\ref{sec:sp3choice}), and \verb+-W+ overrides the estimate.
+Measured against the old behaviour, which was to assume that every curve
+costs what a degree-6 curve with small coefficients costs, this changes no
+running time by as much as half a per cent on any of the test sets --- the
+rule it feeds sits at its own optimum, so a better constant moves the
+boundary by about one prime, and the prime at the boundary is by definition
+worth about what it costs. What it buys is that the constants mean what they
+are documented to mean for curves outside the ones they were tuned on.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.

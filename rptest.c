@@ -105,6 +105,7 @@ int main(int argc, char *argv[])
   long adapt = -1;                   /* negative: the default, stage 3 */
   long sp3_extra = -1;               /* negative: choose from the curve */
   double sp3_per_denom = -1.0;       /* negative: compiled-in default */
+  double check_cost = -1.0;          /* negative: estimate from the curve */
   int print_time = 0;                /* -T: report the CPU time used */
   long num_primes    = -1; /* negative: let ratpoints choose, as main.c
                             * does.  This matters: an explicit value is
@@ -212,6 +213,12 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %lf", &sp3_per_denom) != 1) return(-6);
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &check_cost) != 1) return(-6);
           i++;
           break;
         case 'j': /* do not use Jacobi sum test */
@@ -347,6 +354,7 @@ int main(int argc, char *argv[])
         args.adapt         = adapt;
         args.sp3_extra     = sp3_extra;
         args.sp3_per_denom = sp3_per_denom;
+        args.check_cost    = check_cost;
         args.array_size    = array_size;
         args.sturm         = sturm_iter;
         args.num_primes    = num_primes;

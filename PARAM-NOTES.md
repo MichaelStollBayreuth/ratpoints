@@ -485,3 +485,186 @@ prime extension for a curve that runs out of informative primes,
 `PRIME_SIZE` 8, the third stage, and now the offset scaled by the length of
 the run.  `v2.3` alone was already 4.05x there; this branch takes it to
 4.59x.
+
+---
+
+# Item 13(b): what one exact check costs
+
+The two constants the third stage turns on, `RATPOINTS_SP3_PER_SURVIVOR` and
+`RATPOINTS_SP3_PER_DENOM`, are *fractions of one exact check*.  Everything
+else in this branch treats the check as one number.  It is not: the check
+evaluates a binary form of the curve's degree at one pair of integers and
+takes an integer square root, so the degree and the size of the coefficients
+both enter.  That is what item 13 had left over.
+
+## What the check actually costs
+
+Two measurements, because neither alone would do.
+
+**The microbenchmark** (`scratchpad/bench_check.c`) performs exactly the gmp
+calls that `_ratpoints_check_point` makes for one survivor -- the Horner loop
+over `bc[k] = c[k]*b^(degree-k)`, the further multiplication by `b` for an
+odd degree, the sign test and `mpz_sqrtrem` -- with the per-denominator part
+outside the timed loop, since the in-situ figure subtracts it.  Compiling it
+twice, once with the square root and once without, splits the cost in two:
+
+| limbs of F | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| the square root, cycles | 14 | 33 | 145 | 148 | 240 | 236 |
+
+The square root is a **step function** of the size: nearly free while the
+root fits in one limb, then about 90 cycles for each further limb of the
+root.  The Horner part is smooth, about 15 cycles a step plus a little for
+each limb the step carries.  The step is what dominates the picture: at a
+height bound of 200000 a degree-6 curve costs 239 cycles and a degree-7 one
+462, because `F(a,b)` crosses 128 bits between them.
+
+**In the sieve** (`scratchpad/checkcost.sh`), 200 random curves per
+configuration, `(cyc3 - cycbc)/checks` pooled over them, with `-P 0` to
+switch the third stage off so that ten times as many survivors reach the
+check and the figure is not noise.  Forty-four configurations: degrees 3 to
+12, coefficients of 4 to 120 bits, height bounds 16383 and 200000.
+
+The two agree in a useful way.  **The sieve's check is `44 + 1.44x` what the
+microbenchmark says**, uniformly across the sweep.  The multiplier is the
+cold cache and the unshared branch predictor; the additive part is the call
+itself.  It matters: with only the multiplier a model would overstate the
+spread between degrees by a fifth, because in the sieve every check carries
+the same fixed 44 cycles whatever the degree.
+
+## The formula
+
+Everything it needs is known before the first prime is looked at.  With
+`cbits` the size of the largest coefficient, `hbits` that of the height
+bound, `fbits = cbits + degree*hbits` the size of `F`, and sizes in 64-bit
+limbs,
+
+    check = degree*(STEP + LIMB*mid) + CALL + ROOT*(root - 1)
+          [ + STEP + LIMB*fbits/64  if the degree is odd ]
+
+where `mid = (cbits + fbits)/128` is the mean size over the Horner loop and
+`root = ceil(fbits/128)` the number of limbs in the square root.  `STEP`,
+`LIMB` and `ROOT` come from the microbenchmark; `CALL` carries the additive
+part above.  The shipped values are 29, 8, 94 and 170, with the reference
+value 306 cycles -- what the formula gives for a degree-6 curve with small
+coefficients at a height bound between 2^14 and 2^18, where it ranges from
+303 to 311.
+
+Against all forty-four in-situ configurations, taken as ratios to the
+degree-6 small-coefficient curve at the same height bound: **median error
+6.3%, rms 10.6%**.  A grid search over the four constants finds nothing
+better (rms 10.1% at its optimum), so the constants measured on the
+microbenchmark are the constants to ship.  The two outliers, at 33% and 39%,
+are both curves whose `F` sits within three bits of a limb boundary, where
+the square root may or may not take the further limb; that is the price of a
+step function and no choice of constants avoids it.
+
+## What it changes
+
+`args->check_rel` is the estimate over the reference, and both fractions are
+divided by it, in `sieving_info` before the run and in `adapt_primes` during
+it.  Under `-A 2` the check's share of `COST_SURVIVOR` is scaled too, with
+the share itself taken from the counters item 14 already keeps rather than
+assumed.  `-W w` fixes the check at `w` cycles; `-W 306` is the old
+behaviour and is how everything below was measured.
+
+The parameters do move.  On the degree suite at a height bound of 16383 the
+estimate runs from 0.73 at degree 3 to 1.26 at degree 8, and the third stage
+follows:
+
+| degree | estimate | third-stage primes at `-W 306` | with the estimate |
+|---|---|---|---|
+| 3 | 0.73 | 3.72 | 3.28 |
+| 4 | 0.74 | 1.80 | 1.60 |
+| 7 | 1.26 | 4.16 | 4.52 |
+| 8 | 1.26 | 1.72 | 1.88 |
+
+## What it is worth: nothing measurable
+
+Paired inside one binary, `-W 306` against the default, 21 to 31 rounds each.
+Both figures are given because on this laptop they disagree: the ratio of the
+medians and the median of the per-round ratios, with the range of the
+per-round ratios beside them.
+
+| suite | estimate | of medians | of ratios | spread |
+|---|---|---|---|---|
+| test1, random degree 6 at 16383 | 0.99 | 1.0019 | 1.0001 | 0.973 to 1.028 |
+| test1many, point-rich at 16383 | 1.1 to 1.7 | 0.9973 | 0.9984 | 0.944 to 1.028 |
+| the degree suite at 200000 | 0.75 to 1.86 | 1.0010 | 0.9980 | 0.983 to 1.021 |
+| the degree suite at 65536 | 0.73 to 1.26 | 0.9946 | 1.0017 | 0.978 to 1.018 |
+| degree 8, 400-bit coefficients | 4.82 | 1.0025 | 1.0026 | 0.978 to 1.035 |
+| degree 14, 400-bit coefficients | 7.40 | 1.0012 | 1.0022 | 0.993 to 1.014 |
+
+and, from a first pass of fifteen rounds each at a height bound of 200000:
+
+| family | estimate | ratio |
+|---|---|---|
+| degree 6, 40-bit coefficients | 1.66 | 0.9997 |
+| degree 6, 80-bit coefficients | 1.76 | 0.9994 |
+| degree 6, 160-bit coefficients | 2.51 | 0.9997 |
+| degree 10, 200-bit coefficients | 3.54 | 0.9995 |
+
+**Nothing moves by half a per cent, anywhere, and the per-round spread is
+three per cent.**  That first pass reported 0.9722 on test1many; thirty-one
+rounds put it at 0.998 with individual rounds between 0.944 and 1.028, so
+that figure was drift and nothing else.  Two configurations and fifteen
+rounds are not enough here, and the median of the per-round ratios is the
+figure to read, not the ratio of the medians -- `scratchpad/bench2.sh` prints
+both and the spread.
+
+**Why it is neutral** is the same reason the marginal rule for `sp2` added
+nothing in item 14: *the rule that consumes these constants is at its own
+optimum.*  Halving `q_d` moves the stopping point by about one prime, and the
+prime at the stopping point is by definition worth about what it costs.  The
+effect is second order, and second order here is a tenth of a per cent.
+
+The **control** settles it rather than merely permitting the conclusion.
+`-W w` with a flat `w` scales both fractions for every curve alike, so a
+sweep of it says whether anything about this constant matters at all:
+
+| | `-W 306` | 400 | 500 | 700 | 1000 | estimate |
+|---|---|---|---|---|---|---|
+| test1many | 1.0000 | 0.9957 | 1.0002 | 0.9954 | 0.9965 | 1.0058 |
+| test1 | 1.0000 | | 0.9935 | | 1.0008 | 0.9984 |
+| degrees at 200000 | 1.0000 | | 0.9968 | | 1.0000 | 1.0002 |
+
+Tripling the constant changes nothing either.  The knob is flat, so of course
+turning it more accurately changes nothing.
+
+One place the estimate does slightly worse, and it is worth stating plainly.
+On *random* curves with a very expensive check -- degree 8 or 14 with 400-bit
+coefficients -- it buys one or two third-stage primes where the constant
+bought none, and those primes cost 0.2%.  Switching the stage off outright
+(`-P 0`) is 1.0001 and 0.9976 there, so the stage is worth nothing on such
+curves either way: they are random, so a denominator has almost no survivors
+for the stage to work on, and the estimate's arithmetic is right while the
+`S` it multiplies is too large.  That is a fault of the survivor estimate,
+not of the check estimate.
+
+## Two things the measurement turned up on the way
+
+**The point-rich test sets are not small-coefficient sets.**
+`testdata-many.h` and `testdata-high-many.h` have coefficients up to 41 bits,
+where `testdata.h` has 4.  At a height bound of 16383 that puts them right on
+the 128-bit boundary, so the estimate for those curves is 1.1 on some and 1.7
+on others, and `make test2` -- one degree-6 curve with 31-bit coefficients at
+a height bound of 10^6 -- comes out at 1.66.  Any future statement of the
+form "the test sets are degree 6 with small coefficients" is wrong about
+three of the five.
+
+**The rule does not charge for the powers of `b`.**  `bc[k] = c[k]*b^(d-k)`
+is recomputed on the first check of every denominator and costs 120 to 540
+cycles depending on the degree -- between 0.12 and 0.83 of one check.  A
+third-stage prime saves it only when it clears a denominator of every
+survivor, which is why the rule ignores it, but that is an approximation, not
+an absence.  Charging for it properly needs the probability that a
+denominator is cleared, which nothing measures yet.
+
+## The verdict
+
+The estimate ships, and is the default, because the constants now mean what
+they are documented to mean over the whole range of curves the package
+serves rather than only for the degree-6 curves they were tuned on, and
+because it costs nothing: one logarithm and a pass over the coefficients per
+curve, and no measurable running time either way.  What it does not do is
+make anything faster, and the notes should not pretend otherwise.
