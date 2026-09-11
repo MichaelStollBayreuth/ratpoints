@@ -407,3 +407,22 @@ The `-C` sweep at the same height bound is flat (1.0000, 1.0007, 1.0007,
 1.0013 for 0, 20, 38, 140), which is again what the model says: `U` is a
 hundred times larger there, so the table term is a hundredth of what it is at
 16383 and the ranking has nothing to bite on.
+
+At the small height bound, ranking on, correction off:
+
+| `-R` | 2 | 3 | 4 | 5 | 7 | 9 | 11 | 14 |
+|---|---|---|---|---|---|---|---|---|
+| test1 (random) | 1.0000 | **0.9772** | 0.9975 | 0.9991 | 1.0201 | 1.0447 | | |
+| test1many (rich) | | 1.0000 | | **0.9961** | 1.0013 | 1.0061 | 1.0180 | 1.0532 |
+
+So the three points to fit are: offset about 3 at `U = 5.9e5`, about 5 at
+`U = 5.1e6`, and 12 at `U = 7.1e8`.  The first and third give
+`RATPOINTS_SP2_EXTRA = 13` with `RATPOINTS_SP2_U0 = 2.2e6`, which lands on 3,
+9 and 13 for the three.
+
+The middle one is the one the model misses: the point-rich curves at the
+small height bound want 5 and are given 9, which costs about 0.6%.  That is
+not a failure of the arithmetic but of the shape: their survivor rate is
+twice the random curves', so a second-phase prime costs them twice as much
+per word, and a formula in `U` alone cannot see that.  The marginal rule can,
+which is the argument for it that the timings above do not make.
