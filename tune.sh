@@ -1,7 +1,8 @@
 #!/bin/sh
-# Find good values for the two machine-dependent constants that decide how
-# many primes each sieving stage uses -- RATPOINTS_SURVIVORS_PER_WORD and
-# RATPOINTS_SP2_EXTRA in ratpoints.h -- and write them to tuning.mk, which
+# Find good values for the three machine-dependent constants that decide how
+# many primes each sieving stage uses -- RATPOINTS_SURVIVORS_PER_WORD,
+# RATPOINTS_SP2_EXTRA and RATPOINTS_SP2_U0 in ratpoints.h -- and write them to
+# tuning.mk, which
 # the Makefile includes.  Run it as "make tune"; it needs ./rptest and
 # ./rptest-many, and it modifies no source file.
 #
@@ -58,10 +59,20 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # wildly different values; if a neighbourhood run
 # moves a value, it has not finished looking, and should be run again from
 # there.
+#
+# The offset is the third constant's business too.  Since version 2.3 it is
+# the number of extra primes an arbitrarily long run wants, and a run of U
+# numerator words gets sp2_extra/(1 + U0/U) of them, so the ladder for it is
+# wider than it used to be and the value that suits a short run is not the
+# value that suits a long one.  That is the point: U0 is what reconciles the
+# two, and it is pinned by running "make tune" and "make tunehigh" one after
+# the other, since they see very different U.
 R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
-E_VALUES=${E_VALUES:-"3 5 7 10"}
+E_VALUES=${E_VALUES:-"4 6 9 13 18"}
+U_VALUES=${U_VALUES:-"3e5 6e5 2.4e6 5e6"}
 R_FACTORS=${R_FACTORS:-}
 E_DELTAS=${E_DELTAS:-}
+U_FACTORS=${U_FACTORS:-}
 
 # The suites to tune on, as "program:reference" pairs, and the height bound to
 # run them at (empty: each test's own default).  Set by "make tune" and
@@ -84,16 +95,19 @@ done
 # values, not the ones in ratpoints.h.
 DEF_R=`sed -n 's/^# *define  *RATPOINTS_SURVIVORS_PER_WORD  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
 DEF_E=`sed -n 's/^# *define  *RATPOINTS_SP2_EXTRA  *\([0-9]*\).*/\1/p' ratpoints.h`
-[ -n "$DEF_R" ] && [ -n "$DEF_E" ] || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
+DEF_U=`sed -n 's/^# *define  *RATPOINTS_SP2_U0  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
+[ -n "$DEF_R" ] && [ -n "$DEF_E" ] && [ -n "$DEF_U" ] || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
 if [ -f tuning.mk ] && [ "`sed -n 's/^TUNED_FOR *= *//p' tuning.mk`" = "${TUNE_CONFIG:-}" ]
 then
   v=`sed -n 's/.*RATPOINTS_SURVIVORS_PER_WORD=\([^ 	]*\).*/\1/p' tuning.mk`
   [ -n "$v" ] && DEF_R=$v
   v=`sed -n 's/.*RATPOINTS_SP2_EXTRA=\([^ 	]*\).*/\1/p' tuning.mk`
   [ -n "$v" ] && DEF_E=$v
-  echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E"
+  v=`sed -n 's/.*RATPOINTS_SP2_U0=\([^ 	]*\).*/\1/p' tuning.mk`
+  [ -n "$v" ] && DEF_U=$v
+  echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E / $DEF_U"
 fi
-BASE="-r $DEF_R -R $DEF_E"
+BASE="-r $DEF_R -R $DEF_E -U $DEF_U"
 
 # a neighbourhood of those, if that is what was asked for
 if [ -n "$R_FACTORS" ]; then
@@ -107,7 +121,12 @@ if [ -n "$E_DELTAS" ]; then
              for (i = 1; i <= n; i++) { v = e + a[i]
                                         if (v >= 0) printf "%d ", v } }'`
 fi
-[ -n "$R_FACTORS$E_DELTAS" ] && echo "candidates: $R_VALUES/ $E_VALUES"
+if [ -n "$U_FACTORS" ]; then
+  U_VALUES=`awk -v u="$DEF_U" -v f="$U_FACTORS" \
+    'BEGIN { n = split(f, a, " ")
+             for (i = 1; i <= n; i++) printf "%.4g ", u*a[i] }'`
+fi
+[ -n "$R_FACTORS$E_DELTAS$U_FACTORS" ] && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES"
 
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
@@ -182,7 +201,7 @@ echo "stage 1: the threshold, against the current $DEF_R (offset stays at $DEF_E
 printf 'current\t%s\n' "$BASE" >> "$TMP/c1"
 for v in $R_VALUES; do
   [ "$v" = "$DEF_R" ] && continue
-  printf 'r=%s\t-r %s -R %s\n' "$v" "$v" "$DEF_E" >> "$TMP/c1"
+  printf 'r=%s\t-r %s -R %s -U %s\n' "$v" "$v" "$DEF_E" "$DEF_U" >> "$TMP/c1"
 done
 measure "$TMP/c1" "$TMP/r1"
 report "$TMP/r1"
@@ -195,19 +214,33 @@ echo "stage 2: the offset, with the threshold at $BEST_R"
 : > "$TMP/c2"
 printf 'current\t%s\n' "$BASE" >> "$TMP/c2"
 for v in $E_VALUES; do
-  printf 'e=%s\t-r %s -R %s\n' "$v" "$BEST_R" "$v" >> "$TMP/c2"
+  printf 'e=%s\t-r %s -R %s -U %s\n' "$v" "$BEST_R" "$v" "$DEF_U" >> "$TMP/c2"
 done
 measure "$TMP/c2" "$TMP/r2"
 report "$TMP/r2"
 
-BEST_LBL=`best_of "$TMP/r2" current`
-BEST_E=`echo "$BEST_LBL" | sed 's/^e=//'`
-BEST=`awk -v k="$BEST_LBL" '$1==k{print $2}' "$TMP/r2"`
+BEST_E=`best_of "$TMP/r2"`
+case $BEST_E in current) BEST_E=$DEF_E ;; e=*) BEST_E=`echo "$BEST_E" | sed 's/^e=//'` ;; esac
+
+echo
+echo "stage 3: the run length at which a second-stage prime pays for itself,"
+echo "         with the threshold at $BEST_R and the offset at $BEST_E"
+: > "$TMP/c3"
+printf 'current\t%s\n' "$BASE" >> "$TMP/c3"
+for v in $U_VALUES; do
+  printf 'u=%s\t-r %s -R %s -U %s\n' "$v" "$BEST_R" "$BEST_E" "$v" >> "$TMP/c3"
+done
+measure "$TMP/c3" "$TMP/r3"
+report "$TMP/r3"
+
+BEST_LBL=`best_of "$TMP/r3" current`
+BEST_U=`echo "$BEST_LBL" | sed 's/^u=//'`
+BEST=`awk -v k="$BEST_LBL" '$1==k{print $2}' "$TMP/r3"`
 # how far the current settings measured from themselves, in either stage: both
 # are the same comparison of a binary with itself, so either one being far from
 # 1 means the machine could not be measured on
 SELF=`awk '$1=="current"{ d = $2 - 1; if (d < 0) d = -d; if (d > w) w = d }
-           END { printf "%.5f", 1 + w }' "$TMP/r1" "$TMP/r2"`
+           END { printf "%.5f", 1 + w }' "$TMP/r1" "$TMP/r2" "$TMP/r3"`
 
 echo
 verdict=`awk -v b="$BEST" -v s="$SELF" -v m="$MARGIN" -v z="$NOISE" \
@@ -221,7 +254,7 @@ case $verdict in
     echo "written.  Try again when it is idle, or with 'ROUNDS=6 make tune'."
     ;;
   keep)
-    echo "Nothing beat the current settings ($DEF_R, $DEF_E) by the required"
+    echo "Nothing beat the current settings ($DEF_R, $DEF_E, $DEF_U) by the required"
     echo "`awk -v m=$MARGIN 'BEGIN{printf "%.0f", 100*(1-m)}'`%, so they are kept and nothing is written."
     ;;
   accept)
@@ -231,13 +264,13 @@ case $verdict in
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
 # Measured on $TUNE_TESTS${TUNE_HEIGHT:+ at height $TUNE_HEIGHT}, starting
-# from $DEF_R / $DEF_E.  That is a note to the reader, not something the
+# from $DEF_R / $DEF_E / $DEF_U.  That is a note to the reader, not something the
 # Makefile looks at: "make tune" and "make tunehigh" write the same file and
 # each takes the other's result as its starting point.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
-TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E
+TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E -DRATPOINTS_SP2_U0=$BEST_U
 EOF
-    echo "Wrote tuning.mk: threshold $BEST_R, offset $BEST_E --"
+    echo "Wrote tuning.mk: threshold $BEST_R, offset $BEST_E, run length $BEST_U --"
     echo "`awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current $DEF_R / $DEF_E."
     echo "Run 'make all' to rebuild with it; delete tuning.mk to discard it."
     ;;

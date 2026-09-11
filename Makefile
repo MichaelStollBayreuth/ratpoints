@@ -176,6 +176,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
             gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
+            testdata-degrees.h testbase-degrees \
             bench_init.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -184,12 +185,12 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
             rptest.out rptest-many.out rptest-high.out \
-            rptest-high-many.out config.stamp build.stamp \
+            rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
-              ratpoints-debug \
+              rptest-degrees ratpoints-debug \
               bench_init ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
@@ -198,7 +199,7 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1many test2 timing
+test: test1 test1many testdegrees test2 timing
 
 # Measure good values for the two machine-dependent constants and write them
 # to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
@@ -217,18 +218,24 @@ tune: rptest rptest-many
 # One timing here is two minutes against three seconds there, so this does not
 # sweep the whole ladder of candidates.  It starts from the settings in force
 # -- which is to say from what "make tune" found, since it reads the same
-# tuning.mk -- and asks only whether a factor of two in the threshold either
-# way, or two more or fewer primes in the second stage, is better.  That is
-# seven settings a round rather than ten, and it rests on the two regimes not
-# wanting wildly different values.  If it moves a value, run it again from
-# there.  Expect an hour and a half at the default three rounds;
+# tuning.mk -- and asks only whether a factor of two in the threshold or in
+# the run length either way, or two more or fewer primes in the second stage,
+# is better.  That is ten settings a round rather than fifteen, and it rests
+# on the two regimes not wanting wildly different values.  If it moves a
+# value, run it again from there.
+#
+# Running this after "make tune" is what pins RATPOINTS_SP2_U0, the third
+# constant: the offset it scales is the number of extra primes an
+# arbitrarily long run wants, and only a pair of tunings at very different
+# run lengths can separate that from the length at which the scaling bites.
+# Expect a couple of hours at the default three rounds;
 # "ROUNDS=1 make tunehigh" is the short version.
 .PHONY: tunehigh
 tunehigh: rptest rptest-high-many
 	@TUNE_CONFIG='${TUNE_CONFIG}' \
 	 TUNE_TESTS='./rptest:testbase ./rptest-high-many:testbase-high-many' \
 	 TUNE_HEIGHT='${TESTHEIGHT}' \
-	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' ./tune.sh
+	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' ./tune.sh
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
@@ -274,6 +281,21 @@ testhighmany: rptest-high-many testbase-high-many
 # Run ratpoints on the curve with the record number of known
 # rational points, with a fairly large height bound,
 # time it and compare with the expected output
+# Curves of degree 3, 4, 7 and 8.  Everything else in the package is degree
+# 6, and every constant in ratpoints.h was tuned there, so this is the suite
+# that says whether anything is peculiar to genus 2.  It found one thing
+# already: raising PRIME_SIZE from 7 to 8 had moved the division-free path in
+# sieving_info from degree 8 down to degree 7.
+#
+# testbase-degrees was produced by this program, so the suite is a regression
+# test and not an independent one.  What makes it trustworthy is that the
+# points were checked once against a brute-force search over every coprime
+# pair (a, b) within a small height bound, written independently of the
+# sieve; see scripts/verify-degrees.py in the branch notes.
+testdegrees: rptest-degrees testbase-degrees
+	time ./rptest-degrees > rptest-degrees.out
+	cmp -s testbase-degrees rptest-degrees.out || echo ${FAILED}
+
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out
 	cmp -s testbase2 test2.out || echo ${FAILED}
@@ -372,6 +394,12 @@ rptest-high-many: libratpoints.a rptest.c ratpoints.h testdata-high-many.h \
                   build.stamp
 	${CC} rptest.c -o rptest-high-many \
 	      -DRATPOINTS_TESTDATA='"testdata-high-many.h"' \
+	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+rptest-degrees: libratpoints.a rptest.c ratpoints.h testdata-degrees.h \
+                build.stamp
+	${CC} rptest.c -o rptest-degrees \
+	      -DRATPOINTS_TESTDATA='"testdata-degrees.h"' \
 	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 # What is compiled depends on flags, which make cannot see by itself: change

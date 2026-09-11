@@ -42,6 +42,26 @@
 #endif
 #include RATPOINTS_TESTDATA
 
+/* A test data file either gives every curve the same degree, in which case a
+ * row of testdata[] is just the coefficients, or carries the degree in the
+ * first column of each row, which is what a file holding curves of several
+ * degrees must do -- padding with zeros will not serve, since a polynomial
+ * of degree d is not squarefree as a binary form of degree d+2.  The file
+ * says which by defining TEST_DEGREE or TEST_MAX_DEGREE. */
+#ifndef TEST_DEGREE
+# ifndef TEST_MAX_DEGREE
+#  define TEST_DEGREE 6      /* what every file in the package used to be */
+# endif
+#endif
+#ifdef TEST_DEGREE
+# define TEST_MAX_DEGREE TEST_DEGREE
+# define TEST_DEGREE_OF(n) ((long)(TEST_DEGREE))
+# define TEST_COEFF(n, k)  (testdata[n][k])
+#else
+# define TEST_DEGREE_OF(n) (testdata[n][0])
+# define TEST_COEFF(n, k)  (testdata[n][(k)+1])
+#endif
+
 mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
 
 ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
@@ -74,7 +94,7 @@ int main(int argc, char *argv[])
   ratpoints_args args;
 
   /* parameters; see documentation */
-  long degree        = 6;
+  long degree        = TEST_MAX_DEGREE;
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
   long sieve_primes2 = -1;
@@ -298,8 +318,9 @@ int main(int argc, char *argv[])
     { for(n = 0; n < NUM_TEST; n++)
       { /* set up polynomial */
         long k;
+        long deg = TEST_DEGREE_OF(n);
 
-        for(k = 0; k < 7; k++) { mpz_set_si(c[k], testdata[n][k]); }
+        for(k = 0; k <= deg; k++) { mpz_set_si(c[k], TEST_COEFF(n, k)); }
 
         /* Fill args structure. Recall:
           typedef struct {mpz_t *cof; long degree; long height;
@@ -311,7 +332,7 @@ int main(int argc, char *argv[])
             ratpoints_args; */
 
         args.cof           = &c[0];
-        args.degree        = degree;
+        args.degree        = deg;
         args.height        = height;
         args.domain        = &domain[0];
         args.num_inter     = 0;
