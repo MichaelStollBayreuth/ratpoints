@@ -339,3 +339,18 @@ What is *not* done is the reverse: nothing asks whether a prime the third
 stage is using would be better in the second.  That would need the third
 stage's own marginal rule and the second's to be compared directly, which is
 what a single cost model over all three stages would give.
+
+## Refitting with the ranking on
+
+The cost of a sieve-table row is the one constant the model could plausibly
+have got badly wrong, so it was swept rather than trusted.  On `make test1`,
+against ranking by density alone:
+
+| `-C` | 0 | 10 | 20 | 38 | 70 | 140 |
+|---|---|---|---|---|---|---|
+| ratio | 1.0000 | 0.9603 | 0.9554 | **0.9515** | 0.9540 | 0.9619 |
+
+The compiled-in 38 is the best of them, and the basin is flat from 20 to 70,
+which is where the direct measurement puts it (18 to 30).  So the ranking is
+worth 4.85% here with the measured costs in place, and the constant does not
+need to be fitted -- measuring it lands inside the flat part.
