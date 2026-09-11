@@ -82,7 +82,7 @@
 # define RATPOINTS_SURVIVORS_PER_WORD 0.0075 /* when to stop the first phase */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
-# define RATPOINTS_SP2_EXTRA 9              /* sp2 = sp1 + this, capped */
+# define RATPOINTS_SP2_EXTRA 11             /* sp2 = sp1 + this, capped */
 #endif
 
 /* ...but only for a run long enough that the fixed costs of a prime no
@@ -99,10 +99,11 @@
  * prime up costs as much as sieving with it; it is a property of the
  * machine, like the other two constants here.
  *
- * This is what makes one tuning serve every height bound.  The measured
- * best offset is 3 to 5 at a height bound of 16383 and 9 at 200000, and a
- * single fixed value costs 8% of the pair at the larger bound (17.6% of its
- * point-rich half), which is why it is worth a constant of its own.  The
+ * This is what makes one tuning serve every height bound.  The measured best
+ * offset is 3 on random curves at a height bound of 16383, 5 on point-rich
+ * ones there, 9 on random curves at 200000 and 12 on point-rich ones, and
+ * the pair above lands on 3, 8, 11 and 11.  A single fixed value costs 12%
+ * of the point-rich half at the larger bound.  The
  * first phase needs no such correction: a phase-1 prime costs one AND per
  * word unconditionally, so the fixed part is a far smaller share of it, and
  * the best threshold indeed hardly moves with the height bound.
@@ -110,7 +111,7 @@
  * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
  * correction off and restores a flat offset. */
 #ifndef RATPOINTS_SP2_U0
-# define RATPOINTS_SP2_U0 1.2e6
+# define RATPOINTS_SP2_U0 1.6e6
 #endif
 
 /* The third sieving stage tests one surviving numerator at a time against
