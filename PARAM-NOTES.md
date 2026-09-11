@@ -354,3 +354,36 @@ The compiled-in 38 is the best of them, and the basin is flat from 20 to 70,
 which is where the direct measurement puts it (18 to 30).  So the ranking is
 worth 4.85% here with the measured costs in place, and the constant does not
 need to be fitted -- measuring it lands inside the flat part.
+
+On the point-rich curves at the same height bound the same sweep is flat ---
+1.0000, 1.0027, 1.0000, 1.0070, 1.0011, 0.9876 for the same ladder --- which
+is the regime where the curve is starved of primes and there is little to
+choose among.  So the ranking is worth five per cent where there is a choice
+and nothing where there is not, and it never costs anything.
+
+## How far the correction should go, and the answer is: not as far as it can
+
+With the costs measured and the ranking on, on `make testhighmany`:
+
+| | ratio |
+|---|---|
+| `-A 0`, no correction | 1.0000 |
+| `-A 1`, the third stage only | 1.0007 |
+| `-A 2`, the second phase as well | 1.0028 |
+| `-A 2` with a flat offset (`-U 0 -R 5`) | 1.0500 |
+
+The last row is the informative one.  **The fitted offset of item 12 beats
+the measured marginal rule of item 14**: switching the offset off and letting
+the correction do the work instead costs five per cent.  And with the offset
+on, the correction adds nothing --- the two land in the same place, and the
+fit gets there before the first denominator rather than after the first
+million numerator words.
+
+That is a real negative result and worth stating plainly.  The measurement is
+not *wrong*: the survivor model it fits is right, the floor is real, and the
+counts are cheap.  It is that a two-constant fit, tuned on the same machine,
+is already as good as a marginal rule with four measured constants, and it
+has no warm-up.  What the counting is still good for is the third stage,
+where it replaces an estimate that nothing else supplies and retires a fitted
+constant (`RATPOINTS_SP3_COPRIME`) -- at no measurable cost, but at no
+measurable gain either on any suite in the package.
