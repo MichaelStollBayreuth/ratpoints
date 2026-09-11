@@ -88,10 +88,18 @@ extern unsigned long long _rp_setup_cycles, _rp_setup_dens;
 # define RP_BP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BP_TOC(t, n) do { _rp_bp_cycles += __rdtsc() - (t); _rp_bp_dens++; \
                               _rp_bp_steps += (n); } while(0)
+/* and the whole of sift(), so that what is in none of the regions above can
+ * be seen */
+extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
+# define RP_SIFT_TIC(t) unsigned long long t = __rdtsc()
+# define RP_SIFT_TOC(t) do { _rp_sift_cycles += __rdtsc() - (t); \
+                             _rp_sift_calls++; } while(0)
 #else
 # define RP_BC_TIC(t)
 # define RP_BC_TOC(t)
 # define RP_BP_TIC(t)
+# define RP_SIFT_TIC(t)
+# define RP_SIFT_TOC(t)
 # define RP_BP_TOC(t, n)
 # define RP_INIT_TIC(t)
 # define RP_INIT_TOC(t, n)
@@ -1940,6 +1948,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
    * it is not an array here */
   check_spec *csp = (check_spec *)args->stage3_list;
   int do_setup = 1;
+  RP_SIFT_TIC(t_sift);
 
   args->n_sifts++;
 
@@ -1964,7 +1973,10 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         if(b*inter.low <= -height)
         { low = -height; }
         else
-        { if(b*inter.low > height) { return(total); } /* remaining numerator intervals are empty */
+        { if(b*inter.low > height)
+          { RP_SIFT_TOC(t_sift);
+            return(total); /* remaining numerator intervals are empty */
+          }
           low = ceil(b*inter.low);
         }
         if(b*inter.up >= height)
@@ -2087,48 +2099,36 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         for( ; w_low0 < w_high; w_low0 = w_high0, w_high0 += range)
         { if(w_high0 > w_high)
           { w_high0 = w_high; range = w_high0 - w_low0; }
-          /* initialize the bits */
-          { long i;
+          /* The bit arrays are not written here.  The first phase's
+           * first prime ANDs the 2-adic pattern in as it sieves, which
+           * saves a store and a load on every one of them; what is left
+           * for sift0 to do afterwards is the two boundary words and the
+           * padding, and it is told about them like this. */
+          { long mask_low = 0, mask_high = 0, n_pad = 0;
 
-            for(i = range; i; i--) { survivors[i-1] = bits16; }
-          }
-          /* boundary words */
-          if(w_low0 == w_low)
-          /* set lower bits of the first bit array to zero */
-          { MASKL(survivors, low - RBA_LENGTH * w_low); }
-
-#ifdef DEBUG
-          printf("\nsurvivors[0] = ");
-          PRINT_RBA(survivors[0]);
-          printf("\n");
-          fflush(NULL);
-#endif
-
-          if(w_high0 == w_high)
-          /* set upper bits of the last bit array to zero */
-          { MASKU(&survivors[range-1], RBA_LENGTH * w_high - high); }
-
-#ifdef DEBUG
-          printf("survivors[%ld] = ", range-1);
-          PRINT_RBA(survivors[range-1]);
-          printf("\n");
-          fflush(NULL);
-#endif
+            if(w_low0 == w_low)
+            /* lower bits of the first bit array are to be set to zero */
+            { mask_low = low - RBA_LENGTH * w_low; }
+            if(w_high0 == w_high)
+            /* upper bits of the last bit array are to be set to zero */
+            { mask_high = RBA_LENGTH * w_high - high; }
 
 #if (RATPOINTS_CHUNK > 1)
-          /* if necessary, increase range to be a multiple of RATPOINTS_CHUNK
-           * and fill extra words with zeros. */
-          while(range%RATPOINTS_CHUNK != 0)
-          { survivors[range] = zero; range++, w_high0++; }
+            /* if necessary, increase the range to a multiple of
+             * RATPOINTS_CHUNK; the extra bit arrays are zeroed there too */
+            while((range + n_pad)%RATPOINTS_CHUNK != 0) { n_pad++; }
+            range += n_pad; w_high0 += n_pad;
 #endif
 
-          total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
-                                    survivors, &ssp[0], &csp[0],
-                                    quit, process, info);
-          if(*quit) return(total);
-      } }
+            total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
+                                      survivors, bits16, mask_low, mask_high,
+                                      n_pad, &ssp[0], &csp[0],
+                                      quit, process, info);
+            if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
+      } } }
   } }
 
+  RP_SIFT_TOC(t_sift);
   return(total);
 }
 

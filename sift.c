@@ -74,6 +74,15 @@ unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
 /* filling in sieve_spec and check_spec, which is done once per denominator
  * for each prime of the first two phases and each prime of the third */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
+/* clearing the two boundary words and the bit arrays that only exist to
+ * make the count a multiple of RATPOINTS_CHUNK.  Until 2.3 this was a pass
+ * over the whole array, writing the 2-adic pattern into every bit array
+ * before the first phase ANDed anything into it; the first phase's first
+ * prime does that now, and this is what is left. */
+unsigned long long _rp_fill_cycles = 0, _rp_fill_arrays = 0;
+/* and the whole of sift(), so that what is left of it once the set-up and
+ * the two phases are taken out can be seen */
+unsigned long long _rp_sift_cycles = 0, _rp_sift_calls = 0;
 unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
 long _rp_sp1 = -1, _rp_sp2 = -1, _rp_sp3 = -1;
 /* the whole run, so that core cycles from "perf stat" can be apportioned
@@ -129,6 +138,7 @@ static void _rp_phase_report(void)
           " units_1=%llu and2=%llu ext2=%llu checks=%llu bc=%llu"
           " dens=%llu bpsteps=%llu tabs=%llu rows=%llu cyctab=%llu"
           " and1=%llu cycsetup=%llu setupdens=%llu"
+          " cycfill=%llu fillarrays=%llu cycsift=%llu siftcalls=%llu"
           " cyc1=%llu cyc2=%llu cyc3=%llu cycbc=%llu cycbp=%llu cyctot=%llu\n",
           (int)(8*(int)sizeof(ratpoints_bit_array)), (int)RATPOINTS_CHUNK,
 #ifdef USE_LONG_IN_PHASE_2
@@ -151,6 +161,7 @@ static void _rp_phase_report(void)
           0ULL,
 #endif
           _rp_setup_cycles, _rp_setup_dens,
+          _rp_fill_cycles, _rp_fill_arrays, _rp_sift_cycles, _rp_sift_calls,
           _rp_phase1_cycles, c2, _rp_check_cycles, _rp_bc_cycles,
           _rp_bp_cycles, __rdtsc() - _rp_t_start);
 }
@@ -428,7 +439,8 @@ static inline int accepted(long a, long b, const check_spec *csp, long n,
  * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, sieve_spec *sieves,
+           ratpoints_bit_array *survivors, ratpoints_bit_array bits16,
+           long mask_low, long mask_high, long n_pad, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info)
 {
@@ -459,11 +471,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   _rp_sp1 = sp1; _rp_sp2 = sp2; _rp_sp3 = args->sp3;
 #endif
 #ifdef RP_PHASE_COUNTS
-  { long n_;
-
-    for(n_ = 0; n_ < w_high - w_low; n_++)
-    { _rp_bits_in += _rp_popcnt(&survivors[n_]); }
-  }
+  /* Every bit array starts from the same 2-adic pattern, so this is a
+   * multiplication rather than a pass over the array.  It used to be a
+   * population count on each of them, which was 18% of "make testhigh" and
+   * sat outside every timed region -- so the instrumentation was itself the
+   * larger part of the "quarter of the run in no phase" that prompted this
+   * change.  The two boundary words are counted unmasked, which is a handful
+   * of bits per call out of RATPOINTS_ARRAY_SIZE of them. */
+  _rp_bits_in += (unsigned long long)(w_high - w_low - n_pad)
+                   *_rp_popcnt(&bits16);
   _rp_and1 += (unsigned long long)(w_high - w_low)*sp1;
 #endif
   RP_TIC(_rp_t1);
@@ -510,6 +526,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     }
   }
 
+  if(sp1 == 0)
+  { /* No first phase at all, which -n 0 asks for.  Then nothing has written
+     * the bit arrays, since the loop below folds that into the first prime
+     * and there is no first prime; write the pattern here instead. */
+    long i;
+
+    for(i = w_high - w_low; i; i--) { survivors[i-1] = bits16; }
+  }
+  else
   { ratpoints_bit_array *surv = survivors;
     long w_low_new;
 
@@ -517,57 +542,68 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * then repeat with the next RATPOINTS_CHUNK bit-arrays. */
     for(w_low_new = w_low; w_low_new < w_high; surv += RATPOINTS_CHUNK, w_low_new += RATPOINTS_CHUNK)
     { long n;
-      /* read data from memory into registers */
+      /* The first prime writes the registers instead of reading them back
+       * from memory, ANDing in the 2-adic pattern every bit array starts
+       * from as it goes.  That is what makes the pass that used to fill the
+       * array before any of this unnecessary: one store and one load per bit
+       * array, on 1.7e10 of them in "make testhigh".  The boundary words and
+       * the padding are dealt with after the phase instead, which comes to
+       * the same thing because AND is commutative. */
+      ratpoints_bit_array *siv0 = sieves[0].start;
 #if (RATPOINTS_CHUNK >= 1)
-      ratpoints_bit_array reg0 = surv[0];
+      ratpoints_bit_array reg0 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 2)
-      ratpoints_bit_array reg1 = surv[1];
+      ratpoints_bit_array reg1 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 3)
-      ratpoints_bit_array reg2 = surv[2];
+      ratpoints_bit_array reg2 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 4)
-      ratpoints_bit_array reg3 = surv[3];
+      ratpoints_bit_array reg3 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 5)
-      ratpoints_bit_array reg4 = surv[4];
+      ratpoints_bit_array reg4 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 6)
-      ratpoints_bit_array reg5 = surv[5];
+      ratpoints_bit_array reg5 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 7)
-      ratpoints_bit_array reg6 = surv[6];
+      ratpoints_bit_array reg6 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 8)
-      ratpoints_bit_array reg7 = surv[7];
+      ratpoints_bit_array reg7 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 9)
-      ratpoints_bit_array reg8 = surv[8];
+      ratpoints_bit_array reg8 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 10)
-      ratpoints_bit_array reg9 = surv[9];
+      ratpoints_bit_array reg9 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 11)
-      ratpoints_bit_array reg10 = surv[10];
+      ratpoints_bit_array reg10 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 12)
-      ratpoints_bit_array reg11 = surv[11];
+      ratpoints_bit_array reg11 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 13)
-      ratpoints_bit_array reg12 = surv[12];
+      ratpoints_bit_array reg12 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 14)
-      ratpoints_bit_array reg13 = surv[13];
+      ratpoints_bit_array reg13 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 15)
-      ratpoints_bit_array reg14 = surv[14];
+      ratpoints_bit_array reg14 = bits16 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 16)
-      ratpoints_bit_array reg15 = surv[15];
+      ratpoints_bit_array reg15 = bits16 & *siv0++;
 #endif
 
-      for(n = 0; n < sp1; n++)
+      while(siv0 >= sieves[0].end) { siv0 -= sieves[0].p; }
+      sieves[0].start = siv0;
+
+
+      for(n = 1; n < sp1; n++)
       { /* retrieve the pointer to the beginning of the relevant bits */
         ratpoints_bit_array *siv1 = sieves[n].start;
         /* This points to >= RATPOINTS_CHUNK consecutive bit-arrays
@@ -746,6 +782,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
                   && w_low < RP_MULMOD_LIMIT - RATPOINTS_MAX_PRIME);
 
+    /* Write the 2-adic pattern into the bit arrays.  The chunked arm above
+     * folds this into its first prime and so does not need the pass; this
+     * one would have to duplicate three loops to do the same, and it is not
+     * the arm anything is built with, so it pays for the pass instead. */
+    { long i;
+
+      for(i = range; i; i--) { survivors[i-1] = bits16; }
+    }
+
     for(n = 0; n < sp1; n++)
     { ratpoints_bit_array *sieve_n = sieves[n].ptr;
         /* points to the bit-array with sieve information */
@@ -820,6 +865,28 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif /* RATPOINTS_CHUNK */
 
   RP_TOC(_rp_t1, _rp_phase1_cycles);
+
+  /* The two ends of the numerator interval, and the bit arrays that only
+   * exist to make the count a multiple of RATPOINTS_CHUNK.  This used to be
+   * done before the first phase, on the same pass that wrote the 2-adic
+   * pattern into every bit array; since AND is commutative, clearing the
+   * bits afterwards clears the same bits, and doing it here is two bit
+   * arrays per call rather than all of them. */
+  { RP_TIC(t_fill);
+
+    if(mask_low) { MASKL(survivors, mask_low); }
+    if(mask_high) { MASKU(&survivors[w_high - w_low - n_pad - 1], mask_high); }
+    if(n_pad)
+    { long i;
+
+      for(i = w_high - w_low - n_pad; i < w_high - w_low; i++)
+      { survivors[i] = zero; }
+    }
+    RP_TOC(t_fill, _rp_fill_cycles);
+#ifdef RP_PHASE_TIMING
+    _rp_fill_arrays += (unsigned long long)(w_high - w_low);
+#endif
+  }
 
 #ifdef DEBUG
   { long n, c = 0;

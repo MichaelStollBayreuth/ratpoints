@@ -42,6 +42,13 @@ the sieve is actually finding and corrects the third stage from the count — wh
 thing no prediction can, namely that the non-reduced forms `(ka, kb)` of a rational point pass
 every prime test, so a floor of survivors outlives any amount of sieving.
 
+The first sieving phase no longer reads the bit arrays it is about to overwrite. Every bit array
+starts from the same pattern of admissible numerators modulo 16, and that pattern used to be
+written into all of them on a pass of its own; the first prime now ANDs it in as it sieves, so the
+pass is gone and with it one store and one load per bit array. That is worth 5.6% of
+`make testhigh`, 5.3% of the degree suite at a height bound of 200000, 3.4% of
+`make testhighmany` and 2.6% of `make test1`.
+
 How many primes the third stage uses is settled by weighing what a prime removes against what it
 costs, and what it removes is exact tests — so it depends on what one exact test costs, which is a
 property of the curve and not only of the machine. The test evaluates a binary form of the given
