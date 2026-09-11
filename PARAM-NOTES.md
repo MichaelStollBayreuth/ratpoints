@@ -387,3 +387,23 @@ has no warm-up.  What the counting is still good for is the third stage,
 where it replaces an estimate that nothing else supplies and retires a fitted
 constant (`RATPOINTS_SP3_COPRIME`) -- at no measurable cost, but at no
 measurable gain either on any suite in the package.
+
+## Where the offset wants to be, once the ranking has changed the primes
+
+The ranking gives the second phase cheaper primes, so more of them are worth
+having, and the offset fitted against the old order is no longer the right
+one.  On `make testhighmany`, ranking on, correction off:
+
+| `-R` | 5 | 7 | 9 | 11 | 14 |
+|---|---|---|---|---|---|
+| ratio | 1.0000 | 0.9370 | 0.9001 | **0.8816** | **0.8813** |
+
+The optimum has moved from 9 to somewhere between 11 and 14, and the two are
+indistinguishable, so the curve is flat there.  That is another 2% on top of
+what the scaled offset already recovers, and it is the refit the interaction
+in the results table was asking for.
+
+The `-C` sweep at the same height bound is flat (1.0000, 1.0007, 1.0007,
+1.0013 for 0, 20, 38, 140), which is again what the model says: `U` is a
+hundred times larger there, so the table term is a hundredth of what it is at
+16383 and the ranking has nothing to bite on.
