@@ -276,8 +276,13 @@ bound and three at the large one, median of the ratio.
 |---|---|---|---|---|
 | test1 (random, 16383) | -0.77% | **-5.00%** | +0.17% | -4.96% |
 | test1many (rich, 16383) | -0.84% | -1.16% | -0.69% | -0.47% |
+| testhighmany (rich, 200000) | -8.79% | +0.49% | -4.60% | **-9.06%** |
+| testhigh (random, 200000) | +0.61% | +0.08% | -0.04% | +0.24% |
 
-Two things stand out.
+(The `-A` column is the correction as it then stood, taking over both `sp2`
+and `sp3`; it is now `-A 2`, and the default takes over `sp3` only.)
+
+Three things stand out.
 
 **The cost-aware ranking is worth 5% of `make test1`**, which is far more
 than the offset it was expected to play second fiddle to.  That is where the
@@ -285,13 +290,20 @@ model says it should be: a short run has a small `U`, so the `p*min(D,p)/U`
 term is large and the difference between a prime of 31 and one of 251 is
 most of what either costs.
 
-**On the point-rich curves the three together are worse than any of them
-alone.**  They are not independent: the ranking changes *which* primes the
-second phase gets, and it gets cheaper ones, so the number worth having is
-not the number that was fitted against the old order.  The constants have to
-be refitted with the ranking on -- which is what the sweeps in the next
-section are for -- and the two rules for `sp2` (the fitted offset and the
-marginal rule) have to be reconciled rather than both left switched on.
+**The two big wins are in different places and do not get in each other's
+way.**  The ranking is worth 5% where the run is short, the offset 9% where
+it is long and the curve is point-rich, and together they are 4.96% and
+9.06% -- each keeps what it had.  The random curves at the large height bound
+are flat within the noise of the method, which is about two points there.
+
+**On the point-rich curves at the small height bound the three together are
+worse than any of them alone** (-0.47% against -1.16%).  They are not
+independent there: the ranking changes *which* primes the second phase gets,
+and it gets cheaper ones, so the number worth having is not the number that
+was fitted against the old order.  That is what the refit below is for.
+Separately, the fitted offset and the marginal rule are two answers to the
+same question about `sp2`, and having both switched on meant the later one
+silently overrode the earlier; the marginal rule is now opt-in (`-A 2`).
 
 ## A note on what item 8 asked for and what it got
 
