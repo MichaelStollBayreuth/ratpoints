@@ -379,14 +379,27 @@ on, the correction adds nothing --- the two land in the same place, and the
 fit gets there before the first denominator rather than after the first
 million numerator words.
 
-That is a real negative result and worth stating plainly.  The measurement is
-not *wrong*: the survivor model it fits is right, the floor is real, and the
-counts are cheap.  It is that a two-constant fit, tuned on the same machine,
-is already as good as a marginal rule with four measured constants, and it
-has no warm-up.  What the counting is still good for is the third stage,
-where it replaces an estimate that nothing else supplies and retires a fitted
-constant (`RATPOINTS_SP3_COPRIME`) -- at no measurable cost, but at no
-measurable gain either on any suite in the package.
+That is a real negative result about `sp2`, and worth stating plainly.  The
+measurement is not *wrong*: the survivor model it fits is right, the floor is
+real, and the counts are cheap.  It is that a two-constant fit, tuned on the
+same machine, is already as good as a marginal rule with four measured
+constants, and it has no warm-up.
+
+**The third stage is a different story.**  With the costs measured and the
+constants refitted, the four suites give
+
+| | test1 | test1many | testhigh | testhighmany |
+|---|---|---|---|---|
+| `-A 1` (third stage) | **0.9802** | 1.0037 | 0.9987 | 1.0007 |
+| `-A 2` (and `sp2`) | 0.9852 | 1.0095 | 0.9965 | 1.0028 |
+
+so correcting the third stage from the count is worth **2% of `make test1`**,
+costs 0.4% on the point-rich half at the same height, and is neutral at the
+large height bound.  What it is doing on the random curves is switching the
+stage *on*: the estimate of how many survivors a denominator brings to it
+under-predicts, so the rule declined a stage that was worth having.  That is
+item 14's claim in the smallest possible form -- the count sees something the
+estimate cannot -- and it is why `-A 1` is the default and `-A 2` is not.
 
 ## Where the offset wants to be, once the ranking has changed the primes
 
