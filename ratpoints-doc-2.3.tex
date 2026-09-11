@@ -364,10 +364,17 @@ The archive contains the following files.
   \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
         and \texttt{rptest} executables, respectively
   \item \texttt{testdata.h}, \texttt{testdata-many.h},
-        \texttt{testdata-high-many.h} --- the curves used by the test runs
+        \texttt{testdata-high-many.h}, \texttt{testdata-degrees.h} ---
+        the curves used by the test runs
   \item \texttt{testbase}, \texttt{testbase-many},
-        \texttt{testbase-high-many}, \texttt{testbase2} --- the output they
-        are expected to produce
+        \texttt{testbase-high-many}, \texttt{testbase-degrees},
+        \texttt{testbase2} --- the output they are expected to produce
+  \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
+        machine-dependent constants (Section~\ref{sec:tuning})
+  \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
+        two parts that are timed on their own: building the sieving tables,
+        and the exact test.  Neither is part of the library; the second is
+        how to remeasure the constants of Section~\ref{sec:sp3choice}
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
@@ -519,6 +526,23 @@ line means they can be retuned without recompiling; the compiled-in defaults
 are \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
 and \texttt{RATPOINTS\_SP2\_EXTRA} in \texttt{ratpoints.h}.
 
+Three further options control the same choice, and all three exist so that
+what they switch on can be switched off again and measured: \\
+\strut\quad\verb+-U+ $u$ \quad\verb+-C+ $c$ \quad\verb+-A+ $a$ \\
+The first sets the length of run, in 64-bit words of numerators, at which a
+second-stage prime just pays for setting itself up; \verb+-R+ is then the
+number of extra primes for a run much longer than that, and a shorter run
+gets proportionately fewer (Section~\ref{sec:spchoice}). \verb+-U 0+ makes
+\verb+-R+ a flat offset again, as it was before version~2.3. The second sets
+what building one row of a sieving table costs, in units of what one
+first-stage prime costs per word, which is what lets the program prefer a
+smaller prime to a larger one of the same quality; \verb+-C 0+ ranks the
+primes by quality alone, as before. The third says how much of the choice the program should revise while it
+runs (Section~\ref{sec:adapt}): $a = 0$ nothing, $a = 1$, the default, the
+number of primes in the third stage, and $a = 2$ the number in the second
+stage as well. It revises nothing it did not choose in the first place, so
+\verb+-n+ or \verb+-N+ has the same effect as \verb+-A 0+.
+
 A third sieving stage runs after those two, on the numerators that survive
 them. It tests each of them against further primes one at a time, computing
 the position in the table of admissible residues rather than reading a bit
@@ -541,6 +565,20 @@ the default height bound the stage does nothing at all, which is as it should
 be. Section~\ref{sec:sp3choice} has the rule; the two machine constants in it
 are \texttt{RATPOINTS\_SP3\_PER\_SURVIVOR} and
 \texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}.
+
+Both of those constants are fractions of what one exact test costs, and that
+is not the same number for every curve: the test evaluates a binary form of
+the given degree at one pair of integers and takes an integer square root, so
+it costs more at a high degree, and more again when the coefficients are
+large enough to push the arithmetic into another limb. The program estimates
+it from the degree, the largest coefficient and the height bound, all of
+which it knows before it looks at a single prime, and \\
+\strut\quad\verb+-W+ $w$ \\
+overrides the estimate with $w$ rdtsc cycles. \verb+-W 306+ is what versions
+before~2.3 did in effect, namely assume that every curve costs what a
+degree-6 curve with small coefficients costs; it is the way to measure what
+the estimate is worth. Section~\ref{sec:sp3choice} has the formula, and
+\verb+-v+ prints what it gives for the curve in hand.
 
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
@@ -624,8 +662,10 @@ structure, which is defined as follows.
 \begin{verbatim}
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
-                 long b_low; long b_high; long sp1; long sp2;
-                 double survivors_per_word; long sp2_extra;
+                 long b_low; long b_high; long sp1; long sp2; long sp3;
+                 double survivors_per_word; long sp2_extra; double sp2_u0;
+                 double cost_table; long adapt;
+                 long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags; ...}
@@ -676,7 +716,14 @@ command line program does when \verb+-n+ and \verb+-N+ are absent. In
 \verb+-n+ and \verb+-N+ options. The fields
 \texttt{survivors\_per\_word} and \texttt{sp2\_extra} hold the two
 constants that govern that choice (options \verb+-r+ and \verb+-R+); if
-negative, the values compiled into \texttt{ratpoints.h} are used.
+negative, the values compiled into \texttt{ratpoints.h} are used. So do
+\texttt{sp2\_u0} and \texttt{cost\_table} (options \verb+-U+ and \verb+-C+),
+which say how long a run has to be for a second-stage prime to pay for
+setting itself up and what one row of a sieving table costs; zero in either
+switches off the corresponding refinement. \texttt{adapt} set to zero stops
+the program revising these numbers as it runs (option \verb+-A+,
+Section~\ref{sec:adapt}); it revises them only when it chose them, so a
+non-negative \texttt{sp1} or \texttt{sp2} has the same effect.
 
 \texttt{sp3}
 reports the number of primes used in all three stages together, so that
@@ -685,7 +732,11 @@ field: what goes in is \texttt{sp3\_extra}, which fixes that difference when
 it is non-negative (option \verb+-P+) and otherwise leaves the number to be
 chosen from the curve, and \texttt{sp3\_per\_denom} (option \verb+-Q+),
 which is the machine constant that choice turns on and takes the value
-compiled into \texttt{ratpoints.h} when negative.
+compiled into \texttt{ratpoints.h} when negative. \texttt{check\_cost}
+(option \verb+-W+) says what one exact test costs, in rdtsc cycles, and both
+of those constants are fractions of it; when negative, which is the usual
+case, the program estimates it from the degree, the coefficients and the
+height bound as described in Section~\ref{sec:sp3choice}.
 Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
@@ -894,6 +945,51 @@ of the width. Then \texttt{sp2} is set to
 \texttt{sp1} plus \texttt{RATPOINTS\_SP2\_EXTRA}, capped by the number of
 primes that carry any information at all.
 
+That offset is not the same for every run, because part of what a prime costs
+is paid once and then spread over the whole run. Its sieving table is built
+at most $p$ times, however many numerators there are, and its entry in the
+list of denominators reduced modulo the sieving primes is stepped once per
+denominator; per word of numerators both fall like $1/U$, where $U$ is the
+number of numerator words the run will sweep. The program computes $U$, and
+the number $D$ of denominators, before it looks at a single prime --- the
+numerators of one denominator are a piecewise linear function of it, so a
+sample over the range of denominators is accurate to a fraction of a per cent
+--- and takes
+\[ \texttt{sp2} = \texttt{sp1}
+   + \frac{\texttt{RATPOINTS\_SP2\_EXTRA}}{1 + \texttt{RATPOINTS\_SP2\_U0}/U} \,. \]
+\texttt{RATPOINTS\_SP2\_U0} is the length of run at which setting a prime up
+costs as much as sieving with it; like the other two it is a property of the
+machine. Setting it to zero restores a flat offset. This is what lets one
+tuning serve every height bound. Sweeping the offset gives four measured
+optima --- $3$ on random curves at a height bound of $16383$, $5$ on
+point-rich ones there, $9$ on random curves at $2\cdot 10^5$ and $12$ on
+point-rich ones --- and the two constants land on $3$, $8$, $11$ and $11$.
+Using the small-bound value at the large one costs $12\%$ of \texttt{make
+testhighmany}. The first stage needs no such correction, and measurement
+agrees that it does not: a first-stage prime costs one \texttt{AND} per word
+unconditionally, so the fixed part is a far smaller share of what it costs,
+and the best threshold hardly moves with the height bound.
+
+The one thing this shape cannot fit is the point-rich curves at the small
+height bound, which want $5$ and are given $8$. Their survivor rate is twice
+the random curves', so a second-stage prime costs them twice as much per
+word, and a formula in the length of the run alone cannot see that.
+
+The same two quantities say which primes to use, not just how many. The
+sieving table for~$p$ has $p$ rows and is rebuilt for each denominator class
+that turns up, at most $p$ of them, so it costs $O(p^2/U)$ per word: at equal
+quality a smaller prime is strictly better, and at a small height bound it is
+much better. The primes are therefore ranked not by~$r_p$ but by what they
+cost divided by what they say,
+\[ \frac{\text{cost}(p)}{-\log r_p} \,, \]
+and ranked twice, once for each of the first two stages, because a
+second-stage prime is applied only to the bit arrays that survived the first
+and its table therefore weighs some three times more heavily against it. The
+third stage builds no table, so there the ranking is by $r_p$ alone, as it
+always was. \texttt{RATPOINTS\_COST\_TABLE} is what one row of a table costs,
+in units of what one first-stage prime costs per word; setting it to zero
+makes the ranking monotone in~$r_p$ and so restores the old order exactly.
+
 That cap is a real constraint on a curve with very many rational points, and
 the program does something about it. On such a curve $f$ is a square modulo
 every residue for the smallest primes, so those primes say nothing and are
@@ -948,6 +1044,36 @@ prime added, this stops of its own accord. The two constants are
 \texttt{RATPOINTS\_SP3\_PER\_DENOM} in \texttt{ratpoints.h}; like the two
 above they are properties of the machine.
 
+They are fractions of one exact test, and what one exact test costs is a
+property of the curve rather than of the machine alone. The test computes
+\[ F(a,b) = c_d a^d + c_{d-1} a^{d-1} b + \dots + c_0 b^d \]
+by Horner's rule from the $c_k b^{d-k}$, which are formed once per
+denominator, and then takes the integer square root of the result. So it
+costs one multiplication by a single word and one addition per step of the
+Horner loop, that is one per degree, on numbers that grow from one limb to
+the size of $F$; one more multiplication when the degree is odd, to make the
+form of even degree; and a square root, which is nearly free while the root
+fits in one limb and costs a fixed amount for each further limb of the root
+after that. Since $F(a,b)$ has about $\log_2|c| + d\log_2 H$ bits, the degree,
+the largest coefficient and the height bound fix every quantity in that
+count, and the program forms the estimate before it looks at a prime. Both
+fractions are then divided by the estimate over its value for a degree-6
+curve with small coefficients, so they are unchanged on such a curve, smaller
+on one whose test costs more, and larger on one whose test costs less --- and
+a curve with an expensive test is worth more third-stage primes, because each
+one it adds is spared more.
+
+The four constants of the estimate are \texttt{RATPOINTS\_CHECK\_STEP},
+\texttt{RATPOINTS\_CHECK\_LIMB}, \texttt{RATPOINTS\_CHECK\_CALL} and
+\texttt{RATPOINTS\_CHECK\_ROOT}, with the reference value in
+\texttt{RATPOINTS\_CHECK\_REFERENCE}; only the ratio of one curve's test to
+another's is used, so a machine on which every test is dearer needs no change
+to any of them. On this machine the estimate agrees with what the sieve
+itself shows to within about six per cent over degrees 3 to~12 and
+coefficients of 4 to 120 bits, the exceptions being the curves whose $F$ sits
+within a few bits of a limb boundary, where the square root may or may not
+take the further limb.
+
 $S$ is estimated from the number of numerators a denominator has to consider
 --- which follows from the positivity intervals, the height bound and the
 range of denominators --- thinned by the sixteen-fold pre-sieve, by the
@@ -971,18 +1097,55 @@ looks at further primes when the ones in hand run out, exactly as the choice
 of \texttt{sp2} does. On the curves of \texttt{testdata-high-many.h} that
 turns one available prime into more than twenty.
 
+\subsection{Correcting the choice while the program runs}\label{sec:adapt}
+
+Everything above is decided before a single numerator has been sieved, from
+the densities~$r_p$ alone, and that prediction is wrong in a way no amount of
+care will put right. If $a/b$ is a rational point, so is $ka/kb$ for every~$k$
+--- it is the same rational number --- and it gives the same value of~$f$,
+so it passes every prime test there is. A floor of survivors therefore
+outlives any amount of sieving, and only the test for common factors removes
+it. The prediction cannot see that floor, so it always overshoots; that is
+why \texttt{sp2} could never be predicted outright and ended up as an offset
+with a constant to tune.
+
+The program can see it, though, because it is sieving. The scan visits every
+bit array anyway, so counting the non-empty ones costs an increment on a path
+taken half a per cent of the time, and the survivors of the second stage and
+of the test for common factors are counted as cheaply. Writing
+\[ S(n) = \text{floor} + \text{chance}\cdot R(n) \]
+for the survivors per word after $n$~primes, with $R(n)$ the product of the
+$n$~smallest~$r_p$, two such counts pin both terms. What is done with that
+comes in two degrees. By default the program corrects only the third stage,
+where the number of survivors a denominator brings to the stage becomes a
+count rather than an estimate, and where nothing else supplies that number.
+With \verb+-A 2+ it also reconsiders \texttt{sp2} by the same marginal rule
+--- which is a second answer to a question the scaled offset above already
+answers, so the two are not meant to be believed at once; whichever is
+applied later wins, and that is the correction. The first correction is made after a million
+numerator words have been swept and the next whenever twice as many have
+been, so the estimate improves and the corrections thin out.
+
+Changing the number of primes part-way through a run is safe by construction.
+Sieving only ever removes numerators that cannot be points, so using more or
+fewer primes for later denominators changes how long the program takes and
+nothing whatever about what it finds. This only happens when the program
+chose the numbers itself: \verb+-n+, \verb+-N+ or \verb+-A 0+ leaves them
+alone.
+
 \subsection{Retuning for your machine}
 
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
-The two constants above were tuned on my current laptop by minimising the sum
-of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
+The three constants above were tuned on my current laptop by minimising the
+sum of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
 that on your machine, run
 \begin{verbatim}
 > make tune
 \end{verbatim}
-which does the whole thing: it sweeps first the threshold and then the offset
-over both test sets, and writes the values it finds to a file
+which does the whole thing: it sweeps the threshold, then the offset, then
+the run length at which a second-stage prime pays for setting itself up, over
+both test sets, and writes the values it finds to a file
 \texttt{tuning.mk} that the \texttt{Makefile} includes, so that a subsequent
 \texttt{make all} builds with them. No source file is touched; deleting
 \texttt{tuning.mk} restores the values compiled into \texttt{ratpoints.h}.
@@ -1016,21 +1179,28 @@ One timing there is two minutes rather than three seconds, so it does not sweep
 the whole ladder of candidates. It starts from the settings in force --- which
 is to say from what \texttt{make tune} found, since the two read and write the
 same \texttt{tuning.mk} --- and asks only whether a factor of two in the
-threshold either way, or two more or fewer primes in the second stage, is
-better. That is seven settings in a round rather than ten, and it rests on the
-assumption that the two regimes do not want wildly different values. If it
-moves a value it has not finished looking, and should be run again from there.
-Expect an hour and a half at the default three rounds;
+threshold or in the run length either way, or two more or fewer primes in the
+second stage, is better. That is ten settings in a round rather than fifteen,
+and it rests on the assumption that the two regimes do not want wildly
+different values. If it moves a value it has not finished looking, and should
+be run again from there. Expect a couple of hours at the default three rounds;
 \texttt{ROUNDS=1 make tunehigh} is the short version. The intended order is
 \texttt{make tune} first, for a value from a full sweep cheaply, and then
 \texttt{make tunehigh} to ask whether the long runs want something else.
 
-The candidates themselves can be chosen too. \texttt{R\_VALUES} and
-\texttt{E\_VALUES} give an absolute ladder, which is
-what \texttt{make tune} uses, and \texttt{R\_FACTORS} and
-\texttt{E\_DELTAS} give a neighbourhood of the current settings --- multiples
-of the threshold and offsets added to the other constant --- which is what
-\texttt{make tunehigh} uses and which takes precedence when set.
+Running both is also the only way to pin the third constant. The offset is
+now the number of extra primes an arbitrarily long run wants, and a given run
+gets a fraction of that which depends on how long it is, so a single tuning
+sees only the product and cannot separate the two. Two tunings at run lengths
+a hundred times apart can.
+
+The candidates themselves can be chosen too. \texttt{R\_VALUES},
+\texttt{E\_VALUES} and \texttt{U\_VALUES} give an absolute ladder, which is
+what \texttt{make tune} uses, and \texttt{R\_FACTORS}, \texttt{E\_DELTAS} and
+\texttt{U\_FACTORS} give a neighbourhood of the current settings --- multiples
+of the threshold and of the run length, and offsets added to the middle
+constant --- which is what \texttt{make tunehigh} uses and which takes
+precedence when set.
 
 Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
 some trouble over it. The cost surface is flat --- anything within a factor of
@@ -1420,6 +1590,60 @@ endpoint was scaled by dividing by \verb+1 << del+ with \texttt{del} the
 bisection depth, which is bounded by the \verb+-S+ setting and so may be as
 large as $62$. It is now scaled by \texttt{ldexp}, which is exact at every
 depth and needs no division.
+
+The rule that chooses the primes has been taken further, and in three
+directions at once, all of which come from noticing that the old rule valued
+every prime the same and assumed every run was infinitely long. A prime's
+sieving table is built at most $p$ times however many numerators there are,
+and its entry in the list of reduced denominators is stepped once per
+denominator, so per word of numerators both fall like $1/U$ with the length
+of the run. The program now works out $U$, and the number of denominators,
+before it looks at a single prime. With that it (i)~scales the offset from
+\texttt{sp1} to \texttt{sp2} by the length of the run, which is what lets one
+tuning serve every height bound and is worth $12\%$ of \texttt{make
+testhighmany}; (ii)~ranks the primes by what they cost divided by what they
+say rather than by what they say alone, so that at equal quality it prefers
+a smaller prime, whose table is cheaper; and (iii)~counts what the sieve is
+actually doing --- the bit arrays that survive the first stage, the survivors
+of the second and the ones that pass the test for common factors --- and
+revises the numbers as the run goes on. The last of these is what finally
+gets at the one thing the prediction could never see: the non-reduced
+representations $(ka, kb)$ of a rational point pass every prime test, so a
+floor of survivors outlives any amount of sieving. Sections~\ref{sec:spchoice}
+and~\ref{sec:adapt} have the details, and \verb+-U 0+, \verb+-C 0+ and
+\verb+-A 0+ switch the three off individually.
+
+Together they are worth $5.6\%$ of \texttt{make test1}, $11.9\%$ of
+\texttt{make testhighmany} and $13.7\%$ of the new \texttt{make testdegrees},
+and cost half a per cent on the random curves at the large height bound,
+which want one or two fewer second-stage primes than the pair of constants
+gives them.
+
+The loop in \texttt{sieving\_info} that evaluates the polynomial at every
+residue modulo every prime now reduces by multiplying rather than by
+dividing, on a fixed schedule rather than when a test says it must. As a
+side effect this repairs something that raising \texttt{PRIME\_SIZE} from~7
+to~8 had broken: it moved the boundary of the division-free path from
+degree~8 down to degree~7, so that a genus~3 curve with an even model was
+taking a conditional division inside every step of the evaluation. Nothing
+had noticed, because every test curve in the package has degree~6.
+
+The two constants that say how many primes the third stage should use are
+fractions of what one exact test costs, and that is a property of the curve,
+not of the machine alone: the test evaluates a binary form of the given
+degree and takes an integer square root, so it costs about 15~cycles per
+degree plus a step for every further limb the root needs, and over the range
+from degree~3 with small coefficients to degree~14 with 400-bit ones it
+varies by a factor of ten. The program now estimates it from the degree, the
+largest coefficient and the height bound before it looks at a prime
+(Section~\ref{sec:sp3choice}), and \verb+-W+ overrides the estimate.
+Measured against the old behaviour, which was to assume that every curve
+costs what a degree-6 curve with small coefficients costs, this changes no
+running time by as much as half a per cent on any of the test sets --- the
+rule it feeds sits at its own optimum, so a better constant moves the
+boundary by about one prime, and the prime at the boundary is by definition
+worth about what it costs. What it buys is that the constants mean what they
+are documented to mean for curves outside the ones they were tuned on.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.

@@ -42,6 +42,26 @@
 #endif
 #include RATPOINTS_TESTDATA
 
+/* A test data file either gives every curve the same degree, in which case a
+ * row of testdata[] is just the coefficients, or carries the degree in the
+ * first column of each row, which is what a file holding curves of several
+ * degrees must do -- padding with zeros will not serve, since a polynomial
+ * of degree d is not squarefree as a binary form of degree d+2.  The file
+ * says which by defining TEST_DEGREE or TEST_MAX_DEGREE. */
+#ifndef TEST_DEGREE
+# ifndef TEST_MAX_DEGREE
+#  define TEST_DEGREE 6      /* what every file in the package used to be */
+# endif
+#endif
+#ifdef TEST_DEGREE
+# define TEST_MAX_DEGREE TEST_DEGREE
+# define TEST_DEGREE_OF(n) ((long)(TEST_DEGREE))
+# define TEST_COEFF(n, k)  (testdata[n][k])
+#else
+# define TEST_DEGREE_OF(n) (testdata[n][0])
+# define TEST_COEFF(n, k)  (testdata[n][(k)+1])
+#endif
+
 mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
 
 ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
@@ -74,14 +94,18 @@ int main(int argc, char *argv[])
   ratpoints_args args;
 
   /* parameters; see documentation */
-  long degree        = 6;
+  long degree        = TEST_MAX_DEGREE;
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
   long sieve_primes2 = -1;
   double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
+  double sp2_u0 = -1.0;              /* negative: compiled-in default */
+  double cost_table = -1.0;          /* negative: compiled-in default */
+  long adapt = -1;                   /* negative: the default, stage 3 */
   long sp3_extra = -1;               /* negative: choose from the curve */
   double sp3_per_denom = -1.0;       /* negative: compiled-in default */
+  double check_cost = -1.0;          /* negative: estimate from the curve */
   int print_time = 0;                /* -T: report the CPU time used */
   long num_primes    = -1; /* negative: let ratpoints choose, as main.c
                             * does.  This matters: an explicit value is
@@ -161,6 +185,24 @@ int main(int argc, char *argv[])
           if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
           i++;
           break;
+        case 'U': /* run length at which a phase-2 prime pays for its set-up */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);
+          i++;
+          break;
+        case 'A': /* whether to correct the primes during the run */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &adapt) != 1) return(-6);
+          i++;
+          break;
+        case 'C': /* what one row of a sieve table costs */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &cost_table) != 1) return(-6);
+          i++;
+          break;
         case 'P': /* primes added to sp2 for the third stage */
           if(argc == i) return(-6);
           i++;
@@ -171,6 +213,12 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %lf", &sp3_per_denom) != 1) return(-6);
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &check_cost) != 1) return(-6);
           i++;
           break;
         case 'j': /* do not use Jacobi sum test */
@@ -277,8 +325,9 @@ int main(int argc, char *argv[])
     { for(n = 0; n < NUM_TEST; n++)
       { /* set up polynomial */
         long k;
+        long deg = TEST_DEGREE_OF(n);
 
-        for(k = 0; k < 7; k++) { mpz_set_si(c[k], testdata[n][k]); }
+        for(k = 0; k <= deg; k++) { mpz_set_si(c[k], TEST_COEFF(n, k)); }
 
         /* Fill args structure. Recall:
           typedef struct {mpz_t *cof; long degree; long height;
@@ -290,7 +339,7 @@ int main(int argc, char *argv[])
             ratpoints_args; */
 
         args.cof           = &c[0];
-        args.degree        = degree;
+        args.degree        = deg;
         args.height        = height;
         args.domain        = &domain[0];
         args.num_inter     = 0;
@@ -300,8 +349,12 @@ int main(int argc, char *argv[])
         args.sp2           = sieve_primes2;
         args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
+        args.sp2_u0        = sp2_u0;
+        args.cost_table    = cost_table;
+        args.adapt         = adapt;
         args.sp3_extra     = sp3_extra;
         args.sp3_per_denom = sp3_per_denom;
+        args.check_cost    = check_cost;
         args.array_size    = array_size;
         args.sturm         = sturm_iter;
         args.num_primes    = num_primes;

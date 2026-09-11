@@ -31,7 +31,31 @@ which building one would be out of the question. How many it uses is decided per
 curve at a small height bound it uses none, and on curves with many rational points at a large
 height bound it is worth about 7%.
 
-Two machine-dependent constants govern the choice. They can be set with the `-r` and `-R` options,
+How many primes each stage uses, and which ones, now depends on how long the run is going to be
+and on what each prime costs, both of which the program works out before it sieves anything. A
+prime's sieving table has `p` rows and is rebuilt for each denominator class that turns up, so it
+costs `O(p^2)` spread over the whole run: at equal quality a smaller prime is strictly better, and
+at a small height bound it is much better. Ranking the primes by what they cost rather than by what
+they say alone is worth 5% of `make test1`, and scaling the number of second-stage primes by the
+length of the run is worth 12% of `make testhighmany`. While it runs, the program also counts what
+the sieve is actually finding and corrects the third stage from the count — which gets at the one
+thing no prediction can, namely that the non-reduced forms `(ka, kb)` of a rational point pass
+every prime test, so a floor of survivors outlives any amount of sieving.
+
+How many primes the third stage uses is settled by weighing what a prime removes against what it
+costs, and what it removes is exact tests — so it depends on what one exact test costs, which is a
+property of the curve and not only of the machine. The test evaluates a binary form of the given
+degree and takes an integer square root, so it costs about 15 cycles per degree plus a step for
+each further limb the square root needs, and over the range from degree 3 with small coefficients
+to degree 14 with 400-bit ones it varies by a factor of ten. The program estimates it from the
+degree, the largest coefficient and the height bound before it sieves anything, and `-W` overrides
+the estimate. Measured against the old assumption that every curve costs the same, this changes no
+running time by as much as half a per cent on any test set, because the rule it feeds sits at its
+own optimum; what it buys is that the constants mean what they are documented to mean for curves
+outside the ones they were tuned on.
+
+Three machine-dependent constants govern the choice. They can be set with the `-r`, `-R` and `-U`
+options,
 reasonable values are compiled in, and `make tune` will measure better ones for your machine if
 you want it to: it minimises the sum of the times of `make test1` (random curves) and
 `make test1many` (curves with many points), and writes what it finds to `tuning.mk`, which the
@@ -54,5 +78,11 @@ since the sieving loop is limited by memory bandwidth rather than by arithmetic;
 kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland), for a curve with many
 rational points on a Zen 5 CPU, shows a speedup of 13-14% over the 256-bit version. It is still
 advisable to run `make test` and compare the timings on your own machine.
+
+`make test` now includes `make testdegrees`, a hundred curves of degree 3, 4, 7 and 8. Everything
+else in the package is degree 6, and every constant was tuned there, so nothing was known about the
+rest; one regression had already slipped through because of it. The points on those curves were
+checked once against a brute-force search over every coprime pair within a small height bound,
+written independently of the sieve.
 
 There is now [ratpoints-gpu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.

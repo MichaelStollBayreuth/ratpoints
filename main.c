@@ -68,8 +68,9 @@ char *usage_str =
     "                 [-f format] [-fs str] [-fm str] [-fe str] [-y] [-Y]\n"
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
-    "                 [-r survivors_per_word] [-R extra_primes]\n"
-    "                 [-P stage3_primes] [-Q stage3_cost]\n"
+    "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
+    "                 [-C table_cost] [-A adapt]\n"
+    "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -252,8 +253,12 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->sp2           = -1; /* negative: choose from the curve */
   args->survivors_per_word = -1.0; /* negative: compiled-in default */
   args->sp2_extra     = -1; /* negative: compiled-in default */
+  args->sp2_u0        = -1.0; /* negative: compiled-in default */
+  args->cost_table    = -1.0; /* negative: compiled-in default */
+  args->adapt         = -1; /* negative: adapt when free to */
   args->sp3_extra     = -1; /* negative: choose from the curve */
   args->sp3_per_denom = -1.0; /* negative: compiled-in default */
+  args->check_cost    = -1.0; /* negative: estimate it from the curve */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
@@ -360,6 +365,30 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
           i++;
           break;
+        case 'U': /* the number of numerator words at which a second-phase
+                   * prime pays for setting itself up; scales -R down for
+                   * short runs.  Zero leaves -R flat, as before 2.3 */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
+          i++;
+          break;
+        case 'A': /* how much of the choice to correct during the run from
+                   * what the sieve is doing: 0 none, 1 (the default) the
+                   * third stage, 2 the second phase as well */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
+          i++;
+          break;
+        case 'C': /* what building one row of a sieve table costs, in units
+                   * of one first-phase AND per word; zero ranks the primes
+                   * by what they say alone, as before 2.3 */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
+          i++;
+          break;
         case 'P': /* how many primes the third stage adds to sp2; negative
                    * means choose it from the curve */
           if(argc == i) { error(6); }
@@ -373,6 +402,15 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles; negative
+                   * means estimate it from the degree and the coefficients,
+                   * and 306 is what earlier versions assumed for every
+                   * curve */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }
           i++;
           break;
         case 'f': /* printing format */

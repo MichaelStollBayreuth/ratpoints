@@ -346,7 +346,7 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 /* this is used to hold the sieving information for one prime p */
 typedef struct
         { ratpoints_init_fun init; long p; int *is_f_square;
-          const long *inverses; unsigned long magic;
+          const long *inverses; unsigned long magic; double r;
           long offset; ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
         ratpoints_sieve_entry;
 
