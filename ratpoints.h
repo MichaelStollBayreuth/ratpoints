@@ -169,16 +169,27 @@
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
 #ifndef RATPOINTS_COST_BP
-# define RATPOINTS_COST_BP 22.0      /* one step of bp_list, per denominator */
+# define RATPOINTS_COST_BP 24.0      /* one step of bp_list, per denominator */
+#endif
+/* and, for a prime that has a sieving table, filling in its sieve_spec once
+ * for every denominator.  Measured at about the same as the bp_list step,
+ * and between them they are 13% of "make test1" -- a fixed cost per
+ * denominator and per prime, which is what makes a short run want fewer
+ * primes than a long one. */
+#ifndef RATPOINTS_COST_SETUP
+# define RATPOINTS_COST_SETUP 30.0
 #endif
 #ifndef RATPOINTS_COST_PHASE2
-# define RATPOINTS_COST_PHASE2 46.0  /* one AND on a surviving bit-array */
+# define RATPOINTS_COST_PHASE2 110.0 /* one AND on a surviving bit-array */
 #endif
 /* what one survivor of the second phase costs from there on: the extraction,
  * the test for common factors, the third stage and, for the few that get
- * that far, the exact check */
+ * that far, the exact check.  Measured between 340 and 1900, the small
+ * figures at a height bound of 16383 and the large ones at 200000, where the
+ * numbers are bigger and the memory colder; the value here is for the large
+ * bound, since that is where the correction of item 14 ever fires. */
 #ifndef RATPOINTS_COST_SURVIVOR
-# define RATPOINTS_COST_SURVIVOR 620.0
+# define RATPOINTS_COST_SURVIVOR 1400.0
 #endif
 
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.

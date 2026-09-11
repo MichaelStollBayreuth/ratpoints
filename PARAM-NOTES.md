@@ -255,6 +255,25 @@ of what one first-phase prime costs there (`cyc1/(and1*RBA_PACK)`, which is
 | one step of `bp_list` | 22.0 | 10.6 | 35.7 | 14.4 |
 | filling one `sieve_spec` | 29.7 | 8.8 | 28.5 | 11.6 |
 
+The three parts of the second phase cannot be timed apart in one build, so
+they were separated with `-DRP_STOP_AFTER=2` (stop after the scan) and `=3`
+(stop after the AND loop) and differencing:
+
+| what | test1 | test1many | testhigh | testhighmany |
+|---|---|---|---|---|
+| the scan, per bit array (cycles) | 1.68 | 2.20 | 1.59 | 1.87 |
+| one phase-2 AND (cycles) | 18.2 | 12.7 | 28.0 | 22.5 |
+| one survivor of phase 2 (cycles) | 81 | 113 | 317 | 297 |
+| `COST_PHASE2` | 78 | 44 | 170 | 105 |
+| `COST_SURVIVOR` | 344 | 398 | 1920 | 1388 |
+
+The last two are what the marginal rule for `sp2` turns on, and their
+**ratio** is what decides how many primes it wants: 4.4 and 9.0 at the small
+height bound, 11.3 and 13.2 at the large one.  So a single pair of constants
+cannot serve both, and the pair to compile in is the large-height one, since
+that is the only place the correction ever fires.  The shipped values are
+110 and 1400.
+
 Two things worth keeping from that.  **Building the sieve tables is 7.2% of
 `make test1` and 0.13% of `make testhigh`** -- not the 22% recorded earlier,
 which predates item 4 making `sieve_init` 3.7 times cheaper.  And **filling

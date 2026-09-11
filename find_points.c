@@ -925,10 +925,15 @@ static double prime_cost(long p, double per_word, int tabled,
                          double cost_table, double u_words, double n_denoms)
 { double cost = per_word + RATPOINTS_COST_BP*n_denoms/u_words;
 
-  if(tabled && cost_table > 0.0)
-  { double builds = (n_denoms < (double)p) ? n_denoms : (double)p;
+  if(tabled)
+  { /* a prime of the first two phases has a sieve_spec filled in for it as
+     * well, once per denominator */
+    cost += RATPOINTS_COST_SETUP*n_denoms/u_words;
+    if(cost_table > 0.0)
+    { double builds = (n_denoms < (double)p) ? n_denoms : (double)p;
 
-    cost += cost_table*(double)p*builds/u_words;
+      cost += cost_table*(double)p*builds/u_words;
+    }
   }
   return(cost);
 }
