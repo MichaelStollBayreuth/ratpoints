@@ -372,8 +372,9 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
           i++;
           break;
-        case 'A': /* whether to correct the number of primes during the run
-                   * from what the sieve is doing; zero switches it off */
+        case 'A': /* how much of the choice to correct during the run from
+                   * what the sieve is doing: 0 none, 1 (the default) the
+                   * third stage, 2 the second phase as well */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }

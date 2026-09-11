@@ -530,10 +530,11 @@ gets proportionately fewer (Section~\ref{sec:spchoice}). \verb+-U 0+ makes
 what building one row of a sieving table costs, in units of what one
 first-stage prime costs per word, which is what lets the program prefer a
 smaller prime to a larger one of the same quality; \verb+-C 0+ ranks the
-primes by quality alone, as before. The third, with $a = 0$, stops the
-program from revising the number of primes while it runs
-(Section~\ref{sec:adapt}); it revises them only when it chose them in the
-first place, so \verb+-n+ or \verb+-N+ has the same effect.
+primes by quality alone, as before. The third says how much of the choice the program should revise while it
+runs (Section~\ref{sec:adapt}): $a = 0$ nothing, $a = 1$, the default, the
+number of primes in the third stage, and $a = 2$ the number in the second
+stage as well. It revises nothing it did not choose in the first place, so
+\verb+-n+ or \verb+-N+ has the same effect as \verb+-A 0+.
 
 A third sieving stage runs after those two, on the numerators that survive
 them. It tests each of them against further primes one at a time, computing
@@ -1052,10 +1053,14 @@ taken half a per cent of the time, and the survivors of the second stage and
 of the test for common factors are counted as cheaply. Writing
 \[ S(n) = \text{floor} + \text{chance}\cdot R(n) \]
 for the survivors per word after $n$~primes, with $R(n)$ the product of the
-$n$~smallest~$r_p$, two such counts pin both terms; the rule for \texttt{sp2}
-is then applied to the curve in hand rather than to the predicted one, and
-the number of survivors a denominator brings to the third stage is a count
-rather than an estimate. The first correction is made after a million
+$n$~smallest~$r_p$, two such counts pin both terms. What is done with that
+comes in two degrees. By default the program corrects only the third stage,
+where the number of survivors a denominator brings to the stage becomes a
+count rather than an estimate, and where nothing else supplies that number.
+With \verb+-A 2+ it also reconsiders \texttt{sp2} by the same marginal rule
+--- which is a second answer to a question the scaled offset above already
+answers, so the two are not meant to be believed at once; whichever is
+applied later wins, and that is the correction. The first correction is made after a million
 numerator words have been swept and the next whenever twice as many have
 been, so the estimate improves and the corrections thin out.
 
@@ -1070,14 +1075,15 @@ alone.
 
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
-The two constants above were tuned on my current laptop by minimising the sum
-of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
+The three constants above were tuned on my current laptop by minimising the
+sum of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
 that on your machine, run
 \begin{verbatim}
 > make tune
 \end{verbatim}
-which does the whole thing: it sweeps first the threshold and then the offset
-over both test sets, and writes the values it finds to a file
+which does the whole thing: it sweeps the threshold, then the offset, then
+the run length at which a second-stage prime pays for setting itself up, over
+both test sets, and writes the values it finds to a file
 \texttt{tuning.mk} that the \texttt{Makefile} includes, so that a subsequent
 \texttt{make all} builds with them. No source file is touched; deleting
 \texttt{tuning.mk} restores the values compiled into \texttt{ratpoints.h}.
@@ -1111,21 +1117,28 @@ One timing there is two minutes rather than three seconds, so it does not sweep
 the whole ladder of candidates. It starts from the settings in force --- which
 is to say from what \texttt{make tune} found, since the two read and write the
 same \texttt{tuning.mk} --- and asks only whether a factor of two in the
-threshold either way, or two more or fewer primes in the second stage, is
-better. That is seven settings in a round rather than ten, and it rests on the
-assumption that the two regimes do not want wildly different values. If it
-moves a value it has not finished looking, and should be run again from there.
-Expect an hour and a half at the default three rounds;
+threshold or in the run length either way, or two more or fewer primes in the
+second stage, is better. That is ten settings in a round rather than fifteen,
+and it rests on the assumption that the two regimes do not want wildly
+different values. If it moves a value it has not finished looking, and should
+be run again from there. Expect a couple of hours at the default three rounds;
 \texttt{ROUNDS=1 make tunehigh} is the short version. The intended order is
 \texttt{make tune} first, for a value from a full sweep cheaply, and then
 \texttt{make tunehigh} to ask whether the long runs want something else.
 
-The candidates themselves can be chosen too. \texttt{R\_VALUES} and
-\texttt{E\_VALUES} give an absolute ladder, which is
-what \texttt{make tune} uses, and \texttt{R\_FACTORS} and
-\texttt{E\_DELTAS} give a neighbourhood of the current settings --- multiples
-of the threshold and offsets added to the other constant --- which is what
-\texttt{make tunehigh} uses and which takes precedence when set.
+Running both is also the only way to pin the third constant. The offset is
+now the number of extra primes an arbitrarily long run wants, and a given run
+gets a fraction of that which depends on how long it is, so a single tuning
+sees only the product and cannot separate the two. Two tunings at run lengths
+a hundred times apart can.
+
+The candidates themselves can be chosen too. \texttt{R\_VALUES},
+\texttt{E\_VALUES} and \texttt{U\_VALUES} give an absolute ladder, which is
+what \texttt{make tune} uses, and \texttt{R\_FACTORS}, \texttt{E\_DELTAS} and
+\texttt{U\_FACTORS} give a neighbourhood of the current settings --- multiples
+of the threshold and of the run length, and offsets added to the middle
+constant --- which is what \texttt{make tunehigh} uses and which takes
+precedence when set.
 
 Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
 some trouble over it. The cost surface is flat --- anything within a factor of

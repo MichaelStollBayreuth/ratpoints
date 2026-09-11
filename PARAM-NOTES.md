@@ -197,3 +197,98 @@ ranked twice, because the cost differs by stage:
 
 `-C 0` (or `cost_table = 0`) drops the table term, and the key is then
 monotone in `r`: the old order exactly.
+
+## Step 4: item 14, measuring the survivor rate instead of predicting it
+
+The counts are four: the words swept, the bit arrays that survive the first
+phase, the survivors of the second, and the ones that pass the test for
+common factors.  The first is free (one addition per call to `sift0`), the
+second is an increment on a path taken half a per cent of the time, and the
+last two on paths taken a few times in a million.
+
+What they are for is the one thing the prediction can never get right.  If
+`a/b` is a rational point then so is `ka/kb` -- the same rational number --
+and it gives the same value of `f`, so it passes every prime test there is.
+A floor of survivors therefore outlives any amount of sieving, and only the
+test for common factors removes it.  Writing
+
+        S(n) = floor + chance*R(n)
+
+two measured rates pin both terms, and `adapt_primes()` then applies the
+marginal rule to the curve in hand: a second-phase prime is worth adding
+while what it removes, at `COST_SURVIVOR` apiece, beats what it costs, which
+is `COST_PHASE2` on every array still in play plus the fixed costs it has to
+earn back over the run.  The third stage's rule is the one from item 10, with
+the measured survivors per denominator in place of the estimate -- which also
+retires `RATPOINTS_SP3_COPRIME`, since the count is taken after the
+coprimality test rather than estimated through it.
+
+The first correction comes after a million numerator words and the next at
+every doubling, so the estimate improves and the corrections thin out.  At a
+height bound of 16383 a whole curve sweeps under a million words, so the
+correction never fires there; at 200000 it fires seven to ten times a curve.
+
+**Three things this needed that are not about the rule at all.**  Changing
+the number of primes mid-run is safe for correctness -- sieving only removes
+numerators that cannot be points -- but not for bookkeeping:
+
+* `sieve_list` must hold every informative prime, not just the ones the three
+  stages started with;
+* `bp_list` must be sized for all of them, with `sp3_valid` saying how many
+  entries are current, so that a prime just brought into play is seeded from
+  the denominator rather than stepped from an entry it never had;
+* the buffer the sieve tables are built in must be sized for every prime
+  *looked at*.  This one was a segfault: the third stage may look past the
+  primes the first two phases were given, and those primes never build a
+  table -- until the correction promotes one into the second phase.
+
+## The cost constants, measured rather than guessed
+
+Built with `-DRP_PHASE_TIMING -DRP_PHASE_COUNTS`, dividing each part's cycles
+by the number of times it ran.  Everything is per numerator word and in units
+of what one first-phase prime costs there (`cyc1/(and1*RBA_PACK)`, which is
+0.16 to 0.26 rdtsc cycles depending on the suite).
+
+| what | test1 | test1many | testhigh | testhighmany |
+|---|---|---|---|---|
+| one row of a sieve table | 18.3 | 18.7 | 27.8 | 28.7 |
+| one step of `bp_list` | 22.0 | 10.6 | 35.7 | 14.4 |
+| filling one `sieve_spec` | 29.7 | 8.8 | 28.5 | 11.6 |
+
+Two things worth keeping from that.  **Building the sieve tables is 7.2% of
+`make test1` and 0.13% of `make testhigh`** -- not the 22% recorded earlier,
+which predates item 4 making `sieve_init` 3.7 times cheaper.  And **filling
+`sieve_spec` once per denominator and prime is 5.8% of `make test1`**, which
+is comparable to the table building and was not on anyone's list; it is a
+fixed cost per denominator, so item 12's model already charges for it, but it
+is worth knowing it is there.
+
+---
+
+# Results
+
+Each switch measured on its own inside one binary, against
+`-U 0 -R 5 -C 0 -A 0`, which is `v2.3` exactly.  Core cycles under
+`perf stat`, pinned with `taskset -c 0`, five rounds at the small height
+bound and three at the large one, median of the ratio.
+
+| suite | `-U` (item 12) | `-C` (item 8) | `-A` (item 14) | all three |
+|---|---|---|---|---|
+| test1 (random, 16383) | -0.77% | **-5.00%** | +0.17% | -4.96% |
+| test1many (rich, 16383) | -0.84% | -1.16% | -0.69% | -0.47% |
+
+Two things stand out.
+
+**The cost-aware ranking is worth 5% of `make test1`**, which is far more
+than the offset it was expected to play second fiddle to.  That is where the
+model says it should be: a short run has a small `U`, so the `p*min(D,p)/U`
+term is large and the difference between a prime of 31 and one of 251 is
+most of what either costs.
+
+**On the point-rich curves the three together are worse than any of them
+alone.**  They are not independent: the ranking changes *which* primes the
+second phase gets, and it gets cheaper ones, so the number worth having is
+not the number that was fitted against the old order.  The constants have to
+be refitted with the ranking on -- which is what the sweeps in the next
+section are for -- and the two rules for `sp2` (the fitted offset and the
+marginal rule) have to be reconciled rather than both left switched on.

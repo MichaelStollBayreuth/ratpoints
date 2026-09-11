@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
   long sp2_extra = -1;               /* negative: compiled-in default */
   double sp2_u0 = -1.0;              /* negative: compiled-in default */
   double cost_table = -1.0;          /* negative: compiled-in default */
-  long adapt = -1;                   /* negative: adapt when free to */
+  long adapt = -1;                   /* negative: the default, stage 3 */
   long sp3_extra = -1;               /* negative: choose from the curve */
   double sp3_per_denom = -1.0;       /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */

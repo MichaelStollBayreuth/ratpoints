@@ -989,6 +989,8 @@ static void adapt_primes(ratpoints_args *args)
   double words = (double)args->n_words;
   double s1, s2, r1, r2, chance, level, s, rate;
   long n, sp1 = args->sp1, sp2 = args->sp2, max = args->sp3_max;
+  /* 1 (the default) corrects the third stage only; 2 also corrects sp2 */
+  long mode = (args->adapt < 0) ? 1 : args->adapt;
 
   /* next time, when twice as much has been seen */
   args->adapt_at = args->n_words + args->n_words;
@@ -997,9 +999,17 @@ static void adapt_primes(ratpoints_args *args)
   if(args->n_arrays < RP_ADAPT_ARRAYS || args->n_bits < RP_ADAPT_BITS)
   { return; }
 
-  /* the two rates the run has shown, per numerator word */
-  s1 = (double)args->n_arrays/words;
-  s2 = (double)args->n_bits/words;
+  /* The two rates the run has shown, per numerator word.  The first is
+   * cumulative -- sp1 never moves, so every word swept measures the same
+   * thing -- but the second is not: everything downstream of the first phase
+   * was counted under whatever sp2 was in force, so those counters are reset
+   * whenever sp2 changes and only the words since then divide into them. */
+  { double words_2 = (double)(args->n_words - args->n_words_2);
+
+    if(words_2 <= 0.0) { return; }
+    s1 = (double)args->n_arrays/words;
+    s2 = (double)args->n_bits/words_2;
+  }
 
   r1 = 1.0;
   for(n = 0; n < sp1; n++) { r1 *= sieve_list[n]->r; }
@@ -1015,7 +1025,15 @@ static void adapt_primes(ratpoints_args *args)
    * what it does on every bit array still in play, plus the fixed costs it
    * has to earn back over the run, and saves the survivors it removes -- all
    * of which would otherwise be extracted, tested for common factors, run
-   * through the third stage and sometimes checked exactly. */
+   * through the third stage and sometimes checked exactly.
+   *
+   * This is the more adventurous half of the correction, and it is asked for
+   * separately (adapt >= 2), because it is a second answer to a question the
+   * scaled offset already answers: both decide sp2, one from a measurement
+   * and one from a fit, and whichever is applied later wins.  Correcting the
+   * third stage (below) is not like that -- there the measurement replaces an
+   * estimate that nothing else supplies. */
+  if(mode >= 2)
   { long want = sp2;
 
     rate = r2;
@@ -1042,8 +1060,14 @@ static void adapt_primes(ratpoints_args *args)
         rate /= r; s = prev; want--;
       }
     }
+    if(want != sp2)
+    { /* what was counted downstream belongs to the old sp2 */
+      args->n_bits = 0; args->n_coprime = 0; args->n_checks = 0;
+      args->n_sifts = 0; args->n_words_2 = args->n_words;
+    }
     args->sp2 = want;
   }
+  else { s = level + chance*r2; }  /* sp2 stands; the rate is what it was */
 
   /* And how many the third stage should use.  Here the measurement is the
    * number of survivors a denominator brings to the stage -- after the test
@@ -2093,6 +2117,7 @@ long find_points_work(ratpoints_args *args,
    * primes is corrected from as the run goes on */
   args->n_words = 0; args->n_arrays = 0; args->n_bits = 0;
   args->n_coprime = 0; args->n_checks = 0; args->n_sifts = 0;
+  args->n_words_2 = 0;
 
   /* initialize memory management */
   args->se_next = args->se_buffer;
