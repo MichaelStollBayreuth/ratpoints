@@ -82,7 +82,35 @@
 # define RATPOINTS_SURVIVORS_PER_WORD 0.0075 /* when to stop the first phase */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
-# define RATPOINTS_SP2_EXTRA 5              /* sp2 = sp1 + this, capped */
+# define RATPOINTS_SP2_EXTRA 9              /* sp2 = sp1 + this, capped */
+#endif
+
+/* ...but only for a run long enough that the fixed costs of a prime no
+ * longer matter.  A prime is set up once and then used for the whole run:
+ * its sieve table is built at most p times however many numerators there
+ * are, and its entry in bp_list is stepped once per denominator.  Per word
+ * of numerators sieved those fall like 1/U, where U is the number of such
+ * words the run will sweep, so the marginal condition for one more prime
+ * has the shape
+ *   worth adding  <=>  a + (fixed)/U  <  what it saves,
+ * and the number of primes worth using is therefore
+ *   sp2_extra(U) = RATPOINTS_SP2_EXTRA / (1 + RATPOINTS_SP2_U0/U) .
+ * RATPOINTS_SP2_U0 is the number of numerator words at which setting a
+ * prime up costs as much as sieving with it; it is a property of the
+ * machine, like the other two constants here.
+ *
+ * This is what makes one tuning serve every height bound.  The measured
+ * best offset is 3 to 5 at a height bound of 16383 and 9 at 200000, and a
+ * single fixed value costs 8% of the pair at the larger bound (17.6% of its
+ * point-rich half), which is why it is worth a constant of its own.  The
+ * first phase needs no such correction: a phase-1 prime costs one AND per
+ * word unconditionally, so the fixed part is a far smaller share of it, and
+ * the best threshold indeed hardly moves with the height bound.
+ *
+ * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
+ * correction off and restores a flat offset. */
+#ifndef RATPOINTS_SP2_U0
+# define RATPOINTS_SP2_U0 1.2e6
 #endif
 
 /* The third sieving stage tests one surviving numerator at a time against
@@ -139,7 +167,7 @@ typedef struct {double low; double up;} ratpoints_interval;
 typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2; long sp3;
-                 double survivors_per_word; long sp2_extra;
+                 double survivors_per_word; long sp2_extra; double sp2_u0;
                  long sp3_extra; double sp3_per_denom;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
@@ -153,6 +181,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
                  void *ba_buffer_na; long ba_buffer_primes;
+                 double run_words; double run_denoms;
                }
         ratpoints_args;
 

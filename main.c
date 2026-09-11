@@ -68,7 +68,7 @@ char *usage_str =
     "                 [-f format] [-fs str] [-fm str] [-fe str] [-y] [-Y]\n"
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
-    "                 [-r survivors_per_word] [-R extra_primes]\n"
+    "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
     "                 [-P stage3_primes] [-Q stage3_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
@@ -252,6 +252,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->sp2           = -1; /* negative: choose from the curve */
   args->survivors_per_word = -1.0; /* negative: compiled-in default */
   args->sp2_extra     = -1; /* negative: compiled-in default */
+  args->sp2_u0        = -1.0; /* negative: compiled-in default */
   args->sp3_extra     = -1; /* negative: choose from the curve */
   args->sp3_per_denom = -1.0; /* negative: compiled-in default */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
@@ -358,6 +359,14 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
+          i++;
+          break;
+        case 'U': /* the number of numerator words at which a second-phase
+                   * prime pays for setting itself up; scales -R down for
+                   * short runs.  Zero leaves -R flat, as before 2.3 */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
           i++;
           break;
         case 'P': /* how many primes the third stage adds to sp2; negative

@@ -80,6 +80,7 @@ int main(int argc, char *argv[])
   long sieve_primes2 = -1;
   double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
+  double sp2_u0 = -1.0;              /* negative: compiled-in default */
   long sp3_extra = -1;               /* negative: choose from the curve */
   double sp3_per_denom = -1.0;       /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */
@@ -159,6 +160,12 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
+          i++;
+          break;
+        case 'U': /* run length at which a phase-2 prime pays for its set-up */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);
           i++;
           break;
         case 'P': /* primes added to sp2 for the third stage */
@@ -300,6 +307,7 @@ int main(int argc, char *argv[])
         args.sp2           = sieve_primes2;
         args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
+        args.sp2_u0        = sp2_u0;
         args.sp3_extra     = sp3_extra;
         args.sp3_per_denom = sp3_per_denom;
         args.array_size    = array_size;

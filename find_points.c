@@ -73,6 +73,7 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
  * denominator and per prime, so that a third stage using further primes
  * would pay it whether or not a survivor turns up */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
+extern unsigned long long _rp_arrays_swept;
 # define RP_BP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BP_TOC(t, n) do { _rp_bp_cycles += __rdtsc() - (t); _rp_bp_dens++; \
                               _rp_bp_steps += (n); } while(0)
@@ -900,6 +901,19 @@ static long primes_for_phase_1(entry *prec, long pnp,
   return(pnp > 0 ? pnp : 1);
 }
 
+/* How many primes the second phase adds to the first.  A phase-2 prime is
+ * paid for once -- its sieve table, and its step in bp_list -- and then used
+ * for the whole run, so how many are worth having depends on how long the
+ * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
+ * offset, which is what every version before 2.3 used. */
+static long phase_2_offset(long extra, double u0, double u_words)
+{ double e;
+
+  if(u0 <= 0.0 || u_words <= 0.0) { return(extra); }
+  e = (double)extra/(1.0 + u0/u_words);
+  return((long)(e + 0.5));
+}
+
 /* Look at one prime and record what it says about the curve.
  *
  * Fills in the table is_f_square[0..p], where entry a says whether f(a) is a
@@ -1022,10 +1036,154 @@ static int examine_prime(ratpoints_args *args, long pn,
  * Collect the sieving information                                      *
  ************************************************************************/
 
+/* The number of numerators denominator b has to consider: the part of
+ * b*domain that lies within the height bound.  Used both to size the run
+ * (run_shape below) and to estimate how many survivors a denominator brings
+ * to the third stage. */
+static double numerators_for(const ratpoints_args *args, double b, double H)
+{ double sum = 0.0;
+  long k;
+
+  for(k = 0; k < args->num_inter; k++)
+  { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
+
+    if(lo < -H) { lo = -H; }
+    if(up > H) { up = H; }
+    if(up > lo) { sum += up - lo; }
+  }
+  return(sum);
+}
+
+/* How big the run is: the number of denominators that will actually be
+ * sifted, and the number of 64-bit words of numerators they sweep between
+ * them.  Both are wanted by the rule that picks the sieving primes, because
+ * two of the costs of a prime are paid once and then spread over the whole
+ * run -- its sieve table, built for at most p denominator classes, and its
+ * entry in bp_list, stepped once per denominator.  Per word of numerators
+ * those come to k*p*min(D,p)/U and l*D/U, and they are the reason the best
+ * number of primes at a height bound of 200000 is not the best number at
+ * 16383.
+ *
+ * Nothing here needs any sieving.  The denominators that get sifted are
+ * those that pass the 2-adic mask on b, have an admissible numerator at all,
+ * are not divisible by a forbidden divisor and pass the Jacobi symbol test
+ * where it applies; the first three are periodic and are counted exactly,
+ * and the fourth lets through half of what is left.  The numerators of one
+ * denominator are piecewise linear in b with a handful of breakpoints, so a
+ * midpoint sample over the range of b is accurate to a fraction of a per
+ * cent.
+ *
+ * The result is an estimate, and a biased one -- the Jacobi factor is an
+ * average, and the valuation test of the use_squares1 path is not modelled
+ * at all.  That is by design: it is used only to compare a fixed cost with a
+ * per-word one, where being right to within a factor of about 1.5 moves the
+ * chosen number of primes by less than one.
+ */
+#define RUN_SHAPE_SAMPLES 64
+
+static void run_shape(ratpoints_args *args, bit_selection which_bits,
+                      unsigned long den_bits,
+                      const ratpoints_bit_array *num_bits,
+                      long fba, long fdc,
+                      double *n_denom, double *u_words)
+{ double H = (double)args->height;
+  double keep = 1.0;    /* fraction of the candidates that reach sift() */
+  double count = 0.0;   /* candidate denominators */
+  double nums = 0.0;    /* numerators they sweep, before that fraction */
+  long i, j;
+
+  if(args->flags & RATPOINTS_USE_SQUARES)
+  { /* the denominators are the squares in [b_low, b_high] */
+    double klo = ceil(sqrt((double)args->b_low));
+    double khi = floor(sqrt((double)args->b_high));
+    long good = 0;
+
+    if(khi >= klo)
+    { count = khi - klo + 1.0;
+      for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
+      { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
+        nums += numerators_for(args, k*k, H);
+      }
+      nums *= count/RUN_SHAPE_SAMPLES;
+    }
+    /* only the mask on b mod 16 applies, and b = k^2 mod 16 has period 8 */
+    for(j = 0; j < 8; j++)
+    { if(EXT0(num_bits[(j*j) & 0xf])) { good++; } }
+    keep = (double)good/8.0;
+  }
+  else if(args->flags & RATPOINTS_USE_SQUARES1)
+  { /* squares times the divisors of the leading coefficient */
+    long *divisors = (long *)args->divisors;
+    long n;
+    long good = 0, tried = 0;
+
+    for(n = 0; divisors[n]; n++)
+    { double d = (double)divisors[n];
+      double klo = ceil(sqrt((double)args->b_low/d));
+      double khi = floor(sqrt((double)args->b_high/d));
+
+      if(klo < 1.0) { klo = 1.0; }
+      if(khi >= klo)
+      { double c = khi - klo + 1.0;
+
+        for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
+        { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
+          nums += c*numerators_for(args, d*k*k, H)/RUN_SHAPE_SAMPLES;
+        }
+        count += c;
+      }
+      for(j = 0; j < 8; j++, tried++)
+      { if(EXT0(num_bits[(divisors[n]*j*j) & 0xf])) { good++; } }
+    }
+    if(tried) { keep = (double)good/(double)tried; }
+  }
+  else
+  { /* every denominator in the range is a candidate */
+    double blo = (double)args->b_low, bhi = (double)args->b_high;
+    long good = 0;
+
+    if(bhi >= blo)
+    { count = bhi - blo + 1.0;
+      for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
+      { double b = blo + (bhi - blo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
+        nums += numerators_for(args, b, H);
+      }
+      nums *= count/RUN_SHAPE_SAMPLES;
+    }
+    /* b congruent to j modulo 64 is tested against bit j of den_bits (the
+     * loop shifts before it tests, which is what puts b and the bit index
+     * in step) and against num_bits[b mod 16] */
+    for(j = 0; j < 64; j++)
+    { if(((den_bits >> j) & 1UL) && EXT0(num_bits[j & 0xf])) { good++; } }
+    keep = (double)good/64.0;
+
+    if(args->flags & RATPOINTS_CHECK_DENOM)
+    { forbidden_entry *fb = (forbidden_entry *)args->forb_ba;
+      long *fd = (long *)args->forbidden;
+
+      for(i = 0; i < fba; i++) { keep *= 1.0 - 1.0/(double)fb[i].p; }
+      for(i = 0; i < fdc; i++) { keep *= 1.0 - 1.0/(double)fd[i]; }
+      /* the Jacobi symbol lets through half of the rest */
+      if(!(args->flags & RATPOINTS_NO_JACOBI)) { keep *= 0.5; }
+    }
+  }
+
+  /* only every other numerator is looked at unless both parities are in play */
+  if(which_bits == num_none) { nums = 0.0; }
+  else if(which_bits != num_all) { nums *= 0.5; }
+
+  *n_denom = keep*count;
+  *u_words = keep*nums/(double)LONG_LENGTH;
+  if(*n_denom < 1.0) { *n_denom = 1.0; }
+  if(*u_words < 1.0) { *u_words = 1.0; }
+}
+
 static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
                          ratpoints_sieve_entry **sieve_list,
-                         double bits_per_word, int may_extend)
+                         double bits_per_word, int may_extend,
+                         bit_selection which_bits, unsigned long den_bits,
+                         const ratpoints_bit_array *num_bits)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or else returns 0. */
@@ -1050,6 +1208,16 @@ static long sieving_info(ratpoints_args *args,
                                                    : RATPOINTS_SURVIVORS_PER_WORD;
   long sp2_extra = (args->sp2_extra >= 0) ? args->sp2_extra
                                           : RATPOINTS_SP2_EXTRA;
+  double sp2_u0 = (args->sp2_u0 >= 0.0) ? args->sp2_u0 : RATPOINTS_SP2_U0;
+
+  /* How big the run is.  This is wanted before the first prime is looked at,
+   * because the rule that decides whether to look past the primes we were
+   * given uses the same offset as the final choice does; it is computed
+   * again below, once the forbidden divisors are known and the estimate can
+   * take them into account. */
+  run_shape(args, which_bits, den_bits, num_bits, 0, 0,
+            &args->run_denoms, &args->run_words);
+  sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
   /* initialize sieve in se_buffer */
   for(pn = 0; pn < pn_lim; pn++)
@@ -1148,6 +1316,41 @@ static long sieving_info(ratpoints_args *args,
 
   } /* end for pn */
 
+  /* Terminate the array of forbidden divisors, having first looked for
+   * more of them among the primes the loop above did not reach.  This is
+   * done here, before the primes are chosen, because the choice needs to
+   * know how many denominators will survive these tests: see run_shape. */
+  if(args->flags & RATPOINTS_CHECK_DENOM)
+  { long n;
+
+    for(n = pn_lim;
+        fba + fdc < args->max_forbidden && n < RATPOINTS_NUM_PRIMES;
+        n++)
+    { long p = prime[n];
+
+      if(p*p > args->b_high) break;
+      if(mpz_kronecker_si(c[degree], p) == -1)
+      { forb_ba[fba].p     = p;
+        forb_ba[fba].start = &sieves0[n][0];
+        forb_ba[fba].end   = &sieves0[n][p];
+        forb_ba[fba].curr  = forb_ba[fba].start;
+        fba++;
+
+#ifdef DEBUG
+        printf("\nexcluding denominators divisible by %ld\n", p);
+        fflush(NULL);
+#endif
+
+      }
+    }
+    forb_ba[fba].p = 0;        /* terminating zero */
+    forbidden[fdc] = 0;        /* terminating zero */
+    args->max_forbidden = fba + fdc; /* note actual number */
+  }
+
+  if(fba + fdc == 0)
+  { args->flags &= ~RATPOINTS_CHECK_DENOM; }
+
   /* the sieve tables live in a block that was reserved for args->num_primes
    * primes; if the loop went further, that block has to grow.  Nothing has
    * been taken from it yet -- the tables are built lazily during the sieving
@@ -1159,6 +1362,15 @@ static long sieving_info(ratpoints_args *args,
 
   /* sort the array to get at the best primes */
   qsort(prec, pnp, sizeof(entry), compare_entries);
+
+  /* The run shape again, now that the forbidden divisors are known and can
+   * be taken off the denominator count; see run_shape. */
+  { long e = (args->sp2_extra >= 0) ? args->sp2_extra : RATPOINTS_SP2_EXTRA;
+
+    run_shape(args, which_bits, den_bits, num_bits, fba, fdc,
+              &args->run_denoms, &args->run_words);
+    sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
+  }
 
   /* Choose sp1 and sp2 unless they were given.
    * prec[] is now sorted by increasing r, where r is the density of the
@@ -1209,25 +1421,11 @@ static long sieving_info(ratpoints_args *args,
 
     if(sp3_want > RATPOINTS_NUM_PRIMES) { sp3_want = RATPOINTS_NUM_PRIMES; }
 
-    /* the average number of numerators a denominator has to consider,
-     * sampled over the range of denominators */
-    { long i, k;
-      double sum = 0.0, H = (double)args->height;
-      double b0 = (double)args->b_low, b1 = (double)args->b_high;
-
-      for(i = 0; i < 64; i++)
-      { double b = b0 + ((double)i + 0.5)*(b1 - b0)/64.0;
-
-        for(k = 0; k < args->num_inter; k++)
-        { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
-
-          if(lo < -H) { lo = -H; }
-          if(up > H) { up = H; }
-          if(up > lo) { sum += up - lo; }
-        }
-      }
-      S = sum/64.0;
-    }
+    /* The average number of numerators a denominator has to consider.  The
+     * run shape already has the total in words, so this is just the mean per
+     * denominator; run_shape counts only the numerators that are actually
+     * looked at, so no further halving is wanted here. */
+    S = args->run_words*(double)LONG_LENGTH/args->run_denoms;
     { long n;
 
       S *= bits_per_word/(double)LONG_LENGTH;
@@ -1292,8 +1490,8 @@ static long sieving_info(ratpoints_args *args,
   { long n;
 
     fprintf(stderr, "[primestats] pn_lim=%ld pnp=%ld sp1=%ld sp2=%ld sp3=%ld"
-            " bpw=%.2f", pn_lim, pnp, args->sp1, args->sp2, args->sp3,
-            bits_per_word);
+            " bpw=%.2f U=%.6g D=%.6g", pn_lim, pnp, args->sp1, args->sp2,
+            args->sp3, bits_per_word, args->run_words, args->run_denoms);
     for(n = 0; n < pnp; n++)
     { fprintf(stderr, " %ld:%.4f", prec[n].ssp->p, prec[n].r); }
     fprintf(stderr, "\n");
@@ -1308,37 +1506,6 @@ static long sieving_info(ratpoints_args *args,
            args->sp3 - args->sp2);
   }
 
-  /* terminate array of forbidden divisors */
-  if(args->flags & RATPOINTS_CHECK_DENOM)
-  { long n;
-
-    for(n = pn_lim;
-        fba + fdc < args->max_forbidden && n < RATPOINTS_NUM_PRIMES;
-        n++)
-    { long p = prime[n];
-
-      if(p*p > args->b_high) break;
-      if(mpz_kronecker_si(c[degree], p) == -1)
-      { forb_ba[fba].p     = p;
-        forb_ba[fba].start = &sieves0[n][0];
-        forb_ba[fba].end   = &sieves0[n][p];
-        forb_ba[fba].curr  = forb_ba[fba].start;
-        fba++;
-
-#ifdef DEBUG
-        printf("\nexcluding denominators divisible by %ld\n", p);
-        fflush(NULL);
-#endif
-
-      }
-    }
-    forb_ba[fba].p = 0;        /* terminating zero */
-    forbidden[fdc] = 0;        /* terminating zero */
-    args->max_forbidden = fba + fdc; /* note actual number */
-  }
-
-  if(fba + fdc == 0)
-  { args->flags &= ~RATPOINTS_CHECK_DENOM; }
 
 #ifdef DEBUG
   printf("\nsieving_info: done.\n"); fflush(NULL);
@@ -1967,7 +2134,8 @@ long find_points_work(ratpoints_args *args,
       if(nz) { bits_per_word = (double)tot/(double)nz; }
     }
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
-                              bits_per_word, np_is_default);
+                              bits_per_word, np_is_default,
+                              which_bits, den_bits, &num_bits[0]);
 
     if(ret)
     {
@@ -2348,6 +2516,20 @@ long find_points_work(ratpoints_args *args,
     /* de-allocate memory */
     free(survivors_na);
   }
+
+#if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
+  /* Development instrumentation: what run_shape predicted for this curve
+   * against what the run actually did.  Needs both switches, since the
+   * counters it reads belong to the phase timing. */
+  { static unsigned long long last_arrays = 0, last_dens = 0;
+
+    fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g\n",
+            args->run_words,
+            (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
+            args->run_denoms, (double)(_rp_bp_dens - last_dens));
+    last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
+  }
+#endif
 
 #ifdef DEBUG
   printf("\nfind_points_work: done. total = %ld.\n", total); fflush(NULL);
