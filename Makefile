@@ -351,7 +351,7 @@ main.o: main.c ratpoints.h build.stamp
 
 ratpoints-debug: sift-debug.o init.o sturm.o find_points-debug.o main.o build.stamp
 	${CC} sift-debug.o init.o sturm.o find_points-debug.o main.o \
-              -o ratpoints-debug ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}
+              -o ratpoints-debug ${CCFLAGS_0} ${CCFLAGS2} -lm ${CCFLAGS}
 
 sift.o: sift.c ratpoints.h rp-private.h build.stamp
 	${CC} sift.c -c -o sift.o ${CCFLAGS_0} -funroll-loops ${CCFLAGS}

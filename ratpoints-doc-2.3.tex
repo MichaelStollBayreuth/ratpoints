@@ -1645,6 +1645,19 @@ boundary by about one prime, and the prime at the boundary is by definition
 worth about what it costs. What it buys is that the constants mean what they
 are documented to mean for curves outside the ones they were tuned on.
 
+The first sieving phase no longer reads the bit arrays it is about to
+overwrite. Every bit array starts from the same pattern of admissible
+numerators modulo~16, and that pattern used to be written into all of them on
+a pass of its own before the phase began; the first prime now ANDs it in as
+it sieves, so the pass is gone and with it one store and one load for every
+bit array --- 1.7\,$\cdot\,10^{10}$ of them in \texttt{make testhigh}. The
+two boundary words and the padding that makes the count a multiple of
+\texttt{RATPOINTS\_CHUNK} are cleared after the phase instead of before it,
+which comes to the same thing because \texttt{AND} is commutative. It is
+worth $5.6\%$ of \texttt{make testhigh}, $5.3\%$ of \texttt{make
+testdegrees} at a height bound of $2\cdot10^5$, $3.4\%$ of \texttt{make
+testhighmany} and $2.6\%$ of \texttt{make test1}.
+
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
 
