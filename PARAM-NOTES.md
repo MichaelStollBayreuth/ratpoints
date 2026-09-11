@@ -292,3 +292,19 @@ not the number that was fitted against the old order.  The constants have to
 be refitted with the ranking on -- which is what the sweeps in the next
 section are for -- and the two rules for `sp2` (the fitted offset and the
 marginal rule) have to be reconciled rather than both left switched on.
+
+## A note on what item 8 asked for and what it got
+
+Item 8 says the ranking that matters "is not one order but an assignment of
+primes to stages, and a prime that is too expensive to tabulate can still be
+worth testing".  The two-pass ranking does that, though not by name: a prime
+whose table is dear falls in the *second* ranking, which charges for the
+table against a much smaller per-word cost, and so drops past `sp2` into the
+pool the third stage draws on -- where it is ranked by `r` alone, because
+there it builds nothing.  So an expensive prime is not discarded, it is moved
+to the stage that does not pay for its table.
+
+What is *not* done is the reverse: nothing asks whether a prime the third
+stage is using would be better in the second.  That would need the third
+stage's own marginal rule and the second's to be compared directly, which is
+what a single cost model over all three stages would give.

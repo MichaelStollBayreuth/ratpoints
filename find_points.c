@@ -1636,17 +1636,25 @@ static long sieving_info(ratpoints_args *args,
     alloc_ba_buffer(args, pn_lim);
   }
 
-  /* sort the array to get at the best primes */
-  qsort(prec, pnp, sizeof(entry), compare_entries);
-
   /* The run shape again, now that the forbidden divisors are known and can
-   * be taken off the denominator count; see run_shape. */
+   * be taken off the denominator count; see run_shape.  The keys the primes
+   * were given inside the loop used the first estimate, which does not know
+   * about those divisors and so overstates the run, so they are computed
+   * again here before anything is sorted for good. */
   { long e = (args->sp2_extra >= 0) ? args->sp2_extra : RATPOINTS_SP2_EXTRA;
+    long n;
 
     run_shape(args, which_bits, den_bits, num_bits, fba, fdc,
               &args->run_denoms, &args->run_words);
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
+    for(n = 0; n < pnp; n++)
+    { prec[n].key = prime_key(prec[n].r, prec[n].ssp->p, 1.0, 1, cost_table,
+                              args->run_words, args->run_denoms);
+    }
   }
+
+  /* sort the array to get at the best primes */
+  qsort(prec, pnp, sizeof(entry), compare_entries);
 
   /* Choose sp1 and sp2 unless they were given.
    * prec[] is now sorted by increasing r, where r is the density of the
