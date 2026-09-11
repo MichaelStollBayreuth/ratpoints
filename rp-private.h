@@ -75,9 +75,10 @@
  * MASKU(a,s) : set upper s bits of a to zero
  *              MASKL and MASKU don't have to be terribly efficient;
  *              they are each executed once per denominator and interval.
- *              Both may assume that 0 <= s < RBA_LENGTH; the two call sites
- *              in find_points.c pass a residue mod RBA_LENGTH.  (This matters:
- *              for s == RBA_LENGTH the versions below would either shift an
+ *              Both may assume that 0 <= s < RBA_LENGTH; the two call sites,
+ *              in _ratpoints_sift0, pass mask_low and mask_high, which sift()
+ *              computes as residues mod RBA_LENGTH.  (This matters: for
+ *              s == RBA_LENGTH the versions below would either shift an
  *              unsigned long by LONG_LENGTH or address a word outside a.)
  */
 

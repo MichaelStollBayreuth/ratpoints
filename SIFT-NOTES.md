@@ -120,7 +120,44 @@ What was 4.1% of `make testhigh` is 0.9%, and the instrumented run itself
 went from 196.5e9 cycles to 188.9e9.  What is left of that row is two bit
 arrays per call to `sift0` rather than all of them, and there is no obvious
 way to remove it: the ends of the numerator interval have to be cleared
-somewhere.
+somewhere.  Read that 0.9% as an upper bound and not as a measurement --- so
+little is left in the region that the two `rdtsc` reads around it are a good
+part of what they report, which is the usual fate of a timer once the thing
+it times has been made small enough.
+
+## What a review of the diff turned up
+
+Worth recording, because the test runs above could not have caught any of it
+and did not.
+
+**The `-DDEBUG` build read the survivors array before anything wrote it.**
+The trace at the top of `sift0` printed every bit array under the heading
+"@ start", which until this change showed the pattern `sift()` had just
+filled in.  With the fill gone it printed uninitialised heap on the first
+call and the previous denominator's leavings afterwards: `valgrind
+./ratpoints-debug '1 2 3 4 5 6 7' 40 -q` gave 192 errors from 4 contexts
+against none at `v2.3`.  It now prints `bits16` and the three new parameters,
+which is what the starting state actually is, and valgrind is clean again.
+Nothing outside a `-DDEBUG` build was affected --- `sift.o` and
+`find_points.o` are byte-identical before and after the fix --- but a debug
+build that reports errors in a memory checker is a debug build nobody can use
+to find anything else.
+
+**`make debug` had not linked since the parameter work landed.**
+`run_shape` uses `sqrt` and `check_cost` uses `log`, and the
+`ratpoints-debug` rule never passed `-lm`; the ordinary `ratpoints` rule gets
+it through `CCFLAGS3`.  That is a fault of `v2.3`, not of this branch, and it
+is why the paragraph above had gone unnoticed.  Fixed here because the fix
+was needed to test the fix.
+
+**The first sieving prime had lost its trace.**  The `-DDEBUG` dump of the
+registers sits inside the prime loop, which now starts at the second prime,
+so the effect of the first one was no longer shown.  Restored.
+
+**`_rp_fill_arrays` was counting the whole range**, which is exactly what
+`_rp_arrays_swept` already reports, so "cycles per bit array" for that row
+divided by a number three orders of magnitude too large.  It now counts what
+the region writes: the two boundary words and the padding.
 
 ## Correctness
 

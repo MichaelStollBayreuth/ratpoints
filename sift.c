@@ -78,7 +78,9 @@ unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
  * make the count a multiple of RATPOINTS_CHUNK.  Until 2.3 this was a pass
  * over the whole array, writing the 2-adic pattern into every bit array
  * before the first phase ANDed anything into it; the first phase's first
- * prime does that now, and this is what is left. */
+ * prime does that now, and this is what is left.  So little is left that the
+ * two rdtsc reads around it are a good part of what it reports: take the
+ * figure as an upper bound on the cost, not as a measurement of it. */
 unsigned long long _rp_fill_cycles = 0, _rp_fill_arrays = 0;
 /* and the whole of sift(), so that what is left of it once the set-up and
  * the two phases are taken out can be seen */
@@ -450,13 +452,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   long nchecks = args->sp3 - sp2; /* further primes, for the third stage */
 
 #ifdef DEBUG
-  { long n, c = 0;
-    printf("\nsift0(b = %ld) @ start [high numerators to the left]:\n", b);
-    for(n = w_high - w_low - 1; n >= 0; n--, c++)
-    { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
-      PRINT_RBA(survivors[n]);
-    }
-    printf("\n");
+  /* There is nothing in the survivors array to print: since 2.3 the first
+   * phase's first prime writes it, so on entry it holds either nothing at
+   * all (the first call) or the previous denominator's leavings.  What goes
+   * into it is this pattern, with the two ends cleared after the phase. */
+  { printf("\nsift0(b = %ld) @ start: %ld bit arrays from ",
+           b, w_high - w_low);
+    PRINT_RBA(bits16);
+    printf("\n  mask_low = %ld, mask_high = %ld, padding = %ld\n",
+           mask_low, mask_high, n_pad);
     fflush(NULL);
   }
 #endif
@@ -476,8 +480,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * population count on each of them, which was 18% of "make testhigh" and
    * sat outside every timed region -- so the instrumentation was itself the
    * larger part of the "quarter of the run in no phase" that prompted this
-   * change.  The two boundary words are counted unmasked, which is a handful
-   * of bits per call out of RATPOINTS_ARRAY_SIZE of them. */
+   * change.  It is not quite the same quantity: the two boundary words are
+   * counted unmasked, so the count is high by whatever those two ends would
+   * have lost.  That is negligible over a long numerator interval and is not
+   * negligible over a short one, which is the case at a small height bound
+   * -- so read bits_in as an upper bound, and compare it with bits_1 rather
+   * than trusting it absolutely. */
   _rp_bits_in += (unsigned long long)(w_high - w_low - n_pad)
                    *_rp_popcnt(&bits16);
   _rp_and1 += (unsigned long long)(w_high - w_low)*sp1;
@@ -601,6 +609,63 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
       while(siv0 >= sieves[0].end) { siv0 -= sieves[0].p; }
       sieves[0].start = siv0;
+
+#ifdef DEBUG
+      /* the same trace the loop below prints for every other prime */
+      { printf("\nsift0 after prime p = %ld, w_low_new = %ld"
+               " [high numerators to the left]:\n\n",
+               sieves[0].p, w_low_new);
+#if (RATPOINTS_CHUNK >= 16)
+        PRINT_RBA(reg15); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 15)
+        PRINT_RBA(reg14); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 14)
+        PRINT_RBA(reg13); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 13)
+        PRINT_RBA(reg12); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 12)
+        PRINT_RBA(reg11); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 11)
+        PRINT_RBA(reg10); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 10)
+        PRINT_RBA(reg9); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 9)
+        PRINT_RBA(reg8); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 8)
+        PRINT_RBA(reg7); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 7)
+        PRINT_RBA(reg6); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 6)
+        PRINT_RBA(reg5); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 5)
+        PRINT_RBA(reg4); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 4)
+        PRINT_RBA(reg3); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 3)
+        PRINT_RBA(reg2); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 2)
+        PRINT_RBA(reg1); printf("\n");
+#endif
+#if (RATPOINTS_CHUNK >= 1)
+        PRINT_RBA(reg0); printf("\n");
+#endif
+        fflush(NULL);
+      }
+#endif
 
 
       for(n = 1; n < sp1; n++)
@@ -884,7 +949,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     }
     RP_TOC(t_fill, _rp_fill_cycles);
 #ifdef RP_PHASE_TIMING
-    _rp_fill_arrays += (unsigned long long)(w_high - w_low);
+    /* what this region writes, which since 2.3 is at most the two boundary
+     * words and the padding -- not the whole range, which is what
+     * _rp_arrays_swept already counts */
+    _rp_fill_arrays += (unsigned long long)((mask_low ? 1 : 0)
+                                             + (mask_high ? 1 : 0) + n_pad);
 #endif
   }
 
