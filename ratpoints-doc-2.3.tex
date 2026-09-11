@@ -1545,7 +1545,7 @@ denominator, so per word of numerators both fall like $1/U$ with the length
 of the run. The program now works out $U$, and the number of denominators,
 before it looks at a single prime. With that it (i)~scales the offset from
 \texttt{sp1} to \texttt{sp2} by the length of the run, which is what lets one
-tuning serve every height bound and is worth $8.6\%$ of \texttt{make
+tuning serve every height bound and is worth $12\%$ of \texttt{make
 testhighmany}; (ii)~ranks the primes by what they cost divided by what they
 say rather than by what they say alone, so that at equal quality it prefers
 a smaller prime, whose table is cheaper; and (iii)~counts what the sieve is
@@ -1557,6 +1557,12 @@ representations $(ka, kb)$ of a rational point pass every prime test, so a
 floor of survivors outlives any amount of sieving. Sections~\ref{sec:spchoice}
 and~\ref{sec:adapt} have the details, and \verb+-U 0+, \verb+-C 0+ and
 \verb+-A 0+ switch the three off individually.
+
+Together they are worth $5.6\%$ of \texttt{make test1}, $11.9\%$ of
+\texttt{make testhighmany} and $13.7\%$ of the new \texttt{make testdegrees},
+and cost half a per cent on the random curves at the large height bound,
+which want one or two fewer second-stage primes than the pair of constants
+gives them.
 
 The loop in \texttt{sieving\_info} that evaluates the polynomial at every
 residue modulo every prime now reduces by multiplying rather than by

@@ -37,7 +37,7 @@ prime's sieving table has `p` rows and is rebuilt for each denominator class tha
 costs `O(p^2)` spread over the whole run: at equal quality a smaller prime is strictly better, and
 at a small height bound it is much better. Ranking the primes by what they cost rather than by what
 they say alone is worth 5% of `make test1`, and scaling the number of second-stage primes by the
-length of the run is worth 8.6% of `make testhighmany`. While it runs, the program also counts what
+length of the run is worth 12% of `make testhighmany`. While it runs, the program also counts what
 the sieve is actually finding and corrects the third stage from the count — which gets at the one
 thing no prediction can, namely that the non-reduced forms `(ka, kb)` of a rational point pass
 every prime test, so a floor of survivors outlives any amount of sieving.
