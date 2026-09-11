@@ -935,13 +935,20 @@ sample over the range of denominators is accurate to a fraction of a per cent
 \texttt{RATPOINTS\_SP2\_U0} is the length of run at which setting a prime up
 costs as much as sieving with it; like the other two it is a property of the
 machine. Setting it to zero restores a flat offset. This is what lets one
-tuning serve every height bound: the measured best offset is $3$ at a height
-bound of $16383$ and $9$ at $2\cdot 10^5$, and using the smaller one at the
-larger bound costs $8.6\%$ of \texttt{make testhighmany}. The first stage
-needs no such correction, and measurement agrees that it does not: a
-first-stage prime costs one \texttt{AND} per word unconditionally, so the
-fixed part is a far smaller share of what it costs, and the best threshold
-hardly moves with the height bound.
+tuning serve every height bound. Sweeping the offset gives four measured
+optima --- $3$ on random curves at a height bound of $16383$, $5$ on
+point-rich ones there, $9$ on random curves at $2\cdot 10^5$ and $12$ on
+point-rich ones --- and the two constants land on $3$, $8$, $11$ and $11$.
+Using the small-bound value at the large one costs $12\%$ of \texttt{make
+testhighmany}. The first stage needs no such correction, and measurement
+agrees that it does not: a first-stage prime costs one \texttt{AND} per word
+unconditionally, so the fixed part is a far smaller share of what it costs,
+and the best threshold hardly moves with the height bound.
+
+The one thing this shape cannot fit is the point-rich curves at the small
+height bound, which want $5$ and are given $8$. Their survivor rate is twice
+the random curves', so a second-stage prime costs them twice as much per
+word, and a formula in the length of the run alone cannot see that.
 
 The same two quantities say which primes to use, not just how many. The
 sieving table for~$p$ has $p$ rows and is rebuilt for each denominator class

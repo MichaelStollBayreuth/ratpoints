@@ -426,3 +426,28 @@ not a failure of the arithmetic but of the shape: their survivor rate is
 twice the random curves', so a second-phase prime costs them twice as much
 per word, and a formula in `U` alone cannot see that.  The marginal rule can,
 which is the argument for it that the timings above do not make.
+
+## The headline, with everything fitted
+
+Everything on, against `-U 0 -R 5 -C 0 -A 0`, which is `v2.3` exactly.
+
+| suite | ratio | |
+|---|---|---|
+| test1 (random, 16383) | 0.9437 | **-5.63%** |
+| test1many (point-rich, 16383) | 0.9950 | -0.50% |
+| testdegrees (degrees 3, 4, 7, 8 at 16383) | 0.8628 | **-13.72%** |
+| testhighmany (point-rich, 200000) | 0.8815 | **-11.85%** |
+| testhigh (random, 200000) | 1.0047 | +0.47% |
+
+The degree-varied suite gains most of all, which is worth a moment.  Nothing
+in it is aimed at any particular degree; what those curves have in common is
+that they are *not* the curves any of this was tuned on, and the rules that
+replaced the tuned constants are the ones that carry over.  The curves of
+degree 3 and 4 also have much cheaper exact checks, which shifts the balance
+the marginal rule is weighing, and a formula can follow that where a fitted
+constant cannot.
+
+The one loss is the random curves at the large height bound, half a per cent,
+and it is the known cost of the offset pair: they want 9 and are given 11.
+Against that, the point-rich half at the same bound gains 11.85%, and the two
+together are 4.0% faster.
