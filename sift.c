@@ -398,20 +398,6 @@ static inline long mod(long a, long b)
   return(a);
 }
 
-/**************************************************************************
- * The inner loop of the sieving procedure                                *
- **************************************************************************/
-
-/* b is the denominator;
- * the bit-arrays to be dealt with are indexed w_low..w_high-1,
- * where index 0 is the array whose zeroth bit corresponds to 0
- * (or to 1 when using only odd numerators, as specified by which_bits).
- * survivors points to space to be used for the sieving.
- * sieves points to the sieving information.
- * quit will be set when the search is stopped (because a point was found).
- * process is the function used to deal with a point that was found;
- * it is passed the pointer info, which can be used for data that
- * should persist between calls. */
 /* What happens to one surviving numerator: the test for common factors,
  * then the third stage.  The two counters say how many numerators got that
  * far, which is what lets the number of primes be corrected during the run
@@ -426,6 +412,20 @@ static inline int accepted(long a, long b, const check_spec *csp, long n,
   return(1);
 }
 
+/**************************************************************************
+ * The inner loop of the sieving procedure                                *
+ **************************************************************************/
+
+/* b is the denominator;
+ * the bit-arrays to be dealt with are indexed w_low..w_high-1,
+ * where index 0 is the array whose zeroth bit corresponds to 0
+ * (or to 1 when using only odd numerators, as specified by which_bits).
+ * survivors points to space to be used for the sieving.
+ * sieves points to the sieving information.
+ * quit will be set when the search is stopped (because a point was found).
+ * process is the function used to deal with a point that was found;
+ * it is passed the pointer info, which can be used for data that
+ * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
            ratpoints_bit_array *survivors, sieve_spec *sieves,
