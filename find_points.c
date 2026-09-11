@@ -74,6 +74,17 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
  * would pay it whether or not a survivor turns up */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
 extern unsigned long long _rp_arrays_swept;
+/* and building one sieve table, which is the fixed cost a prime has to earn
+ * back over the run; see run_shape */
+extern unsigned long long _rp_init_cycles, _rp_init_calls, _rp_init_rows;
+extern unsigned long long _rp_setup_cycles, _rp_setup_dens;
+# define RP_SETUP_TIC(t) unsigned long long t = __rdtsc()
+# define RP_SETUP_TOC(t) do { _rp_setup_cycles += __rdtsc() - (t); \
+                              _rp_setup_dens++; } while(0)
+# define RP_INIT_TIC(t) unsigned long long t = __rdtsc()
+# define RP_INIT_TOC(t, n) do { _rp_init_cycles += __rdtsc() - (t); \
+                                _rp_init_calls++; _rp_init_rows += (n); } \
+                           while(0)
 # define RP_BP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BP_TOC(t, n) do { _rp_bp_cycles += __rdtsc() - (t); _rp_bp_dens++; \
                               _rp_bp_steps += (n); } while(0)
@@ -82,6 +93,10 @@ extern unsigned long long _rp_arrays_swept;
 # define RP_BC_TOC(t)
 # define RP_BP_TIC(t)
 # define RP_BP_TOC(t, n)
+# define RP_INIT_TIC(t)
+# define RP_INIT_TOC(t, n)
+# define RP_SETUP_TIC(t)
+# define RP_SETUP_TOC(t)
 #endif
 
 
@@ -91,7 +106,7 @@ extern unsigned long long _rp_arrays_swept;
 
 extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
-typedef struct { double r; ratpoints_sieve_entry *ssp; } entry;
+typedef struct { double r; double key; ratpoints_sieve_entry *ssp; } entry;
 
 typedef struct { int p; int val; int slope; } use_squares1_info;
 
@@ -879,10 +894,187 @@ static bit_selection get_2adic_info(ratpoints_args *args,
  * the `best' primes for sieving.                                         *
  **************************************************************************/
 
+/* Primes are ranked by what they say per unit of what they cost, not by
+ * what they say alone; key is set by prime_key() below.  With the cost of a
+ * table switched off the key is monotone in r and this is the old order. */
 static int compare_entries(const void *a, const void *b)
+{
+  double diff = (((entry *)a)->key - ((entry *)b)->key);
+  return (diff > 0) ? 1 : (diff < 0) ? -1 : 0;
+}
+
+/* Beyond the second phase a prime builds no table, so all that separates
+ * two of them is what they say: there the order is by density alone. */
+static int compare_by_r(const void *a, const void *b)
 {
   double diff = (((entry *)a)->r - ((entry *)b)->r);
   return (diff > 0) ? 1 : (diff < 0) ? -1 : 0;
+}
+
+/* What one more prime costs the sieve, per numerator word, in units of what
+ * a first-phase prime costs there.
+ *
+ * per_word is the part that is paid for every word (or for every surviving
+ * bit array, which comes to the same thing once multiplied by the survival
+ * rate): 1 in the first phase, COST_PHASE2*rate in the second, and the
+ * third stage's own cost per survivor in the third.  The other two terms are
+ * paid once and spread over the run: the sieve table, which the third stage
+ * does not build, and the step of bp_list, which every stage pays.
+ */
+static double prime_cost(long p, double per_word, int tabled,
+                         double cost_table, double u_words, double n_denoms)
+{ double cost = per_word + RATPOINTS_COST_BP*n_denoms/u_words;
+
+  if(tabled && cost_table > 0.0)
+  { double builds = (n_denoms < (double)p) ? n_denoms : (double)p;
+
+    cost += cost_table*(double)p*builds/u_words;
+  }
+  return(cost);
+}
+
+/* The rank of a prime: what it costs divided by what it says.  A prime
+ * multiplies the survival rate by r, so what it says is -log(r), and the
+ * best set of primes for a given total cost is found by taking them in
+ * increasing order of this ratio. */
+static double prime_key(double r, long p, double per_word, int tabled,
+                        double cost_table, double u_words, double n_denoms)
+{ double info = -log(r);
+
+  if(info <= 0.0) { return(1.0e300); }
+  return(prime_cost(p, per_word, tabled, cost_table, u_words, n_denoms)/info);
+}
+
+/* ----------------------------------------------------------------------
+ * Correcting the number of primes from what the sieve is actually doing
+ *
+ * sieving_info picks sp1, sp2 and sp3 before anything has been sieved, from
+ * R(n), the product of the densities.  That prediction is wrong in a way no
+ * amount of care will fix.  The non-reduced representations (k*a, k*b) of a
+ * rational point are the same rational number, so they give the same value
+ * of f and pass every prime test there is: a floor of survivors outlives any
+ * amount of sieving, and only the test for common factors removes it.  R(n)
+ * cannot see that floor, so it always overshoots -- which is why sp2 could
+ * never be predicted and ended up as a tuned offset.
+ *
+ * The sieve itself knows better.  The scan visits every bit array anyway, so
+ * counting the non-empty ones costs an increment on a path taken half a per
+ * cent of the time; the survivors of the second phase and of the test for
+ * common factors are counted as cheaply.  Two such counts pin both terms of
+ *
+ *          S(n) = floor + chance * R(n)
+ *
+ * and the marginal rule can then be applied to the curve in hand rather than
+ * to the predicted one.
+ *
+ * Changing the number of primes part-way through a run is safe by
+ * construction: sieving only ever removes numerators that cannot be points,
+ * so using more or fewer of them for later denominators changes the running
+ * time and nothing else.  What it must not do is get ahead of bp_list, which
+ * is why sp3_valid says how many of its entries are up to date.
+ * ---------------------------------------------------------------------- */
+
+/* how much data is wanted before the first correction, in numerator words;
+ * after that the next one waits until twice as much has been seen */
+#define RP_ADAPT_WORDS 1000000UL
+#define RP_ADAPT_ARRAYS 1000UL   /* ...and this many non-empty bit arrays */
+#define RP_ADAPT_BITS 200UL      /* ...and this many survivors of phase 2 */
+
+static void adapt_primes(ratpoints_args *args)
+{ ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
+  double u = args->run_words, d = args->run_denoms;
+  double cost_table = (args->cost_table >= 0.0) ? args->cost_table
+                                                : RATPOINTS_COST_TABLE;
+  double words = (double)args->n_words;
+  double s1, s2, r1, r2, chance, level, s, rate;
+  long n, sp1 = args->sp1, sp2 = args->sp2, max = args->sp3_max;
+
+  /* next time, when twice as much has been seen */
+  args->adapt_at = args->n_words + args->n_words;
+
+  if(words <= 0.0 || sp2 <= sp1 || sp1 <= 0) { return; }
+  if(args->n_arrays < RP_ADAPT_ARRAYS || args->n_bits < RP_ADAPT_BITS)
+  { return; }
+
+  /* the two rates the run has shown, per numerator word */
+  s1 = (double)args->n_arrays/words;
+  s2 = (double)args->n_bits/words;
+
+  r1 = 1.0;
+  for(n = 0; n < sp1; n++) { r1 *= sieve_list[n]->r; }
+  r2 = r1;
+  for(n = sp1; n < sp2; n++) { r2 *= sieve_list[n]->r; }
+  if(r1 - r2 <= 0.0 || s1 <= s2) { return; }
+
+  chance = (s1 - s2)/(r1 - r2);
+  level = s1 - chance*r1;          /* the floor */
+  if(level < 0.0) { level = 0.0; }
+
+  /* How many primes the second phase should use.  Adding the next one costs
+   * what it does on every bit array still in play, plus the fixed costs it
+   * has to earn back over the run, and saves the survivors it removes -- all
+   * of which would otherwise be extracted, tested for common factors, run
+   * through the third stage and sometimes checked exactly. */
+  { long want = sp2;
+
+    rate = r2;
+    s = level + chance*rate;
+    for(n = sp2; n < max; n++)
+    { double r = sieve_list[n]->r;
+      double next = level + chance*rate*r;
+      double cost = prime_cost(sieve_list[n]->p, RATPOINTS_COST_PHASE2*s, 1,
+                               cost_table, u, d);
+
+      if((s - next)*RATPOINTS_COST_SURVIVOR <= cost) { break; }
+      rate *= r; s = next; want++;
+    }
+    if(want == sp2)
+    { /* nothing to add: see whether the last one is still worth having */
+      for(n = sp2 - 1; n > sp1; n--)
+      { double r = sieve_list[n]->r;
+        double prev = level + chance*rate/r;
+        double cost = prime_cost(sieve_list[n]->p,
+                                 RATPOINTS_COST_PHASE2*prev, 1,
+                                 cost_table, u, d);
+
+        if((prev - s)*RATPOINTS_COST_SURVIVOR > cost) { break; }
+        rate /= r; s = prev; want--;
+      }
+    }
+    args->sp2 = want;
+  }
+
+  /* And how many the third stage should use.  Here the measurement is the
+   * number of survivors a denominator brings to the stage -- after the test
+   * for common factors, which is the one thing no prime can help with -- so
+   * it replaces both the predicted rate and the fitted fraction that stood
+   * for the coprimality test. */
+  if(args->sp3_extra < 0 && args->n_sifts > 0)
+  { double per_denom = (args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
+                                                    : RATPOINTS_SP3_PER_DENOM;
+    double S = (double)args->n_coprime/(double)args->n_sifts;
+    double sp2_old = level + chance*r2;
+    long sp3;
+
+    /* the second phase may just have moved; carry the measurement across */
+    if(sp2_old > 0.0) { S *= s/sp2_old; }
+
+    for(sp3 = args->sp2; sp3 < max; sp3++)
+    { double r = sieve_list[sp3]->r;
+
+      if(S*(1.0 - RATPOINTS_SP3_PER_SURVIVOR - r) <= per_denom) { break; }
+      S *= r;
+    }
+    args->sp3 = sp3;
+  }
+  else if(args->sp3 < args->sp2) { args->sp3 = args->sp2; }
+
+#ifdef RP_PRIME_STATS
+  fprintf(stderr, "[adapt] words=%lu s1=%.3g s2=%.3g floor=%.3g"
+          " sp1=%ld sp2=%ld sp3=%ld\n", args->n_words, s1, s2, level,
+          args->sp1, args->sp2, args->sp3);
+#endif
 }
 
 /* How many primes the first phase needs: enough of them that the expected
@@ -914,6 +1106,33 @@ static long phase_2_offset(long extra, double u0, double u_words)
   return((long)(e + 0.5));
 }
 
+/* u modulo p for a full-width u, by Barrett reduction.  With
+ * m = floor(2^64/p), the quotient floor(u*m/2^64) is floor(u/p) or one less,
+ * so one conditional subtraction finishes the job: two multiplications in
+ * place of a division.  The Horner loop below runs this once for every
+ * residue and every prime, which is O(degree*p) per prime per curve.
+ *
+ * This is not the reduction sift.c uses.  That one is cheaper still, but it
+ * is exact only below 2^32, and the accumulator here runs up to p^(degree+1).
+ */
+#ifdef __SIZEOF_INT128__
+static inline unsigned long barrett(unsigned long u, unsigned long p,
+                                    unsigned long m)
+{ unsigned long r = u - (unsigned long)(((__uint128_t)u*m) >> 64)*p;
+
+  return((r >= p) ? r - p : r);
+}
+#else
+static inline unsigned long barrett(unsigned long u, unsigned long p,
+                                    unsigned long m)
+{ (void)m; return(u % p); }
+#endif
+
+/* How many Horner steps the accumulator survives without a reduction: after
+ * k of them it is below p^(k+1), so k+1 must not exceed the number of
+ * primes' worth of bits in a long. */
+#define RP_HORNER_STEPS ((long)(LONG_LENGTH/RATPOINTS_MAX_BITS_IN_PRIME) - 1)
+
 /* Look at one prime and record what it says about the curve.
  *
  * Fills in the table is_f_square[0..p], where entry a says whether f(a) is a
@@ -937,6 +1156,7 @@ static int examine_prime(ratpoints_args *args, long pn,
   long degree = args->degree;
   long p = prime[pn];
   long n, a, np; /* np counts the x-coordinates that give points mod p */
+  unsigned long recip = ULONG_MAX/(unsigned long)p; /* = floor(2^64/p) */
   int *is_f_square = args->int_next;
 
   args->int_next += p + 1; /* need space for (p+1) int's */
@@ -960,24 +1180,40 @@ static int examine_prime(ratpoints_args *args, long pn,
   /* Determine the x-coords a mod p such that f(a) is a square mod p. */
   np = squares[pn][coeffs_mod_p[0]]; /* for a = 0, f(a) = constant term */
   is_f_square[0] = np;
-  for(a = 1 ; a < p; a++)
-  { unsigned long s = coeffs_mod_p[degree];
-    /* try to avoid divisions (by p) */
-    if((degree+1)*RATPOINTS_MAX_BITS_IN_PRIME <= LONG_LENGTH)
-    { for(n = degree - 1 ; n >= 0 ; n--)
+  /* Evaluate f at every residue by Horner, reducing on a fixed schedule.
+   * Up to RP_HORNER_STEPS steps fit in a long without one, which at the
+   * default PRIME_SIZE is every degree up to 7; beyond that the accumulator
+   * is reduced every RP_HORNER_STEPS steps.  The schedule is fixed rather
+   * than decided by testing the accumulator, which is what this used to do:
+   * that test is a data-dependent branch in the innermost loop, and with the
+   * reduction now two multiplications instead of a division it is cheaper to
+   * reduce on a schedule than to work out whether to.
+   * (It also puts right what raising PRIME_SIZE from 7 to 8 did to degree 8:
+   * it moved the boundary of the division-free path from degree 8 to 7, so
+   * genus 3 with an even model took a conditional division in every step.) */
+  if(degree <= RP_HORNER_STEPS)
+  { for(a = 1 ; a < p; a++)
+    { unsigned long s = coeffs_mod_p[degree];
+
+      for(n = degree - 1 ; n >= 0 ; n--)
       { s *= a; s += coeffs_mod_p[n]; }
       /* here, s < p^(degree+1) <= max. long */
-      s %= p;
+      s = barrett(s, p, recip);
+      if((is_f_square[a] = squares[pn][s])) { np++; }
     }
-    else
-    { for(n = degree - 1 ; n >= 0 ; n--)
+  }
+  else
+  { for(a = 1 ; a < p; a++)
+    { unsigned long s = coeffs_mod_p[degree];
+      long k = 0;
+
+      for(n = degree - 1 ; n >= 0 ; n--)
       { s *= a; s += coeffs_mod_p[n];
-        if(s+1 >= (1UL)<<(LONG_LENGTH - RATPOINTS_MAX_BITS_IN_PRIME))
-        { s %= p; }
+        if(++k == RP_HORNER_STEPS) { s = barrett(s, p, recip); k = 0; }
       }
-      s %= p;
+      s = barrett(s, p, recip);
+      if((is_f_square[a] = squares[pn][s])) { np++; }
     }
-    if((is_f_square[a] = squares[pn][s])) { np++; }
   }
   /* last entry says if there are points at infinity mod p */
   is_f_square[p] = (degree & 1) || squares[pn][coeffs_mod_p[degree]];
@@ -1021,6 +1257,9 @@ static int examine_prime(ratpoints_args *args, long pn,
     /* the reciprocal the third stage reduces with; see stage3() in sift.c .
      * One division per prime and curve, against one per survivor saved. */
     se->magic = ULONG_MAX/(unsigned long)p + 1;
+    /* the entry keeps the density too, so that the choice of primes can be
+     * revisited during the run, when prec[] is long gone */
+    se->r = prec_entry->r;
     se->offset = offsets[pn];
     /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
      * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
@@ -1209,6 +1448,15 @@ static long sieving_info(ratpoints_args *args,
   long sp2_extra = (args->sp2_extra >= 0) ? args->sp2_extra
                                           : RATPOINTS_SP2_EXTRA;
   double sp2_u0 = (args->sp2_u0 >= 0.0) ? args->sp2_u0 : RATPOINTS_SP2_U0;
+  double cost_table = (args->cost_table >= 0.0) ? args->cost_table
+                                                : RATPOINTS_COST_TABLE;
+
+  /* Whether the number of primes is ours to choose, and so ours to correct
+   * as the run goes on; see adapt_primes.  If the caller fixed sp1 or sp2,
+   * they stay fixed. */
+  args->adapt_at = (args->adapt != 0 && args->sp1 < 0 && args->sp2 < 0)
+                     ? RP_ADAPT_WORDS : ULONG_MAX;
+  args->sp3_valid = 0;
 
   /* How big the run is.  This is wanted before the first prime is looked at,
    * because the rule that decides whether to look past the primes we were
@@ -1230,7 +1478,11 @@ static long sieving_info(ratpoints_args *args,
 
     if(info < 0)
     { return(p); /* no points mod p, hence no rational points */ }
-    if(info > 0) { pnp++; }
+    if(info > 0)
+    { prec[pnp].key = prime_key(prec[pnp].r, p, 1.0, 1, cost_table,
+                                args->run_words, args->run_denoms);
+      pnp++;
+    }
 
     if((args->flags & RATPOINTS_CHECK_DENOM)
          && fba + fdc < args->max_forbidden
@@ -1382,6 +1634,25 @@ static long sieving_info(ratpoints_args *args,
    * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h . */
   if(args->sp1 < 0)
   { args->sp1 = primes_for_phase_1(prec, pnp, bits_per_word, target); }
+
+  /* Rank what is left again, for the second phase.  There a prime is applied
+   * only to the bit arrays that survived the first phase, so its per-word
+   * cost is smaller by the survival rate -- which makes the fixed cost of
+   * its table weigh far more heavily, and the size of the prime matter far
+   * more than it does in the first phase. */
+  if(args->sp1 >= 0 && args->sp1 < pnp)
+  { long n;
+    double rate = bits_per_word;
+
+    for(n = 0; n < args->sp1; n++) { rate *= prec[n].r; }
+    for(n = args->sp1; n < pnp; n++)
+    { prec[n].key = prime_key(prec[n].r, prec[n].ssp->p,
+                              RATPOINTS_COST_PHASE2*rate, 1, cost_table,
+                              args->run_words, args->run_denoms);
+    }
+    qsort(&prec[args->sp1], pnp - args->sp1, sizeof(entry), compare_entries);
+  }
+
   if(args->sp2 < 0) { args->sp2 = args->sp1 + sp2_extra; }
 
   /* update sp2 and sp1 if necessary */
@@ -1449,6 +1720,9 @@ static long sieving_info(ratpoints_args *args,
         if(info < 0)
         { return(prime[pn_lim-1]); /* no points mod p */ }
         if(info == 0) { continue; } /* it says nothing; try the next one */
+        /* the third stage builds no table, so its primes are ranked by what
+         * they say alone, which is what the selection below does */
+        prec[pnp].key = prec[pnp].r;
         pnp++;
       }
 
@@ -1472,6 +1746,33 @@ static long sieving_info(ratpoints_args *args,
       sp3++;
     }
     args->sp3 = sp3;
+
+    /* Put the rest of the primes in sieve_list too, in the order the third
+     * stage would take them.  They cost nothing to keep -- no table is built
+     * and no bp_list entry stepped until a prime is actually used -- and
+     * having them there is what lets adapt_primes() reach for one more
+     * during the run. */
+    { long n;
+
+      if(pnp > args->sp2)
+      { qsort(&prec[args->sp2], pnp - args->sp2, sizeof(entry),
+              compare_by_r);
+      }
+      for(n = args->sp2; n < pnp; n++) { sieve_list[n] = prec[n].ssp; }
+      args->sp3_max = pnp;
+      if(args->sp3_max < args->sp3) { args->sp3_max = args->sp3; }
+    }
+  }
+
+  /* The third stage may have looked at further primes, and those are now in
+   * sieve_list, where adapt_primes() can promote one into the second phase
+   * during the run -- at which point it does build a sieve table.  So the
+   * buffer the tables come out of has to cover every prime looked at, not
+   * just the ones the first two phases started with.  Nothing has been taken
+   * from it yet: the tables are built lazily while sieving. */
+  if(pn_lim > args->ba_buffer_primes)
+  { free(args->ba_buffer_na);
+    alloc_ba_buffer(args, pn_lim);
   }
 
   /* the reciprocals the first phase reduces word numbers with, in the order
@@ -1479,7 +1780,7 @@ static long sieving_info(ratpoints_args *args,
   { long n;
     unsigned long *magics = (unsigned long *)args->magics;
 
-    for(n = 0; n < args->sp3; n++) { magics[n] = sieve_list[n]->magic; }
+    for(n = 0; n < args->sp3_max; n++) { magics[n] = sieve_list[n]->magic; }
   }
 
 
@@ -1533,6 +1834,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
   check_spec *csp = (check_spec *)args->stage3_list;
   int do_setup = 1;
 
+  args->n_sifts++;
+
 #ifdef DEBUG
   printf("\nsift(b = %ld): start...\n", b); fflush(NULL);
 #endif
@@ -1575,6 +1878,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         long n;
 
         do_setup = 0; /* only do it once for every b */
+        RP_SETUP_TIC(t_setup);
 
 #ifdef DEBUG
         printf("\nsift: set up sieve...\n");
@@ -1599,7 +1903,12 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
           fflush(NULL);
 #endif
           /* copy if already initialized, else initialize */
-          ssp[n].ptr = sptr ? sptr : (*(se->init))(se, bp, args);
+          if(sptr) { ssp[n].ptr = sptr; }
+          else
+          { RP_INIT_TIC(t_init);
+            ssp[n].ptr = (*(se->init))(se, bp, args);
+            RP_INIT_TOC(t_init, p);
+          }
           /* put a meaningful value in the start field */
           ssp[n].start = ssp[n].ptr;
           /* set the end field */
@@ -1644,6 +1953,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
                            < RP_STAGE3_LIMIT)
                           ? se->p*args->height : 0;
         }
+        RP_SETUP_TOC(t_setup);
       }
 
       switch(which_bits)
@@ -1778,6 +2088,11 @@ long find_points_work(ratpoints_args *args,
 
   args->flags &= RATPOINTS_FLAGS_INPUT_MASK;
   args->flags |= RATPOINTS_CHECK_DENOM;
+
+  /* the counts that say what the sieve actually did, which the choice of
+   * primes is corrected from as the run goes on */
+  args->n_words = 0; args->n_arrays = 0; args->n_bits = 0;
+  args->n_coprime = 0; args->n_checks = 0; args->n_sifts = 0;
 
   /* initialize memory management */
   args->se_next = args->se_buffer;
@@ -2244,7 +2559,9 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_USE_SQUARES)
       /* need only take squares as denoms */
       { long b, bb;
-        long bp_list[args->sp3];
+        long bp_list[args->sp3_max];
+          /* sp3_max, not sp3: adapt_primes may reach for a
+           * further prime as the run goes on */
         long last_b = args->b_low;
 
 #ifdef DEBUG
@@ -2256,6 +2573,7 @@ long find_points_work(ratpoints_args *args,
 
           for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
+          args->sp3_valid = args->sp3;
         }
 
         for(b = 1; bb = b*b, bb <= args->b_high; b++)
@@ -2266,10 +2584,20 @@ long find_points_work(ratpoints_args *args,
             { long n;
               long d = bb - last_b;
 
-              /* fill bp_list */
+              /* fill bp_list, after any correction to how many primes
+               * the sieve is using (see adapt_primes): one just brought into
+               * play has no entry yet and is set from the denominator. */
+              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
               RP_BP_TIC(t_bp);
-              for(n = 0; n < args->sp3; n++)
-              { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
+                                                        : args->sp3;
+
+                for(n = 0; n < nv; n++)
+                { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+                for(n = nv; n < args->sp3; n++)
+                { bp_list[n] = mod(bb, sieve_list[n]->p); }
+                args->sp3_valid = args->sp3;
+              }
               RP_BP_TOC(t_bp, args->sp3);
               last_b = bb;
 
@@ -2291,7 +2619,9 @@ long find_points_work(ratpoints_args *args,
       else /* args->flags & RATPOINTS_USE_SQUARES1 */
       { long *div = &divisors[0];
         long b, bb;
-        long bp_list[args->sp3];
+        long bp_list[args->sp3_max];
+          /* sp3_max, not sp3: adapt_primes may reach for a
+           * further prime as the run goes on */
 
 #ifdef DEBUG
         printf("\n  using squares times divisors of leading coefficient\n");
@@ -2310,6 +2640,7 @@ long find_points_work(ratpoints_args *args,
 
             for(n = 0; n < args->sp3; n++)
             { bp_list[n] = mod(*div, sieve_list[n]->p); }
+            args->sp3_valid = args->sp3;
           }
 
           for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
@@ -2322,10 +2653,18 @@ long find_points_work(ratpoints_args *args,
                 long n;
                 long d = bb - last_b;
 
-                /* fill bp_list */
+                /* fill bp_list; see the note at the same place above */
+                if(args->n_words >= args->adapt_at) { adapt_primes(args); }
                 RP_BP_TIC(t_bp);
-                for(n = 0; n < args->sp3; n++)
-                { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+                { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
+                                                          : args->sp3;
+
+                  for(n = 0; n < nv; n++)
+                  { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+                  for(n = nv; n < args->sp3; n++)
+                  { bp_list[n] = mod(bb, sieve_list[n]->p); }
+                  args->sp3_valid = args->sp3;
+                }
                 RP_BP_TOC(t_bp, args->sp3);
                 last_b = bb;
 
@@ -2359,7 +2698,9 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_CHECK_DENOM)
       { long *forb;
         long b;
-        long bp_list[args->sp3];
+        long bp_list[args->sp3_max];
+          /* sp3_max, not sp3: adapt_primes may reach for a
+           * further prime as the run goes on */
         long last_b = args->b_low;
         unsigned long b_bits;
 
@@ -2372,6 +2713,7 @@ long find_points_work(ratpoints_args *args,
 
           for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
+          args->sp3_valid = args->sp3;
         }
 
 #ifdef DEBUG
@@ -2439,14 +2781,22 @@ long find_points_work(ratpoints_args *args,
             { long n;
               long d = b - last_b;
 
-              /* fill bp_list */
+              /* fill bp_list; see the note at the same place above */
+              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
               RP_BP_TIC(t_bp);
-              for(n = 0; n < args->sp3; n++)
-              { long bp = bp_list[n] + d;
-                long p = sieve_list[n]->p;
+              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
+                                                        : args->sp3;
 
-                while(bp >= p) { bp -= p; }
-                bp_list[n] = bp;
+                for(n = 0; n < nv; n++)
+                { long bp = bp_list[n] + d;
+                  long p = sieve_list[n]->p;
+
+                  while(bp >= p) { bp -= p; }
+                  bp_list[n] = bp;
+                }
+                for(n = nv; n < args->sp3; n++)
+                { bp_list[n] = mod(b, sieve_list[n]->p); }
+                args->sp3_valid = args->sp3;
               }
               RP_BP_TOC(t_bp, args->sp3);
               last_b = b;
@@ -2470,13 +2820,16 @@ long find_points_work(ratpoints_args *args,
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
       { long b;
-        long bp_list[args->sp3];
+        long bp_list[args->sp3_max];
+          /* sp3_max, not sp3: adapt_primes may reach for a
+           * further prime as the run goes on */
         long last_b = args->b_low;
 
         { long n;
 
           for(n = 0; n < args->sp3; n++)
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
+          args->sp3_valid = args->sp3;
         }
 
         for(b = args->b_low; b <= args->b_high; b++)
@@ -2486,14 +2839,22 @@ long find_points_work(ratpoints_args *args,
           { long n;
             long d = b - last_b;
 
-            /* fill bp_list */
+            /* fill bp_list; see the note at the same place above */
+            if(args->n_words >= args->adapt_at) { adapt_primes(args); }
             RP_BP_TIC(t_bp);
-            for(n = 0; n < args->sp3; n++)
-            { long bp = bp_list[n] + d;
-              long p = sieve_list[n]->p;
+            { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
+                                                      : args->sp3;
 
-              while(bp >= p) { bp -= p; }
-              bp_list[n] = bp;
+              for(n = 0; n < nv; n++)
+              { long bp = bp_list[n] + d;
+                long p = sieve_list[n]->p;
+
+                while(bp >= p) { bp -= p; }
+                bp_list[n] = bp;
+              }
+              for(n = nv; n < args->sp3; n++)
+              { bp_list[n] = mod(b, sieve_list[n]->p); }
+              args->sp3_valid = args->sp3;
             }
             RP_BP_TOC(t_bp, args->sp3);
             last_b = b;
@@ -2523,10 +2884,13 @@ long find_points_work(ratpoints_args *args,
    * counters it reads belong to the phase timing. */
   { static unsigned long long last_arrays = 0, last_dens = 0;
 
-    fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g\n",
+    fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
+            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu\n",
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
-            args->run_denoms, (double)(_rp_bp_dens - last_dens));
+            args->run_denoms, (double)(_rp_bp_dens - last_dens),
+            args->n_words, args->n_arrays, args->n_bits,
+            args->n_coprime, args->n_checks);
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif

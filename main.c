@@ -69,6 +69,7 @@ char *usage_str =
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
     "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
+    "                 [-C table_cost] [-A adapt]\n"
     "                 [-P stage3_primes] [-Q stage3_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
@@ -253,6 +254,8 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->survivors_per_word = -1.0; /* negative: compiled-in default */
   args->sp2_extra     = -1; /* negative: compiled-in default */
   args->sp2_u0        = -1.0; /* negative: compiled-in default */
+  args->cost_table    = -1.0; /* negative: compiled-in default */
+  args->adapt         = -1; /* negative: adapt when free to */
   args->sp3_extra     = -1; /* negative: choose from the curve */
   args->sp3_per_denom = -1.0; /* negative: compiled-in default */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
@@ -367,6 +370,21 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
+          i++;
+          break;
+        case 'A': /* whether to correct the number of primes during the run
+                   * from what the sieve is doing; zero switches it off */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
+          i++;
+          break;
+        case 'C': /* what building one row of a sieve table costs, in units
+                   * of one first-phase AND per word; zero ranks the primes
+                   * by what they say alone, as before 2.3 */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
           i++;
           break;
         case 'P': /* how many primes the third stage adds to sp2; negative

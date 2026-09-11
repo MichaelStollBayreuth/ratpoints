@@ -103,3 +103,97 @@ invalidated last time.
   operation count.
 * Confirm a binary by its output before timing it.
 * Both populations, always, and reported separately.
+
+---
+
+# What was done
+
+## Step 0: `run_shape()` -- the two quantities the rule was missing
+
+`sieving_info` now computes, before it chooses anything,
+
+* `args->run_words` = `U`, the 64-bit words of numerators the run will sweep;
+* `args->run_denoms` = `D`, the denominators it will actually sift.
+
+Both come out of the domain, the height bound, the 2-adic masks `den_bits`
+and `num_bits`, the forbidden divisors and the Jacobi test, with a 64-point
+midpoint sample over the range of `b` for the numerator measure, which is
+piecewise linear there.  Three cases: plain, `USE_SQUARES` (`b = k^2`) and
+`USE_SQUARES1` (`b = d*k^2`).
+
+Checked against `_rp_arrays_swept` and `_rp_bp_dens` curve by curve, with a
+`[runshape]` line printed per curve when both `-DRP_PRIME_STATS` and
+`-DRP_PHASE_TIMING` are on:
+
+| suite | U pred/act | D pred/act |
+|---|---|---|
+| test1 (random, 16383) | 0.87 | 0.93 |
+| test1many (rich, 16383) | 1.10 | 0.98 |
+| testhigh (random, 200000) | 1.04 | 0.96 |
+| testhighmany (rich, 200000) | 1.26 | 0.96 |
+
+Per curve the middle 80% of `U pred/act` on random curves is 0.6 to 1.1.
+That is the accuracy the use needs: `U` only ever appears as `U0/U`,
+comparing a fixed cost with a per-word one.
+
+**One trap, walked into.**  `den_bits` bit `j` is the denominator `b = j`
+mod 64, not `(b-1)` mod 64, even though the set-up shifts by `(b_low-1) & 63`
+-- because the loop shifts *before* it tests.  Reading it the other way
+inverted the parity for a third of the curves, gave them `keep = 0`, and made
+the prediction 2.4 times too small.  It looked like a modelling error and was
+an off-by-one.
+
+## Step 1: item 12, the phase-2 offset from `U`
+
+    sp2_extra = RATPOINTS_SP2_EXTRA / (1 + RATPOINTS_SP2_U0/U)
+
+with `RATPOINTS_SP2_EXTRA` raised from 5 to 9 and `RATPOINTS_SP2_U0` =
+1.2e6 words, fitted to the two measured optima (offset 3 at 16383, 9 at
+200000) using the *predicted* `U`, so that the fit and the use agree.
+`-U 0`, or `sp2_u0 = 0`, restores the flat offset, so one binary measures
+both arms and there is no code-alignment confound.
+
+## Step 2: item 13(a), the Horner loop in `examine_prime`
+
+`sieving_info` evaluates `f` at every residue for every prime, which is
+`O(degree*p)` per prime per curve and ends in a division by `p`.  Two changes:
+
+* the division becomes a **Barrett reduction** -- `m = floor(2^64/p)`, one
+  multiply-high, one multiply, one conditional subtraction.  Unlike the
+  Lemire reduction that item 11 put into `sift.c`, this one is exact for a
+  full-width accumulator, which is what the Horner needs.
+* the accumulator is reduced on a **fixed schedule** rather than when a test
+  says it must.  `RP_HORNER_STEPS = LONG_LENGTH/PRIME_SIZE - 1` steps fit
+  without a reduction, so at the default `PRIME_SIZE` every degree up to 7
+  still reduces only at the end, and degree 8 and above reduce every seven
+  steps instead of taking a data-dependent branch after every one.
+
+That is the regression TODO item 13 records: raising `PRIME_SIZE` from 7 to 8
+in item 6 moved the division-free boundary from degree 8 down to 7, so genus
+3 with an even model started dividing inside every Horner step.  It is fixed,
+and the fix helps every degree rather than only the one that regressed.
+
+## Step 3: item 8, ranking the primes by cost as well as by information
+
+`sieving_info` sorted the primes by `r` alone.  A prime's sieve table has `p`
+rows and is rebuilt for each denominator class that occurs, at most `p` of
+them, so over a run of `U` words it costs `COST_TABLE*p*min(D,p)/U` per word
+-- quadratic in the prime and inversely proportional to the length of the
+run.  Nothing in the old rule could see that.
+
+The key is now `cost/(-log r)`: what a prime costs divided by what it says.
+`-log r` and not `1-r`, because the survival rate is a product, so that is
+the quantity a greedy choice should maximise per unit cost.  The primes are
+ranked twice, because the cost differs by stage:
+
+* for the first phase, `cost = 1 + table + bp`;
+* for the second, `cost = COST_PHASE2*rate + table + bp`, with `rate` the
+  measured-in-advance survival rate after the first phase.  Since `rate` is
+  about 0.006, the table term is two or three times the per-word term at a
+  height bound of 16383, so the size of a prime matters far more in the
+  second phase than in the first;
+* the third stage builds no table at all, so its primes are ranked by `r`,
+  which is what it already did.
+
+`-C 0` (or `cost_table = 0`) drops the table term, and the key is then
+monotone in `r`: the old order exactly.

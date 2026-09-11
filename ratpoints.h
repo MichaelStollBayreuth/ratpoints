@@ -150,6 +150,37 @@
 # define RATPOINTS_SP3_COPRIME 0.7
 #endif
 
+/* What the sieve's operations cost, relative to each other.  All three are
+ * per numerator word and in units of what one first-phase prime costs there,
+ * which is one AND per word; they are properties of the machine, measured
+ * rather than fitted, by building with -DRP_PHASE_TIMING and dividing the
+ * cycles of each part by the number of times it ran.
+ *
+ * They are here because the primes are not equally expensive and the rule
+ * that picks them used to act as though they were.  The sieve table for p
+ * has p rows and is built once for each denominator class that turns up, so
+ * at most p times: over a run of U numerator words that is
+ * COST_TABLE*p*min(D,p)/U per word, which grows with the square of the prime
+ * and falls as the run gets longer.  At equal information a smaller prime is
+ * therefore strictly better, and at a small height bound it is much better.
+ * Setting COST_TABLE to zero (the cost_table field, or -C 0) drops the term
+ * and restores ranking by information alone. */
+#ifndef RATPOINTS_COST_TABLE
+# define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
+#endif
+#ifndef RATPOINTS_COST_BP
+# define RATPOINTS_COST_BP 22.0      /* one step of bp_list, per denominator */
+#endif
+#ifndef RATPOINTS_COST_PHASE2
+# define RATPOINTS_COST_PHASE2 46.0  /* one AND on a surviving bit-array */
+#endif
+/* what one survivor of the second phase costs from there on: the extraction,
+ * the test for common factors, the third stage and, for the few that get
+ * that far, the exact check */
+#ifndef RATPOINTS_COST_SURVIVOR
+# define RATPOINTS_COST_SURVIVOR 620.0
+#endif
+
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
      Unless num_primes is set explicitly, this is where the search starts:
      sieving_info() looks at further primes when a curve does not leave
@@ -168,6 +199,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  ratpoints_interval *domain; long num_inter;
                  long b_low; long b_high; long sp1; long sp2; long sp3;
                  double survivors_per_word; long sp2_extra; double sp2_u0;
+                 double cost_table; long adapt;
                  long sp3_extra; double sp3_per_denom;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
@@ -182,6 +214,10 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *forb_ba; void *forbidden;
                  void *ba_buffer_na; long ba_buffer_primes;
                  double run_words; double run_denoms;
+                 unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 unsigned long adapt_at; long sp3_max; long sp3_valid;
                }
         ratpoints_args;
 

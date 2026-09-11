@@ -81,6 +81,8 @@ int main(int argc, char *argv[])
   double survivors_per_word = -1.0; /* negative: compiled-in default */
   long sp2_extra = -1;               /* negative: compiled-in default */
   double sp2_u0 = -1.0;              /* negative: compiled-in default */
+  double cost_table = -1.0;          /* negative: compiled-in default */
+  long adapt = -1;                   /* negative: adapt when free to */
   long sp3_extra = -1;               /* negative: choose from the curve */
   double sp3_per_denom = -1.0;       /* negative: compiled-in default */
   int print_time = 0;                /* -T: report the CPU time used */
@@ -166,6 +168,18 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);
+          i++;
+          break;
+        case 'A': /* whether to correct the primes during the run */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &adapt) != 1) return(-6);
+          i++;
+          break;
+        case 'C': /* what one row of a sieve table costs */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &cost_table) != 1) return(-6);
           i++;
           break;
         case 'P': /* primes added to sp2 for the third stage */
@@ -308,6 +322,8 @@ int main(int argc, char *argv[])
         args.survivors_per_word = survivors_per_word;
         args.sp2_extra     = sp2_extra;
         args.sp2_u0        = sp2_u0;
+        args.cost_table    = cost_table;
+        args.adapt         = adapt;
         args.sp3_extra     = sp3_extra;
         args.sp3_per_denom = sp3_per_denom;
         args.array_size    = array_size;
