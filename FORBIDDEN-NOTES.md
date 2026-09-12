@@ -218,10 +218,22 @@ pass (TODO item 17).
   `c[d-1]`, the two top terms tie at `v_p(b) = 1` and `F/p = a^(d-1)(r_0 a +
   r_1 b') mod p`.  That is a unit, and `F` not a square, unless `a = -r_1
   b'/r_0 mod p`: so for those denominators only one numerator class mod `p`
-  can give a point.  The sieve cannot use it, because its tables are indexed
-  by `b mod p` and this depends on `b mod p^2`.  The gain would be phase-2
-  work on `(p-1)/p^2` of the denominators of about 15% of random curves --
-  well under 1% -- for a second family of tables.
+  can give a point.  The sieve cannot use it as it stands, because its
+  tables are indexed by `b mod p` and this depends on `b mod p^2`: it would
+  take `p-1` further tables for such a prime, indexed by `b/p mod p`, and a
+  hook where the class-0 table is selected.  **Estimated 2026-09-12** (after
+  the merge question came up): for those denominators, `(p-1)/p^2` of all,
+  the prime passes `(p-1)/p` of the numerators now and would pass `1/p`,
+  against `(p+1)/2p` for a typical class, so on a curve affected at `p` the
+  refinement removes 11% (`p = 3`), 15% (`p = 5`), 14% (`p = 7`), 12%
+  (`p = 11`) ... of the survivor-dependent work; a random curve is affected
+  at `p` with probability `(p-1)^2/p^3`.  Summed over the phase-1 primes
+  that is about 8% of the survivor-dependent work on random curves, which
+  is **1.1% of a run at height 16383 and 2.1% at 200000** (phase 2 with the
+  checks being 14.6% and 25.7% of those), and nothing on curves with a
+  square leading coefficient (the analogous tie at `v_p(b) = 2` for
+  `v_p(c[d]) = 2` is worth 0.3% of that work).  Run-time cost negligible;
+  the cost is the code.  Not done on this branch.
 * **`p = 2`.**  Handled by `get_2adic_info` modulo 16, which covers the
   analogous cases up to `v_2(b) = 3` exactly and treats `v_2(b) >= 4` as
   one class through `c[d] mod 16`; what it misses (`v_2(c[d]) >= 5` odd)
