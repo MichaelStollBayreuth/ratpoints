@@ -123,6 +123,12 @@ typedef struct { long p;
                  unsigned long *end;
                  unsigned long *curr; }
                forbidden_entry;
+  /* a prime p no denominator may be divisible by; tested with a bit array */
+
+typedef struct { long p; unsigned long mask; } forbidden_val;
+  /* a prime p and the set of valuations v_p(b) no denominator b may have:
+     bit m of mask is set <==> v_p(b) = m is excluded.  Tested by division.
+     See forbidden_valuations() for where these come from. */
 
 static const int squares16[16] = {1,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0};
  /* Says if a is a square mod 16, for a = 0..15 */
@@ -229,7 +235,7 @@ void find_points_init(ratpoints_args *args)
   args->den_info = malloc((PRIMES1000+2)*sizeof(use_squares1_info));
   args->divisors = malloc((MAX_DIVISORS+1)*sizeof(long));
   args->forb_ba = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_entry));
-  args->forbidden = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(long));
+  args->forbidden = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_val));
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -309,7 +315,7 @@ static long valuation1(long n, long p)
 {
   long v = 0;
   unsigned long rem;
-  unsigned long qn = abs(n);
+  unsigned long qn = labs(n);
   if(n == 0) { return(VERY_BIG); }
   rem = qn % p;
   while(rem == 0)
@@ -1415,6 +1421,21 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  */
 #define RUN_SHAPE_SAMPLES 64
 
+/* The fraction of all integers b with v_p(b) in the set the mask describes
+ * (bit m set <==> v_p(b) = m); the density of v_p(b) = m is (p-1)/p^(m+1). */
+static double forbidden_fraction(long p, unsigned long mask)
+{
+  double f = 0.0;
+  double q = 1.0/(double)p; /* 1/p^m */
+  long m;
+
+  for(m = 1; m < (long)LONG_LENGTH && (mask >> m) != 0; m++)
+  { if((mask >> m) & 1) { f += q*(1.0 - 1.0/(double)p); }
+    q /= (double)p;
+  }
+  return(f);
+}
+
 static void run_shape(ratpoints_args *args, bit_selection which_bits,
                       unsigned long den_bits,
                       const ratpoints_bit_array *num_bits,
@@ -1493,12 +1514,13 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
 
     if(args->flags & RATPOINTS_CHECK_DENOM)
     { forbidden_entry *fb = (forbidden_entry *)args->forb_ba;
-      long *fd = (long *)args->forbidden;
+      forbidden_val *fd = (forbidden_val *)args->forbidden;
 
       for(i = 0; i < fba; i++) { keep *= 1.0 - 1.0/(double)fb[i].p; }
-      for(i = 0; i < fdc; i++) { keep *= 1.0 - 1.0/(double)fd[i]; }
+      for(i = 0; i < fdc; i++)
+      { keep *= 1.0 - forbidden_fraction(fd[i].p, fd[i].mask); }
       /* the Jacobi symbol lets through half of the rest */
-      if(!(args->flags & RATPOINTS_NO_JACOBI)) { keep *= 0.5; }
+      if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.5; }
     }
   }
 
@@ -1510,6 +1532,81 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
   *u_words = keep*nums/(double)LONG_LENGTH;
   if(*n_denom < 1.0) { *n_denom = 1.0; }
   if(*u_words < 1.0) { *u_words = 1.0; }
+}
+
+/**************************************************************************
+ * The p-adic test on the denominator, for a prime p that divides the
+ * leading coefficient.
+ *
+ * If p does not divide the leading coefficient c[d] (d even), a denominator
+ * divisible by p is excluded exactly when c[d] is a non-square mod p, since
+ * then F(a,b) = c[d] a^d mod p is one too.  If p | c[d], then F(a,b) is 0
+ * mod p for every such denominator, which is a square, and the mod-p test
+ * cannot say anything; the question is p-adic.
+ *
+ * Write v_p(b) = m >= 1, so p does not divide a, and w_j = v_p(c[d-j]).
+ * The term c[d-j] a^(d-j) b^j of F(a,b) has valuation w_j + j*m.  If one
+ * term has strictly smaller valuation than all the others, it sets v_p(F)
+ * and F/p^v mod p, and F is not a square if that valuation is odd, nor if j
+ * is even and the unit part of c[d-j] is a non-square mod p (with d even,
+ * a^(d-j) and (b/p^m)^j are both squares then).  With j odd, (b/p^m)^j runs
+ * through non-squares as well as squares as b varies, so nothing follows;
+ * and when two terms tie for the minimum they may cancel, which is exactly
+ * what happens at a point of such a curve, so nothing follows either.
+ *
+ * For m large the leading term j = 0 wins on its own, so the excluded set
+ * is a tail of ones from some n on when v_p(c[d]) is odd or the unit part of
+ * c[d] is a non-square -- "no denominator is divisible by p^n" -- possibly
+ * with a few isolated valuations below it.  The commonest cases: v_p(c[d])
+ * = 1 and p | c[d-1] exclude p itself, and v_p(c[d]) = 1 with p not dividing
+ * c[d-1] exclude p^2 (at m = 1 the two top terms tie).
+ *
+ * Returns the excluded valuations as a bit mask, bit m set <==> v_p(b) = m
+ * is excluded, for the m with p^m <= b_high; 0 if there are none.  The
+ * caller decides how to test for them.
+ */
+static unsigned long forbidden_valuations(ratpoints_args *args, long pn,
+                                          const long *coeffs_mod_p)
+{
+  mpz_t *c = args->cof;
+  long degree = args->degree;
+  long p = prime[pn];
+  long w[degree+1]; /* w[j] = v_p(c[degree-j]); a zero coefficient is absent */
+  long r[degree+1]; /* the unit part of c[degree-j] mod p, in [1, p-1] */
+  int present[degree+1];
+  unsigned long mask = 0;
+  long j, m, pm;
+
+  for(j = 0; j <= degree; j++)
+  { long k = degree - j;
+
+    present[j] = (mpz_sgn(c[k]) != 0);
+    if(!present[j]) { w[j] = 0; r[j] = 0; }
+    else if(coeffs_mod_p[k] == 0)
+    { w[j] = valuation(c[k], p, &r[j], args->work[0]);
+      /* valuation() works on |c[k]|, and the sign matters here */
+      if(mpz_sgn(c[k]) < 0) { r[j] = p - r[j]; }
+    }
+    else { w[j] = 0; r[j] = coeffs_mod_p[k]; }
+  }
+
+  for(m = 1, pm = p; pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
+  { long jmin = 0, vmin = w[0];
+    int tie = 0;
+
+    for(j = 1; j <= degree; j++)
+    { if(present[j])
+      { long v = w[j] + j*m;
+
+        if(v < vmin) { vmin = v; jmin = j; tie = 0; }
+        else if(v == vmin) { tie = 1; }
+    } }
+    if(!tie && ((vmin & 1) || (((jmin & 1) == 0) && !squares[pn][r[jmin]])))
+    { mask |= 1UL << m; }
+    if(pm > args->b_high/p) { break; } /* p^(m+1) > b_high */
+    pm *= p;
+  }
+  return(mask);
 }
 
 static long sieving_info(ratpoints_args *args,
@@ -1533,7 +1630,7 @@ static long sieving_info(ratpoints_args *args,
        determine the `best' sieving primes. */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
-  long *forbidden = (long *)args->forbidden;
+  forbidden_val *forbidden = (forbidden_val *)args->forbidden;
 
   /* How many primes to look at.  The loop below may raise this: see the
    * comment at its end. */
@@ -1587,52 +1684,46 @@ static long sieving_info(ratpoints_args *args,
     }
 
     if((args->flags & RATPOINTS_CHECK_DENOM)
-         && fba + fdc < args->max_forbidden
-         && !is_f_square[p])
+         && fba + fdc < args->max_forbidden)
     { /* record forbidden divisors of the denominator */
       if(coeffs_mod_p[degree] == 0)
-      { /* leading coeff. divisible by p */
-        long r;
-        long v = valuation(c[degree], p, &r, args->work[0]);
+      { /* p divides the leading coefficient: see forbidden_valuations */
+        unsigned long mask = forbidden_valuations(args, pn, &coeffs_mod_p[0]);
 
-        if((v & 1) || !squares[pn][r])
-        { /* Can only get something when valuation is odd
-             or when valuation is even and lcf is not a p-adic square.
-             Compute smallest n such that if v(den) >= n, the leading
-             term determines the valuation. Then we must have v(den) < n. */
-          long n = 1;
-          long k, pp;
+        if(mask)
+        { /* the valuations a denominator can have at all */
+          unsigned long all = 0;
+          long m, pm;
 
-          for(k = degree-1; k >= 0; k--)
-          { if(coeffs_mod_p[k] == 0)
-            { long dummy;
-              long t = 1 + v - valuation(c[k], p, &dummy, args->work[0]);
-              long m = CEIL(t, (degree-k));
-
-              if(m > n) { n = m; }
-          } }
-          if(n == 1)
-          { forb_ba[fba].p     = p;
+          for(m = 1, pm = p;
+              pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
+          { all |= 1UL << m;
+            if(pm > args->b_high/p) { break; }
+            pm *= p;
+          }
+          if((mask & all) == all)
+          { /* every one of them: no denominator is divisible by p, which
+             * the bit arrays test for */
+            forb_ba[fba].p     = p;
             forb_ba[fba].start = &sieves0[pn][0];
             forb_ba[fba].end   = &sieves0[pn][p];
             forb_ba[fba].curr  = forb_ba[fba].start;
             fba++;
-            pp = p;
           }
           else
-          { for(pp = 1; n; n--) { pp *= p; } /* p^n */
-            forbidden[fdc] = pp; fdc++;
-          }
+          { forbidden[fdc].p = p; forbidden[fdc].mask = mask; fdc++; }
 
 #ifdef DEBUG
-          printf("\nexcluding denominators divisible by %ld\n", pp);
+          printf("\nexcluding denominators b with v_%ld(b) in %#lx"
+                 " (bit m <==> v = m)\n", p, mask);
           fflush(NULL);
 #endif
 
         }
       }
-      else /* leading coefficient is a non-square mod p */
-      { /* denominator divisible by p is excluded */
+      else if(!is_f_square[p])
+      { /* leading coefficient is a non-square mod p:
+         * a denominator divisible by p is excluded */
         forb_ba[fba].p     = p;
         forb_ba[fba].start = &sieves0[pn][0];
         forb_ba[fba].end   = &sieves0[pn][p];
@@ -1674,7 +1765,11 @@ static long sieving_info(ratpoints_args *args,
    * more of them among the primes the loop above did not reach.  This is
    * done here, before the primes are chosen, because the choice needs to
    * know how many denominators will survive these tests: see run_shape. */
-  if(args->flags & RATPOINTS_CHECK_DENOM)
+  if((args->flags & RATPOINTS_CHECK_DENOM)
+       && !mpz_perfect_square_p(c[degree]))
+       /* the test below asks for a non-square residue, which a square
+        * leading coefficient never has; such a curve gets here since the
+        * valuation test above applies to it */
   { long n;
 
     for(n = pn_lim;
@@ -1697,12 +1792,15 @@ static long sieving_info(ratpoints_args *args,
 
       }
     }
-    forb_ba[fba].p = 0;        /* terminating zero */
-    forbidden[fdc] = 0;        /* terminating zero */
+  }
+  if(args->flags & RATPOINTS_CHECK_DENOM)
+  { forb_ba[fba].p = 0;        /* terminating zero */
+    forbidden[fdc].p = 0;      /* terminating zero */
     args->max_forbidden = fba + fdc; /* note actual number */
   }
 
-  if(fba + fdc == 0)
+  /* nothing for the checked denominator loop to test? then use the plain one */
+  if(fba + fdc == 0 && !(args->flags & RATPOINTS_USE_JACOBI))
   { args->flags &= ~RATPOINTS_CHECK_DENOM; }
 
   /* the sieve tables live in a block that was reserved for args->num_primes
@@ -2177,9 +2275,10 @@ long find_points_work(ratpoints_args *args,
   int lcfsq = mpz_perfect_square_p(c[degree]);
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
-  long *forbidden = (long *)args->forbidden;
-    /* The forbidden divisors, a zero-terminated array.
-       Used when degree is even and leading coefficient is not a square */
+  forbidden_val *forbidden = (forbidden_val *)args->forbidden;
+    /* The forbidden divisors, two zero-terminated arrays: primes that are
+       tested for with bit arrays, and primes with a set of valuations that
+       are tested for by division.  Used when the degree is even. */
 
   use_squares1_info *den_info = (use_squares1_info *)args->den_info;
   long *divisors = (long *)args->divisors;
@@ -2445,11 +2544,18 @@ long find_points_work(ratpoints_args *args,
 
   /* Point(s) at infinity? */
   if((degree & 1) || lcfsq)
-  { args->flags &= ~RATPOINTS_CHECK_DENOM;
-    point_at_infty = 1;
+  { point_at_infty = 1;
     if(args->flags & RATPOINTS_VERBOSE)
     { printf("There are points at infinity\n\n"); }
   }
+  /* The tests on the denominator.  Odd degree has its own (use_squares);
+   * for even degree the Jacobi symbol test wants the leading coefficient
+   * not to be a square, and the p-adic test of forbidden_valuations does
+   * not mind, so a square leading coefficient keeps the checked loop as a
+   * possibility.  sieving_info switches it off if nothing comes of it. */
+  if(degree & 1) { args->flags &= ~RATPOINTS_CHECK_DENOM; }
+  else if(!lcfsq && !(args->flags & RATPOINTS_NO_JACOBI))
+  { args->flags |= RATPOINTS_USE_JACOBI; }
 
   /* Can use only squares as denoms if degree is odd and poly is +-monic */
   if(degree & 1)
@@ -2599,8 +2705,31 @@ long find_points_work(ratpoints_args *args,
     for( ; n < args->sp3; n++)
     { printf(" %ld", sieve_list[n]->p); }
     printf("\n  one exact check is put at %.0f cycles, %.2f times what it"
-           " costs\n    on the curves the third stage was tuned on\n\n",
+           " costs\n    on the curves the third stage was tuned on\n",
            args->check_rel*RATPOINTS_CHECK_REFERENCE, args->check_rel);
+    if(args->flags & RATPOINTS_CHECK_DENOM)
+    { forbidden_entry *fb = forb_ba;
+      forbidden_val *fd = forbidden;
+
+      printf("  denominators excluded:\n   ");
+      for( ; fb->p; fb++) { printf(" %ld|b", fb->p); }
+      for( ; fd->p; fd++)
+      { long p = fd->p, m, mmax, first, pm;
+
+        /* mmax: the largest valuation a denominator can have at p;
+         * first: where the tail of excluded valuations up to mmax begins */
+        for(mmax = 1, pm = p; pm <= args->b_high/p; mmax++) { pm *= p; }
+        for(first = mmax + 1; first > 1 && ((fd->mask >> (first-1)) & 1);
+            first--) {}
+        for(m = 1; m < first; m++)
+        { if((fd->mask >> m) & 1) { printf(" v_%ld(b)=%ld", p, m); } }
+        if(first <= mmax) { printf(" %ld^%ld|b", p, first); }
+      }
+      if(args->flags & RATPOINTS_USE_JACOBI)
+      { printf(" (lcf/b) = -1"); }
+      printf("\n");
+    }
+    printf("\n");
   }
 #endif
 
@@ -2809,7 +2938,7 @@ long find_points_work(ratpoints_args *args,
     } }
     else
     { if(args->flags & RATPOINTS_CHECK_DENOM)
-      { long *forb;
+      { forbidden_val *forb;
         long b;
         long bp_list[args->sp3_max];
           /* sp3_max, not sp3: adapt_primes may reach for a
@@ -2876,18 +3005,22 @@ long find_points_work(ratpoints_args *args,
 #endif
 
           if((b_bits & 1) && EXT0(bits))
-          { /* check if denominator is excluded */
-            for(forb = &forbidden[0] ; *forb && (b % (*forb)); forb++) {};
+          { /* check if denominator is excluded: is v_p(b) one of the
+             * valuations the entry for p forbids? */
+            for(forb = &forbidden[0];
+                forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
+                forb++) {};
 
 #ifdef DEBUG
-            if(*forb)
-            { printf("\nb = %ld: excluded mod %ld\n", b, *forb);
+            if(forb->p)
+            { printf("\nb = %ld: excluded, v_%ld(b) = %ld\n",
+                     b, forb->p, valuation1(b, forb->p));
               fflush(NULL);
             }
 #endif
 
-            if(*forb == 0
-                && ((args->flags & RATPOINTS_NO_JACOBI)
+            if(forb->p == 0
+                && (!(args->flags & RATPOINTS_USE_JACOBI)
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
@@ -2922,7 +3055,7 @@ long find_points_work(ratpoints_args *args,
 
 #ifdef DEBUG
             else
-            { if(*forb == 0)
+            { if(forb->p == 0)
               { printf("\nb = %ld: excluded by Jacobi symbol\n", b);
                 fflush(NULL);
             } }

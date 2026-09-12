@@ -21,12 +21,14 @@
 /***********************************************************************
  * testdata.h                                                          *
  *                                                                     *
- * A list of 1000 genus 2 curves to serve as test data for ratpoints   *
+ * A list of 1000 genus 2 curves to serve as test data for ratpoints,  *
+ * followed by eight more that reach the test on the denominators at   *
+ * a prime dividing the leading coefficient (see the end of the file)  *
  *                                                                     *
- * Michael Stoll, Jan 9, 2008                                          *
+ * Michael Stoll, Jan 9, 2008; the eight added Sep 12, 2026            *
  ***********************************************************************/
 
-#define NUM_TEST 1000
+#define NUM_TEST 1008
 
 long testdata[NUM_TEST][7] =
 {
@@ -1029,5 +1031,32 @@ long testdata[NUM_TEST][7] =
  {2,8,-7,-4,5,7,-9},
  {4,-4,4,4,0,5,5},
  {5,-2,2,-3,9,3,8},
- {4,3,-8,3,-9,4,6}
+ {4,3,-8,3,-9,4,6},
+ /* The eight curves below are not random.  Each reaches one case of the
+  * p-adic test on the denominators for p = 3 dividing the leading
+  * coefficient (forbidden_valuations() in find_points.c) and has a
+  * rational point with a denominator that the test must let through, so a
+  * test that excludes too much loses a point here.  The points were
+  * checked by a brute-force search over every coprime (a, b) up to height
+  * 16383, independently of the sieve.  In order:
+  *   -72, -45: 9 times -8 resp. -5, and -8 = -5 = 1 mod 3 is a square, so
+  *             nothing beyond v_3(b) = 1 is excluded; the point has 3^3 | b,
+  *             which a test that drops the sign (8 and 5 are non-squares
+  *             mod 3) would exclude.
+  *   45, 99:   9u with u a non-square: v_3(b) = 1 and 27 | b are excluded,
+  *             the two top terms tie at v_3(b) = 2, where the point is.
+  *   9, 36:    a square leading coefficient and a square constant term
+  *             (points at infinity, no Jacobi test); only v_3(b) = 1 is
+  *             excluded and the point has 9 | b.
+  *   -27, 27:  with 9 | c[5] and c[4] = 1 mod 3: 9 | b is excluded, but at
+  *             v_3(b) = 1 the b^2 term decides, with an even valuation and a
+  *             square unit, and the point has b = 3. */
+ {2,6,7,-5,2,4,-72},
+ {2,9,10,10,3,5,-45},
+ {9,-2,-9,-6,5,-2,45},
+ {10,5,9,3,5,-4,99},
+ {1,3,0,9,2,-4,9},
+ {1,0,0,-7,-5,-10,36},
+ {7,7,-4,-5,4,-9,-27},
+ {2,-7,-9,-5,4,9,27}
 };

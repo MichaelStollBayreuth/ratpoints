@@ -24,8 +24,9 @@
 
 # The main targets are
 #   all         the library, the program and this documentation
-#   test        test1, test1many, test2 and timing (see below)
-#   test1       1000 random genus 2 curves, checked against testbase
+#   test        test1, test1many, testdegrees, test2 and timing (see below)
+#   test1       1000 random genus 2 curves and eight chosen ones, checked
+#               against testbase
 #   test1many   curves with many rational points, against testbase-many;
 #               the two cover the two regimes that behave differently, and
 #               both should be used when judging a change to the sieve
@@ -239,8 +240,9 @@ tunehigh: rptest rptest-high-many
 	 TUNE_HEIGHT='${TESTHEIGHT}' \
 	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' ./tune.sh
 
-# Run ratpoints on a set of 1000 test cases
-# and check the output
+# Run ratpoints on a set of 1008 test cases -- 1000 random genus 2 curves and
+# eight chosen to reach the test on the denominators at a prime dividing the
+# leading coefficient, see testdata.h -- and check the output
 test1: rptest testbase
 	time ./rptest > rptest.out
 	cmp -s testbase rptest.out || echo ${FAILED}
@@ -265,8 +267,8 @@ test1many: rptest-many testbase-many
 # change to the sieving loops by, and the ones to point "make tune" at if the
 # runs that matter are long ones.  Each takes about a minute.
 
-# The thousand random curves of test1 at the larger height bound.  None of
-# them has a rational point of height between 16383 and 200000, so the list of
+# The curves of test1 at the larger height bound.  None of them has a
+# rational point of height between 16383 and 200000, so the list of
 # points is the same one and testbase is the reference for both -- which is
 # itself worth checking.  Raise TESTHEIGHT and that stops being true; the new
 # output has to be looked at and kept as a reference of its own.
