@@ -1429,7 +1429,7 @@ static double forbidden_fraction(long p, unsigned long mask)
   double q = 1.0/(double)p; /* 1/p^m */
   long m;
 
-  for(m = 1; m < LONG_LENGTH && (mask >> m) != 0; m++)
+  for(m = 1; m < (long)LONG_LENGTH && (mask >> m) != 0; m++)
   { if((mask >> m) & 1) { f += q*(1.0 - 1.0/(double)p); }
     q /= (double)p;
   }
@@ -1590,7 +1590,7 @@ static unsigned long forbidden_valuations(ratpoints_args *args, long pn,
     else { w[j] = 0; r[j] = coeffs_mod_p[k]; }
   }
 
-  for(m = 1, pm = p; pm <= args->b_high && m < LONG_LENGTH - 1; m++)
+  for(m = 1, pm = p; pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
   { long jmin = 0, vmin = w[0];
     int tie = 0;
 
@@ -1695,7 +1695,8 @@ static long sieving_info(ratpoints_args *args,
           unsigned long all = 0;
           long m, pm;
 
-          for(m = 1, pm = p; pm <= args->b_high; m++)
+          for(m = 1, pm = p;
+              pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
           { all |= 1UL << m;
             if(pm > args->b_high/p) { break; }
             pm *= p;
@@ -1764,7 +1765,11 @@ static long sieving_info(ratpoints_args *args,
    * more of them among the primes the loop above did not reach.  This is
    * done here, before the primes are chosen, because the choice needs to
    * know how many denominators will survive these tests: see run_shape. */
-  if(args->flags & RATPOINTS_CHECK_DENOM)
+  if((args->flags & RATPOINTS_CHECK_DENOM)
+       && !mpz_perfect_square_p(c[degree]))
+       /* the test below asks for a non-square residue, which a square
+        * leading coefficient never has; such a curve gets here since the
+        * valuation test above applies to it */
   { long n;
 
     for(n = pn_lim;
@@ -1787,7 +1792,9 @@ static long sieving_info(ratpoints_args *args,
 
       }
     }
-    forb_ba[fba].p = 0;        /* terminating zero */
+  }
+  if(args->flags & RATPOINTS_CHECK_DENOM)
+  { forb_ba[fba].p = 0;        /* terminating zero */
     forbidden[fdc].p = 0;      /* terminating zero */
     args->max_forbidden = fba + fdc; /* note actual number */
   }
@@ -2704,7 +2711,7 @@ long find_points_work(ratpoints_args *args,
     { forbidden_entry *fb = forb_ba;
       forbidden_val *fd = forbidden;
 
-      printf("  denominators excluded:");
+      printf("  denominators excluded:\n   ");
       for( ; fb->p; fb++) { printf(" %ld|b", fb->p); }
       for( ; fd->p; fd++)
       { long p = fd->p, m, mmax, first, pm;

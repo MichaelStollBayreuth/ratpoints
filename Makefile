@@ -24,7 +24,7 @@
 
 # The main targets are
 #   all         the library, the program and this documentation
-#   test        test1, test1many, test2 and timing (see below)
+#   test        test1, test1many, testdegrees, test2 and timing (see below)
 #   test1       1000 random genus 2 curves and eight chosen ones, checked
 #               against testbase
 #   test1many   curves with many rational points, against testbase-many;

@@ -52,10 +52,10 @@ pass is gone and with it one store and one load per bit array. That is worth 5.6
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single
-term of `F(a,b)` sets the valuation of the whole, and rules the valuation out if that is odd or comes
-with a non-square unit. Typically that forbids `p` itself, or `p^2`, or one particular valuation. The
+term of `F(a,b)` sets the valuation of the whole, and rules the valuation out if that is odd, or
+even with an even power of `b` and a non-square unit. Typically that forbids `p` itself, or `p^2`, or one particular valuation. The
 code for this case existed but sat behind a guard it could never pass, and it was wrong besides --
-it would have lost 23 points on 12 of the thousand test curves. The corrected test fires on 563 of
+it would have lost 23 points on 12 of the thousand test curves. The corrected test excludes something on 499 of
 those curves and is worth 8.3% of `make test1`, 5.3% of `make testdegrees` and 2.4% of
 `make test1many`, 8.8% of `make testhigh` and 2.1% of `make testhighmany`, more than the share of denominators it excludes, because those
 are the denominators for which that prime could not sieve anything.

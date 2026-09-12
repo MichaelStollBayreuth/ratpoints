@@ -90,9 +90,10 @@ the denominator loop tests by division, which now asks whether bit
 derives the excluded set from the Newton polygon in Python, mimicking the
 program's reversal of the polynomial; `validate_arm.py` runs `ratpoints -v`
 on every curve of the four test suites and compares the `denominators
-excluded:` line with it.  Over 1095 even-degree curves, 119 of which stop
-before sieving (no real points), **579 reach the arm and there are 0
-disagreements.**
+excluded:` line with it.  Over the 1103 even-degree curves of the four
+suites (the eight witnesses included), 119 of which stop before sieving --
+no real points, or no points modulo some prime -- **587 reach the arm and
+there are 0 disagreements.**
 
 ## What it touches beyond the arm
 
@@ -115,16 +116,21 @@ disagreements.**
 
 From the model, restricted to the 30 primes the program looks at by default:
 
-| suite | curves | reach the arm | of them square lcf | denominators saved |
+| suite | curves | rule applies | of them square lcf | denominators saved |
 |---|---|---|---|---|
 | test1 (1000) | random | 563 | 3 | 3.6% via `p`, 2.7% via `p^n`, 0.6% via a single valuation |
 | test1many (98) | point-rich | 34 | 16 | 0.5% via `p^n`, 1.5% via a single valuation |
 | testhighmany (30) | point-rich | 22 | 7 | 1.3% via `p^n`, 0.5% via a single valuation |
 | testdegrees (100) | degrees 3,4,7,8 | 30 | 0 | 1.1% + 1.4% + 0.2% |
 
-The random suite reaches it on more than half its curves because its
-coefficients lie in `[-10, 10]`, where 3, 5 and 7 divide the leading one
-often.  For large random coefficients Michael's estimate of 3.4% for the
+"Rule applies" is the model's count over every even-degree curve; what the
+program does is a little less, because some curves are settled before any
+prime is examined (no real points, or none modulo some small prime).  On
+the 1000 random curves the program excludes something on **499**, and the
+model agrees on exactly those; on test1many 34, testhighmany 22, and 24 of
+the degree suite.  The random suite gets there on half its curves because
+its coefficients lie in `[-10, 10]`, where 3, 5 and 7 divide the leading
+one often.  For large random coefficients Michael's estimate of 3.4% for the
 `p` case stands, and the `p^n` case adds about as much again.
 
 ## Measured
@@ -177,12 +183,37 @@ denominators saves more than their count.
   through that unit and every larger valuation through the leading term, so
   it forbids 3 outright and has no witness by construction.
 
+## The review
+
+Five Opus agents read commit b77b342 through different lenses -- the
+mathematics as implemented, C defects, control flow and flags,
+documentation against code, tests and build -- and every medium or high
+finding was then handed to two or three skeptics told to refute it.  Eleven
+findings, none of them a defect in the code.  One was confirmed: the
+documents said the test "fires on 563" of the random curves, which is the
+model's count of curves the rule *applies* to, whereas the program excludes
+something on 499 of them (the rest are settled before any prime is looked
+at); one was refuted (the wording of the sign case in `testdata.h`, which
+was consistent but read two ways, and is now spelled out); the rest were
+low-severity polish, all taken: the README stated the rule without the
+even-power condition, the `-F` paragraph read as scoped to a non-square
+leading coefficient, the loop that enumerates the possible valuations in
+`sieving_info` lacked the shift bound its twin has, two new `-Wextra`
+sign-compare warnings, the search for further forbidden primes past
+`num_primes` running to no purpose on a square leading coefficient, the
+`-v` list not wrapped, and the Makefile's target summary omitting
+`testdegrees`.  The one thing not taken: `make dist` and `make doc` still
+ship and build only the 2.2 documentation, which belongs to the version
+pass (TODO item 17).
+
 ## Not done, and why
 
 * **The primes past `num_primes`.**  The loop that looks for more forbidden
   primes up to `sqrt(b_high)` tests `kronecker(c[d], p) == -1` only; for
   `p | c[d]` it could run the valuation test too.  Those primes are above
   127, so the saving would be under 1% with probability under `1/p^2`.
+  (The review noticed that this loop now runs, and can never succeed, on a
+  square leading coefficient; it is skipped there.)
 * **Ties at `m = 1`.**  When `v_p(c[d]) = 1` and `p` does not divide
   `c[d-1]`, the two top terms tie at `v_p(b) = 1` and `F/p = a^(d-1)(r_0 a +
   r_1 b') mod p`.  That is a unit, and `F` not a square, unless `a = -r_1

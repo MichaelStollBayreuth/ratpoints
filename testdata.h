@@ -1039,9 +1039,10 @@ long testdata[NUM_TEST][7] =
   * test that excludes too much loses a point here.  The points were
   * checked by a brute-force search over every coprime (a, b) up to height
   * 16383, independently of the sieve.  In order:
-  *   -72, -45: 9u with -u a square mod 3, so nothing beyond v_3(b) = 1 is
-  *             excluded; the point has 3^3 | b, which a test that drops the
-  *             sign of the leading coefficient would exclude.
+  *   -72, -45: 9 times -8 resp. -5, and -8 = -5 = 1 mod 3 is a square, so
+  *             nothing beyond v_3(b) = 1 is excluded; the point has 3^3 | b,
+  *             which a test that drops the sign (8 and 5 are non-squares
+  *             mod 3) would exclude.
   *   45, 99:   9u with u a non-square: v_3(b) = 1 and 27 | b are excluded,
   *             the two top terms tie at v_3(b) = 2, where the point is.
   *   9, 36:    a square leading coefficient and a square constant term

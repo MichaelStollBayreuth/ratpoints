@@ -582,17 +582,17 @@ the estimate is worth. Section~\ref{sec:sp3choice} has the formula, and
 
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
-sets the maximal number of `forbidden divisors'. If the degree is even
-and the leading coefficient is not a square, then the denominator of
-any $x$-coordinate of a rational point cannot be divisible by a prime~$p$
-such that the leading coefficient is a non-square mod~$p$. If~$p$ divides
-the leading coefficient, it is the valuation of the denominator at~$p$ that
-is restricted: the program works out which valuations can occur at all
-(Section~\ref{sec:elim}), which typically rules out a power of~$p$, or
-one particular valuation, or~$p$ itself, and each such prime counts as one
-forbidden divisor. The program constructs a list of them against which to
-check the denominators, and this option specifies how many of these should
-be used. With \verb+-v+ it prints what it found.
+sets the maximal number of `forbidden divisors'. If the degree is even,
+the denominator of any $x$-coordinate of a rational point is restricted at
+certain primes~$p$: it cannot be divisible by~$p$ when the leading
+coefficient is a non-square mod~$p$, and when $p$ divides the leading
+coefficient its valuation at~$p$ is restricted instead --- the program
+works out which valuations can occur at all (Section~\ref{sec:elim}), which
+typically rules out a power of~$p$, or one particular valuation, or~$p$
+itself. Each such prime counts as one forbidden divisor. The program
+constructs a list of them against which to check the denominators, and this
+option specifies how many of these should be used. With \verb+-v+ it prints
+what it found.
 
 The other option is \\
 \strut\quad\verb+-S+ $S$ \quad or\quad \verb+-s+ \,. \\
@@ -1705,9 +1705,9 @@ valuation a denominator can have at~$p$ it asks whether a single term of
 $F(a,b)$ sets the valuation, and excludes the ones where it does with an
 odd valuation or a non-square unit. It applies to a square leading
 coefficient too, which used to switch every test on the denominators off.
-It fires on 563 of the thousand random curves of \texttt{make test1}, whose
-coefficients are small enough for 3, 5 and 7 to divide the leading one often,
-and is worth $8.3\%$ there, $5.3\%$ of \texttt{make testdegrees} and
+It excludes something on 499 of the thousand random curves of \texttt{make
+test1}, whose coefficients are small enough for 3, 5 and 7 to divide the
+leading one often, and is worth $8.3\%$ there, $5.3\%$ of \texttt{make testdegrees} and
 $2.4\%$ of \texttt{make test1many}, $8.8\%$ of \texttt{make testhigh}
 and $2.1\%$ of \texttt{make testhighmany}. That is more than the share
 of denominators it excludes, because a prime that divides the leading
