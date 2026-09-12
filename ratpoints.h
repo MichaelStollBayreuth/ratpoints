@@ -309,6 +309,9 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_CHECK_DENOM     (unsigned int)0x0200
 #define RATPOINTS_USE_SQUARES     (unsigned int)0x0400
 #define RATPOINTS_USE_SQUARES1    (unsigned int)0x0800
+#define RATPOINTS_USE_JACOBI      (unsigned int)0x1000
+  /* the Jacobi symbol test on the denominators applies: even degree, the
+     leading coefficient is not a square, and RATPOINTS_NO_JACOBI is not set */
 #define RATPOINTS_COMPUTE_BC      (unsigned int)0x2000
 
 /* Return values of find_points() */

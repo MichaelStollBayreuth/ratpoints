@@ -33,7 +33,7 @@
 #include "ratpoints.h"
 
 /* The list of test curves.  The default is testdata.h, a thousand random
- * genus 2 curves; building with
+ * genus 2 curves and eight chosen ones; building with
  *   -DRATPOINTS_TESTDATA='"testdata-many.h"'
  * selects the curves with many rational points instead.  Both define
  * NUM_TEST and long testdata[NUM_TEST][7]. */

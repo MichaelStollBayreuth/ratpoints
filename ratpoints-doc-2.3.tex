@@ -266,7 +266,7 @@ the number of primes and does not grow with the height, whereas the sieving
 does: on the random curves the tables are $22\%$ of \texttt{make test1} but
 $0.5\%$ of \texttt{make testhigh}, and the sifting itself goes from $48\%$
 to $87\%$ of the run. These are therefore the tests to judge a change to the
-sieving loops by. \texttt{testhigh} uses the same thousand curves as
+sieving loops by. \texttt{testhigh} uses the same curves as
 \texttt{test1}; none of them has a rational point of height between $16383$
 and $2\cdot10^5$, so the expected output is \texttt{testbase} again, and that
 the two agree is itself worth knowing. \texttt{testhighmany} uses the thirty
@@ -585,11 +585,14 @@ There are two more parameters that can be set. \\
 sets the maximal number of `forbidden divisors'. If the degree is even
 and the leading coefficient is not a square, then the denominator of
 any $x$-coordinate of a rational point cannot be divisible by a prime~$p$
-such that the leading coefficient is a non-square mod~$p$. If the leading
-coefficient is divisible by~$p$, but not a $p$-adic square, the denominator
-cannot be divisible by some power of~$p$. The program constructs a list
-of such forbidden divisors against which to check the denominators, and this
-option specifies how many of these should be used.
+such that the leading coefficient is a non-square mod~$p$. If~$p$ divides
+the leading coefficient, it is the valuation of the denominator at~$p$ that
+is restricted: the program works out which valuations can occur at all
+(Section~\ref{sec:elim}), which typically rules out a power of~$p$, or
+one particular valuation, or~$p$ itself, and each such prime counts as one
+forbidden divisor. The program constructs a list of them against which to
+check the denominators, and this option specifies how many of these should
+be used. With \verb+-v+ it prints what it found.
 
 The other option is \\
 \strut\quad\verb+-S+ $S$ \quad or\quad \verb+-s+ \,. \\
@@ -1352,17 +1355,47 @@ valuation at~$p$, for $p$ dividing the leading coefficient, when this
 valuation is sufficiently large. This gives the same type of time complexity
 as in the monic case, but with a larger constant.
 
-\subsubsection{Even degree with non-square leading coefficient}
+\subsubsection{Even degree} \label{sec:elim}
 
-Here we can exclude denominators divisible by a prime~$p$ such that the
-leading coefficient is a non-square mod~$p$. We can also in some cases
-rule out denominators divisible by a certain power of~$p$ when $p$ is
-a prime that divides the leading coefficient (if the leading coefficient
-is not a $p$-adic square). While computing the sieving information, we
-make a list of such primes and prime powers, which we then use later to
-eliminate denominators. In addition, we use the necessary condition that
-the Jacobi symbol $\left(\frac{l}{b'}\right)$ must be $+1$, where
-$l$ is the leading coefficient and $b'$ is the part of $b$ coprime to~$2l$.
+Let $l$ be the leading coefficient. If $l$ is not a square, we can exclude
+denominators divisible by a prime~$p$ such that $l$ is a non-square
+mod~$p$: for $p \mid b$ we have $F(a,b) \equiv l a^n \bmod p$ with $p \nmid
+a$, which is a non-square as well. In addition, we use the necessary
+condition that the Jacobi symbol $\left(\frac{l}{b'}\right)$ must be $+1$,
+where $b'$ is the part of $b$ coprime to~$2l$.
+
+When $p$ divides~$l$, the congruence says nothing, since $F(a,b)$ is then
+$0$ mod~$p$; the valuation does. Write $v_p(b) = m \ge 1$ and let $w_j$ be
+the valuation at~$p$ of the coefficient of~$b^j$ in~$F$, so that the term
+with~$b^j$ has valuation $w_j + jm$. If one term has strictly smaller
+valuation than all the others, it determines $v_p(F(a,b))$ and the residue
+of $F(a,b)/p^{v}$ mod~$p$. If that valuation is odd, no denominator with
+$v_p(b) = m$ can occur. If it is even and $j$ is even, then $a^{n-j}$ and
+$(b/p^m)^j$ are both squares mod~$p$, so none can occur when the unit part
+of that coefficient is a non-square mod~$p$. (For odd~$j$ the factor
+$(b/p^m)^j$ takes non-square values as well as square ones, and nothing
+follows.) When two terms tie for the smallest valuation they may cancel, and
+nothing follows either; indeed that is what happens at the points of such a
+curve. For large~$m$ the leading term wins by itself, so when $v_p(l)$ is
+odd, or even with a non-square unit part, every sufficiently large valuation
+is excluded: the denominator cannot be divisible by a certain power of~$p$.
+The commonest cases are $v_p(l) = 1$ with $p \mid l_{n-1}$, which excludes
+$p$ itself, and $v_p(l) = 1$ with $p \nmid l_{n-1}$, where the two top terms
+tie at $m = 1$ and $p^2$ is excluded. Below such a tail there may be isolated
+excluded valuations, and there may be some when $l$ is a square: $l = 9u$
+with $3 \nmid l_{n-1}$ excludes $v_3(b) = 1$ whatever $u$ is.
+
+While computing the sieving information, we make a list of these primes,
+each with the set of valuations it excludes, which we then use to eliminate
+denominators: a prime that is excluded altogether is tested for with bit
+arrays in the manner of the sieve, the others by computing the valuation of
+the denominator.
+
+Up to version~2.2.3 the valuation test never ran. It sat behind a guard that
+asked for $l$ to be a non-square modulo~$p$, and $l \equiv 0$ is a square.
+That was fortunate, because it was also wrong: in working out from which
+power of~$p$ on the leading term decides the valuation, it left out every
+coefficient that is a unit at~$p$, which are the ones that decide it.
 
 \subsection{Reversing the polynomial}
 
@@ -1657,6 +1690,29 @@ which comes to the same thing because \texttt{AND} is commutative. It is
 worth $5.6\%$ of \texttt{make testhigh}, $5.3\%$ of \texttt{make
 testdegrees} at a height bound of $2\cdot10^5$, $3.4\%$ of \texttt{make
 testhighmany} and $2.6\%$ of \texttt{make test1}.
+
+The test on the denominators at a prime~$p$ dividing the leading coefficient
+now runs, and is right. It had been unreachable since it was written, behind
+a guard that asked for the leading coefficient to be a non-square modulo~$p$
+--- which zero never is --- and it was unsound as well: in working out from
+which power of~$p$ on the leading term of $F(a,b)$ decides the valuation, it
+skipped every coefficient that is a unit at~$p$, as though their valuation
+were infinite rather than zero, and it tested the unit part of the leading
+coefficient for being a square with its sign dropped. Enabled as it stood, it
+lost 23 points on 12 of the thousand test curves. The test is now derived
+from the Newton polygon of~$F$ at~$p$ (Section~\ref{sec:elim}): for each
+valuation a denominator can have at~$p$ it asks whether a single term of
+$F(a,b)$ sets the valuation, and excludes the ones where it does with an
+odd valuation or a non-square unit. It applies to a square leading
+coefficient too, which used to switch every test on the denominators off.
+It fires on 563 of the thousand random curves of \texttt{make test1}, whose
+coefficients are small enough for 3, 5 and 7 to divide the leading one often,
+and is worth $8.3\%$ there, $5.3\%$ of \texttt{make testdegrees} and
+$2.4\%$ of \texttt{make test1many}, $8.8\%$ of \texttt{make testhigh}
+and $2.1\%$ of \texttt{make testhighmany}. That is more than the share
+of denominators it excludes, because a prime that divides the leading
+coefficient passes every numerator of a denominator it divides, so those
+denominators reach the later stages with several times the usual survivors.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
