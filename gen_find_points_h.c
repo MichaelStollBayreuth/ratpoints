@@ -54,10 +54,8 @@ int main(int argc, char *argv[])
    * flags.  Compiling a stale find_points.h against a wider configuration
    * would leave sieves0[] partly zero -- too few initializers are perfectly
    * legal C, so there would be no warning -- and offsets[] simply wrong. */
-  /* Note that RBA_LENGTH cannot be used here: in the default configuration it
-   * expands to a sizeof, which is not allowed in a preprocessor expression.
-   * RBA_PACK pins the width down just as well, since
-   * RBA_LENGTH == RBA_PACK * LONG_LENGTH. */
+  /* RBA_PACK pins the width down: RBA_LENGTH == RBA_PACK * LONG_LENGTH, and
+   * LONG_LENGTH is fixed at 64. */
   printf("#define RP_FP_H_RBA_PACK %d\n", (int)RBA_PACK);
   printf("#define RP_FP_H_CHUNK %d\n", (int)RATPOINTS_CHUNK);
   printf("#define RP_FP_H_NUM_PRIMES %d\n", (int)RATPOINTS_NUM_PRIMES);

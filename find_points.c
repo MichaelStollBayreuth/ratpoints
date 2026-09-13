@@ -1244,7 +1244,7 @@ static inline unsigned long barrett(unsigned long u, unsigned long p,
 /* How many Horner steps the accumulator survives without a reduction: after
  * k of them it is below p^(k+1), so k+1 must not exceed the number of
  * primes' worth of bits in a long. */
-#define RP_HORNER_STEPS ((long)(LONG_LENGTH/RATPOINTS_MAX_BITS_IN_PRIME) - 1)
+#define RP_HORNER_STEPS (LONG_LENGTH/RATPOINTS_MAX_BITS_IN_PRIME - 1)
 
 /* Look at one prime and record what it says about the curve.
  *
@@ -1441,7 +1441,7 @@ static double forbidden_fraction(long p, unsigned long mask)
   double q = 1.0/(double)p; /* 1/p^m */
   long m;
 
-  for(m = 1; m < (long)LONG_LENGTH && (mask >> m) != 0; m++)
+  for(m = 1; m < LONG_LENGTH && (mask >> m) != 0; m++)
   { if((mask >> m) & 1) { f += q*(1.0 - 1.0/(double)p); }
     q /= (double)p;
   }
@@ -1608,7 +1608,7 @@ static unsigned long forbidden_valuations(ratpoints_args *args, long pn,
     else { w[j] = 0; r[j] = coeffs_mod_p[k]; }
   }
 
-  for(m = 1, pm = p; pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
+  for(m = 1, pm = p; pm <= args->b_high && m < LONG_LENGTH - 1; m++)
   { long jmin = 0, vmin = w[0];
     int tie = 0;
 
@@ -1714,7 +1714,7 @@ static long sieving_info(ratpoints_args *args,
           long m, pm;
 
           for(m = 1, pm = p;
-              pm <= args->b_high && m < (long)LONG_LENGTH - 1; m++)
+              pm <= args->b_high && m < LONG_LENGTH - 1; m++)
           { all |= 1UL << m;
             if(pm > args->b_high/p) { break; }
             pm *= p;
@@ -2209,7 +2209,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
         /* Now the range of longwords (= bit_arrays) */
         w_low = low >> RBA_SHIFT; /* FLOOR(low, RBA_LENGTH); */
-        w_high = (high + (long)(RBA_LENGTH-1)) >> RBA_SHIFT;
+        w_high = (high + RBA_LENGTH - 1) >> RBA_SHIFT;
                                  /* CEIL(high, RBA_LENGTH); */
         w_low0 = w_low;
         w_high0 = w_low0 + range;
@@ -2420,8 +2420,7 @@ static long find_points_work_1(ratpoints_args *args,
   }
   /* make sure that array size is a multiple of RATPOINTS_CHUNK */
   args->array_size = CEIL(args->array_size, RATPOINTS_CHUNK)*RATPOINTS_CHUNK;
-  if(args->sturm > (long)(LONG_LENGTH - 2))
-  { args->sturm = (long)(LONG_LENGTH - 2); }
+  if(args->sturm > LONG_LENGTH - 2) { args->sturm = LONG_LENGTH - 2; }
 
   /* Don't reverse if intervals are specified or limits for the denominator
      are given */

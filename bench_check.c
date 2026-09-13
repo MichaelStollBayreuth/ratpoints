@@ -69,7 +69,7 @@
 #include <gmp.h>
 #include "ratpoints.h"
 
-#if defined(__x86_64__) || defined(__i386__)
+#ifdef __x86_64__
 # include <x86intrin.h>
 # define TICK() __rdtsc()
 # define TICKNAME "rdtsc cycles"

@@ -170,8 +170,9 @@ selected by the line
 \begin{verbatim}
 CCFLAGS1 = ${CCFLAGS256}
 \end{verbatim}
-in \texttt{Makefile}. It can be set to \verb+${CCFLAGS64}+ (word-size
-registers, which works on essentially any machine), \verb+${CCFLAGS128}+,
+in \texttt{Makefile}. It can be set to \verb+${CCFLAGS64}+ (64-bit
+registers, i.e., plain \texttt{unsigned long}s, which works on any machine
+the library builds on at all), \verb+${CCFLAGS128}+,
 \verb+${CCFLAGS256}+ (the default, using 256-bit AVX registers) or
 \verb+${CCFLAGS512}+. The \texttt{Makefile} notices that the setting has
 changed and rebuilds everything that depends on it, so a \texttt{make
@@ -363,7 +364,11 @@ To remove everything except the files from the archive, use
 
 You need a C compiler (like \texttt{gcc}, which is the default specified
 for the \texttt{CC} variable in \texttt{Makefile}; if necessary, it can be
-changed there).
+changed there). Since version~2.3, the code assumes that \texttt{long} has
+64~bits and refuses to compile otherwise; that is the case on every 64-bit
+Unix-like system (but not under the Windows ABI, where \texttt{long} has
+32~bits even on a 64-bit machine). Version~2.2.4 is the last one that
+accommodates a 32-bit \texttt{long}.
 
 In addition to the standard libraries, the program also requires the
 \texttt{gmp} (GNU multi-precision) library~\cite{gmp}.
@@ -797,7 +802,7 @@ Similar statements are true for
 \texttt{num\_primes} (option \verb+-p+), \texttt{sturm} (options \verb+-s+,
 \verb+-S+) and \texttt{max\_forbidden} (option \verb+-F+). The field
 \texttt{array\_size} specifies the maximal size (in bit arrays; a bit array
-contains 32, 64, 128, 256, \dots bits, depending on the configuration) of the
+contains 64, 128, 256 or 512 bits, depending on the configuration) of the
 array that is used in the first sieving stage. If non-positive, it is
 set to a default value. The various default values are defined at the
 beginning of the header file \texttt{ratpoints.h}, where also the maximal
@@ -1345,11 +1350,11 @@ several primes: if $F(a, b)$ is a square, it certainly has to be a square
 mod~$p$, and so we can rule out all $(a, b)$ that do not satisfy this
 condition. Another ingredient is to represent (for a fixed~$b$) the
 various values of~$a$ by bits and treat all the bits in a `bit array'
-(of 32 or 64 bits, as the case may be, or 128, 256 or 512 bits when SSE/AVX
-instructions are used) in parallel. For this, we organize
-the sieving information for each prime~$p$ into $p$~arrays of $p$~words
-each, one such array for every $b$ mod~$p$, such that the $j$th~bit
-in this array is set if and only if $F(j, b)$ is a square mod~$p$.
+(of 64 bits, or of 128, 256 or 512 bits when SSE/AVX instructions are
+used) in parallel. For this, we organize the sieving information for each
+prime~$p$ into $p$~arrays of $p$~words each, one such array for every $b$
+mod~$p$, such that the $j$th~bit in this array is set if and only if
+$F(j, b)$ is a square mod~$p$.
 
 For each `denominator' $b$, we then set up an array of words whose bits
 represent the range $-H \le a \le H$ (aligned so that $a = 0$ corresponds
@@ -1506,8 +1511,9 @@ On my laptop (with an Intel Core2 processor), \texttt{make test} runs about
 cases prevented an early abort when \texttt{*quit} was set by the callback function.
 Thanks to \textbf{Robert Miller} for the bug report and the fix. In addition, it is now
 checked that \verb+__WORDSIZE == 64+ before SSE instructions are used
-(in \texttt{rp-private.h}), since the program then assumes that a bit array consists
-of two \texttt{unsigned long}s. In this context, \verb+__SSE2__+ has been replaced
+(in \texttt{rp-private.h}; removed again in version~2.3, which assumes a
+64-bit \texttt{long} throughout), since the program then assumes that a bit
+array consists of two \texttt{unsigned long}s. In this context, \verb+__SSE2__+ has been replaced
 by a new macro \verb+USE_SSE+. A further fix eliminates unnecessary copying
 of sieving information when SSE instructions are not used (introduced in version~2.1).
 This was almost always harmless, but could have resulted in memory corruption
@@ -1822,6 +1828,11 @@ with gcc so far), two arrays that could be declared with length zero under
 leading coefficient for denominator bounds above about $4\cdot10^{15}$, and
 two constants in \texttt{ratpoints.h} that could not be overridden from the
 compiler command line.
+
+The code now assumes that \texttt{long} has 64~bits and refuses to compile
+otherwise, so the 32-bit architectures are no longer supported; what used
+to allow for a 32-bit word has been removed. Version~2.2.4 is the last one
+that accommodates a 32-bit \texttt{long}.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
