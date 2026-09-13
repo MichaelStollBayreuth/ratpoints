@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.3                                                     *
+ * ratpoints-2.2.4                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -23,7 +23,7 @@
  *                                                                     *
  * Main program file for the ratpoints executable                      *
  *                                                                     *
- * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6, 2026            *
+ * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6 and 13, 2026     *
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -37,7 +37,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-2.2.3 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \

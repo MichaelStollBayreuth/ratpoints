@@ -1,4 +1,4 @@
-#   ratpoints-2.2.3
+#   ratpoints-2.2.4
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
@@ -19,11 +19,11 @@
 #
 #   Makefile
 #
-#   Michael Stoll, September 21, 2009; January 7, 2022; September 6, 2026
+#   Michael Stoll, September 21, 2009; January 7, 2022; September 6 and 13, 2026
 #   with changes by Bill Allombert, December 29, 2021
 
 PRIME_SIZE = 7
-VERSION = 2.2.3
+VERSION = 2.2.4
 
 CC = gcc
 RM = rm -f
@@ -79,14 +79,15 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
-            gpl-2.0.txt testbase2
+            gpl-2.0.txt testbase2 test3.sh testbase3
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
 TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
-            rptest.out sift-debug.o find_points-debug.o main.o test2.out
+            rptest.out sift-debug.o find_points-debug.o main.o test2.out \
+            test3.out rptest-once.out rptest-once2.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest ratpoints-debug ratpoints-doc-2.2.pdf
@@ -97,13 +98,37 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test2 timing
+test: test1 test1once test2 test3 timing
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
+# These three targets time their runs with the shell's "time".  That is a
+# shell built-in which dash, /bin/sh on Debian and Ubuntu, does not have,
+# so they run under bash; the build itself runs under whatever /bin/sh is.
+test1 test2 timing: SHELL = /bin/bash
+
 test1: rptest testbase
 	time ./rptest > rptest.out
 	cmp -s testbase rptest.out || echo ${FAILED}
+
+# The curves of test1 again, with the input fields of args set once before
+# the loop instead of once per curve: the library must not write into
+# the fields it is documented not to touch (rptest prints a line whenever
+# one has changed), and the points must be the same.  The second run, with
+# a lower bound on the denominator, makes the library take its own decision
+# not to reverse the polynomial, which used to be stored in the caller's
+# flags.
+test1once: rptest testbase
+	./rptest -O > rptest-once.out
+	cmp -s testbase rptest-once.out || echo ${FAILED}
+	./rptest -O -dl 2 -z > rptest-once2.out
+	grep -q changed rptest-once2.out && echo ${FAILED} || true
+
+# Regression tests for the bugs found in the review of September 2026: a
+# list of invocations of ratpoints in test3.sh, against testbase3.
+test3: ratpoints testbase3 test3.sh
+	./test3.sh > test3.out 2>&1
+	cmp -s testbase3 test3.out || echo ${FAILED}
 
 # Run ratpoints on the curve with the record number of known
 # rational points, with a fairly large height bound,

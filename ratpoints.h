@@ -23,7 +23,7 @@
  *                                                                     *
  * Header file for the ratpoints program and library                   *
  *                                                                     *
- * Michael Stoll, September 21, 2009; January 7, 2022                  *
+ * Michael Stoll, September 21, 2009; January 7, 2022; Sep 13, 2026    *
  * with changes by Bill Allombert, December 29, 2021                   *
  ***********************************************************************/
 
@@ -39,12 +39,20 @@
  * In any case, the optimal values will depend on the CPU etc. */
 #define RATPOINTS_DEFAULT_SP1 11           /* Default value for sp1 */
 #define RATPOINTS_DEFAULT_SP2 19           /* Default value for sp2 */
+#ifndef RATPOINTS_DEFAULT_NUM_PRIMES
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes */
+#endif
+#ifndef RATPOINTS_DEFAULT_STURM
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
+#endif
 
+#ifndef RATPOINTS_DEFAULT_MAX_FORBIDDEN
 #define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
+#endif
 
+#ifndef RATPOINTS_ARRAY_SIZE
 #define RATPOINTS_ARRAY_SIZE 256           /* Array size in bit-arrays */
+#endif
 
 /* data structure for intervals, used in finding the positivity region */
 typedef struct {double low; double up;} ratpoints_interval;
@@ -85,6 +93,10 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_USE_SQUARES     (unsigned int)0x0400
 #define RATPOINTS_USE_SQUARES1    (unsigned int)0x0800
 #define RATPOINTS_COMPUTE_BC      (unsigned int)0x2000
+#define RATPOINTS_NO_REVERSE_AUTO (unsigned int)0x4000
+  /* the program itself decided not to reverse (intervals given, or bounds
+     on the denominator); kept apart from RATPOINTS_NO_REVERSE so that the
+     caller's input is not changed */
 
 /* Return values of find_points() */
 #define RATPOINTS_NON_SQUAREFREE (-1)

@@ -23,7 +23,7 @@
  *                                                                     *
  * Test program for ratpoints                                          *
  *                                                                     *
- * Michael Stoll, May 27, 2009; January 2, 2022                        *
+ * Michael Stoll, May 27, 2009; January 2, 2022; Sep 13, 2026          *
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -81,6 +81,9 @@ int main(int argc, char *argv[])
   int no_jacobi      = 0;
   int no_output      = 0;
   int iterations     = 1; /* number of repetitions for each curve, set by -m */
+  int set_once       = 0; /* -O: fill args once, before the loop over the
+                           * curves, and check after every call that the
+                           * library left the input fields alone */
 
   int b_high_set     = 0;
 
@@ -207,6 +210,10 @@ int main(int argc, char *argv[])
           if(sscanf(argv[i], " %d", &iterations) != 1) return(-6);
           i++;
           break;
+        case 'O': /* set the input fields once, outside the loop */
+          set_once = 1;
+          i++;
+          break;
         default: return(-6);
   } } }
 
@@ -243,18 +250,24 @@ int main(int argc, char *argv[])
 
         args.cof           = &c[0];
         args.degree        = degree;
-        args.height        = height;
-        args.domain        = &domain[0];
-        args.num_inter     = 0;
-        args.b_low         = b_low;
-        args.b_high        = b_high;
-        args.sp1           = sieve_primes1;
-        args.sp2           = sieve_primes2;
-        args.array_size    = array_size;
-        args.sturm         = sturm_iter;
-        args.num_primes    = num_primes;
-        args.max_forbidden = max_forbidden;
-        args.flags         = flags;
+        args.num_inter     = 0; /* in/out: comes back as the number of
+                                 * intervals actually searched */
+        if(!set_once || (count == iterations && n == 0))
+        { /* the other fields; with -O they are set here once.  The library
+           * fills in defaults for those that ask for one, and leaves the
+           * rest alone. */
+          args.height        = height;
+          args.domain        = &domain[0];
+          args.b_low         = b_low;
+          args.b_high        = b_high;
+          args.sp1           = sieve_primes1;
+          args.sp2           = sieve_primes2;
+          args.array_size    = array_size;
+          args.sturm         = sturm_iter;
+          args.num_primes    = num_primes;
+          args.max_forbidden = max_forbidden;
+          args.flags         = flags;
+        }
 
         /* Fill info. Recall:
           typedef struct {int print_between; int no_output; int one_point;
@@ -267,6 +280,23 @@ int main(int argc, char *argv[])
         if(no_output == 0) { printf("{"); }
         find_points_work(&args, process, (void *)info);
         if(no_output == 0) { printf("}\n"); }
+        if(set_once)
+        { /* the fields the library must not touch (it fills in defaults for
+           * the others when asked, which is documented): a message here
+           * makes the output differ from the reference */
+#define RP_CHECK_L(field, value) \
+          if(args.field != (value)) \
+          { printf("input field " #field " changed: %ld -> %ld\n", \
+                   (long)(value), (long)args.field); }
+          RP_CHECK_L(height, height)
+          RP_CHECK_L(max_forbidden, max_forbidden)
+          if((args.flags & RATPOINTS_FLAGS_INPUT_MASK) != flags)
+          { printf("input flags changed: %x -> %x\n", flags,
+                   args.flags & RATPOINTS_FLAGS_INPUT_MASK); }
+          if(args.domain != &domain[0])
+          { printf("input field domain changed\n"); }
+#undef RP_CHECK_L
+        }
         /* fflush(NULL); */
       }
     }

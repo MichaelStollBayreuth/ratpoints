@@ -37,7 +37,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{2.2.3} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{2.2.4} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -120,7 +120,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-2.2.3.tar.gz
+> tar xzf ratpoints-2.2.4.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -131,7 +131,7 @@ files that belong to the installation.
 Do
 
 \begin{verbatim}
-> cd ratpoints-2.2.3
+> cd ratpoints-2.2.4
 > make all
 \end{verbatim}
 
@@ -224,11 +224,28 @@ output of a sample run. The two should be identical; otherwise the
 message \texttt{Test failed!} will be displayed (on its own on a line).
 
 \begin{verbatim}
+> make test1once
+\end{verbatim}
+runs the same curves again, but with the fields of the argument structure
+set once before the loop over the curves instead of once per curve, as a
+program using the library may do (Section~\ref{sec:library});
+\texttt{rptest} prints a line whenever the library has changed a field it
+must leave alone, and the output is compared against \texttt{testbase} as
+before.
+
+\begin{verbatim}
 > make test2
 \end{verbatim}
 calls \texttt{ratpoints} on a curve with lots of rational points and with
 a fairly large height bound, times it, and compares the output to what is
 expected. This may take a few minutes, so be patient!
+
+\begin{verbatim}
+> make test3
+\end{verbatim}
+runs the invocations of \texttt{ratpoints} collected in \texttt{test3.sh},
+one or more for each of the bugs fixed in version 2.2.4, and compares the
+output against \texttt{testbase3}.
 
 \begin{verbatim}
 > make timing
@@ -240,7 +257,7 @@ Finally,
 \begin{verbatim}
 > make test
 \end{verbatim}
-does all three of the above.
+does all of the above.
 
 \subsection{Install}
 
@@ -310,7 +327,10 @@ The archive contains the following files.
         the source code for the ratpoints library
   \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
         and \texttt{rptest} executables, respectively
-  \item \texttt{testdata.h, testbase, testbase2} --- data for the test runs
+  \item \texttt{testdata.h, testbase, testbase2, testbase3} --- data for
+        the test runs
+  \item \texttt{test3.sh} --- the script that \texttt{make test3} runs;
+        it has to be executable
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
@@ -494,7 +514,7 @@ to be able to override this change.
 
 %=========================================================================
 
-\section{How to use the library}
+\section{How to use the library}\label{sec:library}
 
 It is possible to use the ratpoints machinery from within your own programs.
 
@@ -528,11 +548,33 @@ typedef struct { mpz_t *cof; long degree; long height;
 \end{verbatim}
 
 The dots at the end stand for additional fields that are used internally
-and are not of interest here. When calling \texttt{find\_points}, the
+and are not of interest here. All the fields shown are inputs. Some of
+them the program writes as well, and this is the complete list: the
+coefficient array and \texttt{degree}, which on return describe the
+polynomial the program worked with; \texttt{num\_inter} and
+\texttt{domain}, which on return describe the region it searched; the
+fields that ask for a default value when negative or non-positive
+(\texttt{sp1}, \texttt{sp2}, \texttt{num\_primes}, \texttt{max\_forbidden},
+\texttt{sturm}, \texttt{b\_low}, \texttt{b\_high}, \texttt{array\_size}),
+into which it writes the value it used; and the flag bits that report on
+the run. A caller who fills the structure once and then loops over curves
+must therefore set before every call whatever it wants chosen afresh.
+(Up to version 2.2.3 the program also wrote the number of forbidden
+divisors it had found into \texttt{max\_forbidden}, and its own decision
+not to reverse the polynomial into \texttt{flags}, which broke exactly
+such loops; it no longer does.)
+
+When calling \texttt{find\_points}, the
 \texttt{cof} field must point to an array of size $\text{\texttt{degree}} + 1$
 of properly initialized gmp integers; these are the coefficients of
 the polynomial. The program can alter the values of the integers in this
-array. To prevent this, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
+array: it may reverse the polynomial, and it drops a zero constant term
+on that occasion, in which case \texttt{degree} is lowered by one so that
+\texttt{cof} and \texttt{degree} still describe the polynomial the program
+worked with (the \texttt{RATPOINTS\_REVERSED} flag says when this has
+happened). Leading zero coefficients are dropped in the same way, lowering
+\texttt{degree}, without a flag.
+To prevent the reversal, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
 in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
@@ -553,9 +595,17 @@ the meaning of this should be clear. In \texttt{ratpoints}, this is set
 via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
-\texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
-The program may alter the values in the array {\em domain} points to,
-unless \texttt{sturm} has a negative value (which may lead to a performance loss).
+\texttt{degree} intervals; a null pointer makes the call return
+\texttt{RATPOINTS\_BAD\_ARGS}, since the program stores the default
+interval $]-\texttt{height}, \texttt{height}[$ there. If \texttt{sturm} is
+negative, one interval is enough.)
+The program intersects the given intervals with the region where $f$ is
+positive (unless \texttt{sturm} has a negative value, which may lead to a
+performance loss) and searches the result; on return, \texttt{num\_inter}
+and the first \texttt{num\_inter} entries of the array describe that
+result, which is why the array has to be longer than the input. So
+\texttt{num\_inter} (and \texttt{domain}, if you restrict the search) must
+be set before every call.
 
 \texttt{b\_low} and \texttt{b\_high}
 carry the lower and upper bounds for the denominator; if non-positive, they are
@@ -735,7 +785,12 @@ then it is slightly more efficient to use the sequence
   find_points_clear(&args);
 \end{verbatim}
 
-This avoids the repeated allocation and freeing of memory.
+This avoids the repeated allocation and freeing of memory. Inside the loop,
+\texttt{cof}, \texttt{degree} and \texttt{num\_inter} must be set for every
+curve, and so must the fields that are to be chosen afresh (see above); the
+others keep their values. \texttt{rptest.c} with the \verb+-O+ option does
+exactly this, and \texttt{make test1once} checks that the points found are
+the same as with every field set once per curve.
 
 For practical examples, see \texttt{main.c} (the code that wraps
 \texttt{find\_points} for the command line program \texttt{ratpoints}) or
@@ -989,6 +1044,41 @@ genuine 512-bit instructions. In the meantime, \textbf{Drew Sutherland} has
 run the two variants against each other on an AMD Ryzen~9 9950X3D (Zen~5
 architecture), for a curve with many rational points and a height bound
 of~$10^6$; the 512-bit version was faster by 13 to 14\%.
+
+\textbf{Version 2.2.4} was released September 13, 2026. It fixes bugs that a
+review of the code turned up. A polynomial of degree~1 --- given as such,
+or reached from $y^2 = c_2x^2 + c_1x$ by the reversal, or from a zero
+leading coefficient --- made the Sturm sequence code read past the end of
+its arrays and crash; this affects library users as well. When the
+positivity region of~$f$ did not meet the search domain, the program
+returned before it had looked at the points at infinity, so that
+\texttt{ratpoints '-1000000000 0 0 1' 45} printed nothing where \verb+-s+
+printed $(1:0:0)$, and after a reversal the lost point is an affine point
+of the given curve. When no residue class of the denominator modulo~16
+admitted any numerator, the array of numerator patterns was read before it
+had been filled; by default the answer was still right, but with
+\verb+-j -F 0+ the program printed nondeterministic points outside the
+height bound after a run several thousand times longer than necessary.
+And several input fields of \texttt{ratpoints\_args} were used as scratch
+space --- the number of forbidden divisors found was written into
+\texttt{max\_forbidden}, the intersected search intervals into
+\texttt{num\_inter}, normalised values into \texttt{sp1}, \texttt{sp2}
+and others --- so that a program which fills the structure once and then
+calls \texttt{find\_points\_work} for curve after curve, as the section on
+the library suggests, had the forbidden-divisor test switched off after the
+first curve without forbidden divisors (a factor of two in running time)
+and the first curve's positivity region intersected into the search domains
+of the others, which loses points. The program no longer writes either,
+and the manual now says exactly which fields it does set;
+\texttt{make test1once} runs the test curves with the structure filled
+once, and \texttt{make test3} runs one or more invocations of
+\texttt{ratpoints} per bug against a reference. Also fixed: four left shifts of negative values
+(undefined in C, harmless with gcc so far), two arrays that could be
+declared with length zero under \verb+-n 0 -N 0+, an overflow in the
+enumeration of the divisors of the leading coefficient for denominator
+bounds above about $4\cdot10^{15}$, and two constants in
+\texttt{ratpoints.h} that could not be overridden from the compiler
+command line. The library is binary compatible with 2.2.3.
 
 %=========================================================================
 
