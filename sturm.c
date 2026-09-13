@@ -142,6 +142,11 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
     sturm_degs[k] = d2;
     if(d2 == 0) { break; } /* sturm[k] is constant */
   }
+  /* The loop leaves k at the index of the last polynomial of the chain --
+   * except when it never ran, for degree 1, where the chain is just f, f'
+   * and k is left at 2.  Everything below indexes sturm[] and sturm_degs[]
+   * up to k, and both have degree+1 entries. */
+  if(k > degree) { k = degree; }
 
   /* compute number of real zeros */
   for(n = 0; n < k; n++)
@@ -216,8 +221,9 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
               else { nm = nl+nr; dem = 1; }
             }
             else /* here one de* is greater */
-            { if(del > der) { nm = nl + (nr<<(del-der)); dem = del+1; }
-              else { nm = (nl<<(der-del)) + nr; dem = der+1; }
+            { /* multiply rather than shift: nl and nr may be negative */
+              if(del > der) { nm = nl + nr*(1L<<(del-der)); dem = del+1; }
+              else { nm = nl*(1L<<(der-del)) + nr; dem = der+1; }
             }
           }
         }

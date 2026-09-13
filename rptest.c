@@ -81,6 +81,9 @@ int main(int argc, char *argv[])
   int no_jacobi      = 0;
   int no_output      = 0;
   int iterations     = 1; /* number of repetitions for each curve, set by -m */
+  int set_once       = 0; /* -O: fill args once, before the loop over the
+                           * curves, and check after every call that the
+                           * library left the input fields alone */
 
   int b_high_set     = 0;
 
@@ -207,6 +210,10 @@ int main(int argc, char *argv[])
           if(sscanf(argv[i], " %d", &iterations) != 1) return(-6);
           i++;
           break;
+        case 'O': /* set the input fields once, outside the loop */
+          set_once = 1;
+          i++;
+          break;
         default: return(-6);
   } } }
 
@@ -243,18 +250,22 @@ int main(int argc, char *argv[])
 
         args.cof           = &c[0];
         args.degree        = degree;
-        args.height        = height;
-        args.domain        = &domain[0];
-        args.num_inter     = 0;
-        args.b_low         = b_low;
-        args.b_high        = b_high;
-        args.sp1           = sieve_primes1;
-        args.sp2           = sieve_primes2;
-        args.array_size    = array_size;
-        args.sturm         = sturm_iter;
-        args.num_primes    = num_primes;
-        args.max_forbidden = max_forbidden;
-        args.flags         = flags;
+        if(!set_once || (count == iterations && n == 0))
+        { /* the input fields; with -O they are set here once and must come
+           * back from every call as they went in */
+          args.height        = height;
+          args.domain        = &domain[0];
+          args.num_inter     = 0;
+          args.b_low         = b_low;
+          args.b_high        = b_high;
+          args.sp1           = sieve_primes1;
+          args.sp2           = sieve_primes2;
+          args.array_size    = array_size;
+          args.sturm         = sturm_iter;
+          args.num_primes    = num_primes;
+          args.max_forbidden = max_forbidden;
+          args.flags         = flags;
+        }
 
         /* Fill info. Recall:
           typedef struct {int print_between; int no_output; int one_point;
@@ -267,6 +278,30 @@ int main(int argc, char *argv[])
         if(no_output == 0) { printf("{"); }
         find_points_work(&args, process, (void *)info);
         if(no_output == 0) { printf("}\n"); }
+        if(set_once)
+        { /* every input field must be what it was set to above; a message
+           * here makes the output differ from the reference */
+#define RP_CHECK_L(field, value) \
+          if(args.field != (value)) \
+          { printf("input field " #field " changed: %ld -> %ld\n", \
+                   (long)(value), (long)args.field); }
+          RP_CHECK_L(height, height)
+          RP_CHECK_L(num_inter, 0)
+          RP_CHECK_L(b_low, b_low)
+          RP_CHECK_L(b_high, b_high)
+          RP_CHECK_L(sp1, sieve_primes1)
+          RP_CHECK_L(sp2, sieve_primes2)
+          RP_CHECK_L(array_size, array_size)
+          RP_CHECK_L(sturm, sturm_iter)
+          RP_CHECK_L(num_primes, num_primes)
+          RP_CHECK_L(max_forbidden, max_forbidden)
+          if((args.flags & RATPOINTS_FLAGS_INPUT_MASK) != flags)
+          { printf("input flags changed: %x -> %x\n", flags,
+                   args.flags & RATPOINTS_FLAGS_INPUT_MASK); }
+          if(args.domain != &domain[0])
+          { printf("input field domain changed\n"); }
+#undef RP_CHECK_L
+        }
         /* fflush(NULL); */
       }
     }
