@@ -35,11 +35,15 @@
 
 /* The code assumes that an unsigned long has 64 bits, and has done so since
  * version 2.3; the last version that accommodates a 32-bit long is 2.2.4.
- * The test is written so that it is right in every mode of preprocessor
- * arithmetic. */
-#if ((ULONG_MAX >> 31) >> 1) == 0
+ * The test is for exactly 64 bits, and it is written so that it is right in
+ * every mode of preprocessor arithmetic. */
+#if (((ULONG_MAX >> 31) >> 31) >> 1) != 1
 # error "ratpoints needs a 64-bit long since version 2.3; use version 2.2.4 on this machine"
 #endif
+/* The same test in C proper, for a <limits.h> that defines ULONG_MAX in a
+ * form no #if can evaluate (a cast, or ~0UL, which every #if computes in its
+ * widest type): an array of negative size does not compile. */
+typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1];
 
 #define LONG_LENGTH 64  /* number of bits in an unsigned long */
 #define LONG_SHIFT 6    /* 2^LONG_SHIFT == LONG_LENGTH */
@@ -261,7 +265,7 @@ typedef unsigned long ratpoints_bit_array;
 #endif /* various register lengths */
 
 /* The following is used for printing bit-arrays. */
-#define WIDTH (int)(LONG_LENGTH/4)
+#define WIDTH (LONG_LENGTH/4)
 
 /* macro that prints a ratpoints_bit_array in hexadecimal */
 #define PRINT_RBA(a) \

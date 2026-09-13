@@ -109,8 +109,9 @@ input fields now come back as they went in, `sp1_used`, `sp2_used` and `sp3_used
 used, and two test targets cover this: `make test3` runs one invocation per bug against
 `testbase3`, `make test1once` runs the test curves with the fields set once.
 
-Support for 32-bit machines has been retired: the code assumes a 64-bit `long` and refuses to
-compile without one. Version 2.2.4 is the last one that accommodates a 32-bit `long`.
+The code now assumes a 64-bit `long` and refuses to compile without one, so the 32-bit
+architectures are no longer supported; version 2.2.4 is the last one that accommodates a 32-bit
+`long`.
 
 `make test` now includes `make testdegrees`, a hundred curves of degree 3, 4, 7 and 8. Everything
 else in the package is degree 6, and every constant was tuned there, so nothing was known about the
