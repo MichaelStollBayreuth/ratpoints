@@ -24,7 +24,12 @@
 
 # The main targets are
 #   all         the library, the program and this documentation
-#   test        test1, test1many, testdegrees, test2 and timing (see below)
+#   test        test1, test1once, test1many, testdegrees, test2, test3 and
+#               timing (see below)
+#   test1once   the curves of test1 with the input fields of args set once
+#               before the loop: the library must leave them alone
+#   test3       the invocations of test3.sh, regression tests for the bugs
+#               found in the review of September 2026, against testbase3
 #   test1       1000 random genus 2 curves and eight chosen ones, checked
 #               against testbase
 #   test1many   curves with many rational points, against testbase-many;
@@ -180,6 +185,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
+            test3.sh testbase3 \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -189,7 +195,8 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             gen_find_points_h gen_init_sieve_h \
             rptest.out rptest-many.out rptest-high.out \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
-            sift-debug.o find_points-debug.o main.o test2.out
+            sift-debug.o find_points-debug.o main.o test2.out \
+            test3.out rptest-once.out rptest-once2.out rptest-once3.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
@@ -202,7 +209,7 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1many testdegrees test2 timing
+test: test1 test1once test1many testdegrees test2 test3 timing
 
 # Measure good values for the two machine-dependent constants and write them
 # to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
@@ -299,6 +306,27 @@ testhighmany: rptest-high-many testbase-high-many
 testdegrees: rptest-degrees testbase-degrees
 	time ./rptest-degrees > rptest-degrees.out
 	cmp -s testbase-degrees rptest-degrees.out || echo ${FAILED}
+
+# The curves of test1 again, with the input fields of args set once before
+# the loop instead of once per curve: the library must leave them alone
+# (rptest prints a line whenever one has changed), and the points must be
+# the same.  The second run, with a lower bound on the denominator, makes
+# the library take its own decision not to reverse the polynomial, which
+# used to be stored in the caller's flags; the third gives values that the
+# library normalises, which used to be stored in the fields.
+test1once: rptest testbase
+	./rptest -O > rptest-once.out
+	cmp -s testbase rptest-once.out || echo ${FAILED}
+	./rptest -O -dl 2 -z > rptest-once2.out
+	grep -q changed rptest-once2.out && echo ${FAILED} || true
+	./rptest -O -dl 0 -du 1000000 -S 100 > rptest-once3.out
+	cmp -s testbase rptest-once3.out || echo ${FAILED}
+
+# Regression tests for the bugs found in the review of September 2026: a
+# list of invocations of ratpoints in test3.sh, against testbase3.
+test3: ratpoints testbase3 test3.sh
+	./test3.sh > test3.out 2>&1
+	cmp -s testbase3 test3.out || echo ${FAILED}
 
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out

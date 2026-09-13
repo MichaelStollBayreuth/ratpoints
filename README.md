@@ -92,10 +92,22 @@ There is also a variant that uses 512-bit AVX registers, which needs a CPU with 
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I
 have no such CPU available (it has only been checked indirectly, by having the compiler express the
 512-bit operations through narrower ones). It was also unclear whether it would be any faster at all,
-since the sieving loop is limited by memory bandwidth rather than by arithmetic; but one data point
+since the sieving loop is limited by how fast it loads bit arrays from the first-level cache, and by how
+much of that cache the sieve tables occupy, rather than by arithmetic; but one data point
 kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland), for a curve with many
 rational points on a Zen 5 CPU, shows a speedup of 13-14% over the 256-bit version. It is still
 advisable to run `make test` and compare the timings on your own machine.
+
+A review of the code in September 2026 found five bugs, fixed here and (the older ones) in 2.2.4:
+degree 1 crashed the Sturm sequence code; the points at infinity were lost when the positivity
+region of `f` missed the search domain; an array of numerator patterns was read before it was
+filled when no denominator class survived mod 16; the run-length estimate collapsed when only
+even denominators survived, switching two sieving stages off; and the library wrote into input
+fields of `ratpoints_args`, so a program that fills the structure once and loops over curves ran
+every curve after the first with the first one's forbidden divisors, primes and search region. The
+input fields now come back as they went in, `sp1_used`, `sp2_used` and `sp3_used` report what was
+used, and two test targets cover this: `make test3` runs one invocation per bug against
+`testbase3`, `make test1once` runs the test curves with the fields set once.
 
 `make test` now includes `make testdegrees`, a hundred curves of degree 3, 4, 7 and 8. Everything
 else in the package is degree 6, and every constant was tuned there, so nothing was known about the

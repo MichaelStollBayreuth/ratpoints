@@ -428,7 +428,7 @@ static inline int jacobi1(long b, const long lcf)
   while((b & 1) == 0) b >>= 1;
   f = lcf;
   if(f < 0) { f = -f; neg = 1; }
-  if(b < 1UL<<(LONG_LENGTH - 4)) f = mod(f, b);
+  if(b < 1UL<<(LONG_LENGTH - 5)) f = mod(f, b); /* mod() forms 16*b */
   if(f == 0) return(1);
 
   while(1)
@@ -599,8 +599,9 @@ static void setup_us1(ratpoints_args *args)
       long *div1 = div;
 
       for( ; div0 != div1; div0++)
-      { long t = *div0 * (long)den_info[i].p;
-        if(t <= args->b_high) { *div++ = t; }
+      { long p = (long)den_info[i].p;
+        /* the product may not fit when b_high is large, so compare first */
+        if(*div0 <= args->b_high / p) { *div++ = *div0 * p; }
         if(div >= &divisors[MAX_DIVISORS]) { break; }
       }
       if(div >= &divisors[MAX_DIVISORS]) { break; }
@@ -776,7 +777,18 @@ static bit_selection get_2adic_info(ratpoints_args *args,
       if(np4 > 0)       { db |= 0x0001UL; }
          /* v_2(den) >= 4 */
 
-      if(db == 0) { *den_bits = 0UL; return(num_none); }
+      if(db == 0)
+      { /* No residue class of the denominator admits any numerator.  Return
+         * early -- but fill num_bits[] first: the caller reads all sixteen
+         * entries (bits_per_word, run_shape, the test on every denominator),
+         * and the denominator loop that runs when RATPOINTS_CHECK_DENOM is
+         * off looks at nothing else. */
+        long i;
+
+        for(i = 0; i < 16; i++) { num_bits[i] = zero; }
+        *den_bits = 0UL;
+        return(num_none);
+      }
 
       for(i = 16; i < LONG_LENGTH; i <<= 1) { db |= db << i; }
 
@@ -1524,9 +1536,15 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     }
   }
 
-  /* only every other numerator is looked at unless both parities are in play */
-  if(which_bits == num_none) { nums = 0.0; }
-  else if(which_bits != num_all) { nums *= 0.5; }
+  /* Only every other numerator is looked at unless both parities are in
+   * play.  That includes num_none, which says only that no odd denominator
+   * has an admissible numerator: the even denominators are still sieved,
+   * with num_odd forced in sift(), so exactly half the numerators are looked
+   * at for them.  (Setting nums to zero here put U on its floor of 1, which
+   * switched the second and third stages off for those curves.)  Not
+   * modelled: with num_all the even denominators also sweep only half, so U
+   * is over-estimated by up to a third there; see TODO item 18. */
+  if(which_bits != num_all) { nums *= 0.5; }
 
   *n_denom = keep*count;
   *u_words = keep*nums/(double)LONG_LENGTH;
@@ -1796,7 +1814,8 @@ static long sieving_info(ratpoints_args *args,
   if(args->flags & RATPOINTS_CHECK_DENOM)
   { forb_ba[fba].p = 0;        /* terminating zero */
     forbidden[fdc].p = 0;      /* terminating zero */
-    args->max_forbidden = fba + fdc; /* note actual number */
+    /* args->max_forbidden is an input and stays one: writing the number
+     * found into it latched the test off for a caller that reuses args. */
   }
 
   /* nothing for the checked denominator loop to test? then use the plain one */
@@ -2041,7 +2060,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
   long total = 0;
   /* typedef struct { long p; long offset; ratpoints_bit_array *ptr; }
              sieve_spec; */
-  sieve_spec ssp[args->sp2];
+  sieve_spec ssp[args->sp2 > 0 ? args->sp2 : 1]; /* length 0 is undefined */
   /* what the third stage needs per denominator; see find_points_init on why
    * it is not an array here */
   check_spec *csp = (check_spec *)args->stage3_list;
@@ -2257,7 +2276,45 @@ typedef struct {mpz_t *cof; long degree; long height;
    will hold the coefficents of the polynomial,
    multiplied by powers of the denominator b */
 
+static long find_points_work_1(ratpoints_args *args,
+                 int process(long, long, const mpz_t, void*, int*), void *info);
+
 long find_points_work(ratpoints_args *args,
+                 int process(long, long, const mpz_t, void*, int*), void *info)
+{
+  /* The input fields of args stay what the caller set them to.  The search
+   * normalises them and, where they say "choose", used to write its choice
+   * into them, which made a caller that fills args once and then loops over
+   * curves run every curve after the first with the first one's choices.  So
+   * they are saved here and put back on the way out; what was chosen is
+   * reported in sp1_used, sp2_used and sp3_used.  Deliberately left as the
+   * search made them: cof and degree, which describe the polynomial the
+   * search worked with -- reversed (RATPOINTS_REVERSED says so) or with
+   * leading zero coefficients dropped (no flag reports that; the caller
+   * supplied them) --, num_inter and domain[], which on return describe the
+   * region that was actually searched (the intervals given, intersected
+   * with the positivity region of f; the program prints them), and the flag
+   * bits that report on the run. */
+  long b_low = args->b_low, b_high = args->b_high;
+  long sp1 = args->sp1, sp2 = args->sp2;
+  long array_size = args->array_size, sturm = args->sturm;
+  long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
+  long result;
+
+  /* sp3 is a working field the caller never sets, and the three _used
+   * fields are outputs: they stay 0 when the search ends before it has
+   * chosen its primes (no real points, nothing admissible mod 16, ...). */
+  args->sp3 = 0;
+  args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
+  result = find_points_work_1(args, process, info);
+  args->b_low = b_low; args->b_high = b_high;
+  args->sp1 = sp1; args->sp2 = sp2;
+  args->array_size = array_size; args->sturm = sturm;
+  args->num_primes = num_primes; args->max_forbidden = max_forbidden;
+  return(result);
+}
+
+static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;       /* total counts the points */
@@ -2272,6 +2329,7 @@ long find_points_work(ratpoints_args *args,
   mpz_t *work = args->work;
 
   int point_at_infty = 0; /* indicates if there are points at infinity */
+  int sturm_empty = 0;    /* the positivity region misses the search domain */
   int lcfsq = mpz_perfect_square_p(c[degree]);
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
@@ -2368,7 +2426,9 @@ long find_points_work(ratpoints_args *args,
   /* Don't reverse if intervals are specified or limits for the denominator
      are given */
   if(args->num_inter > 0 || args->b_low > 1 || args->b_high < height)
-  { args->flags |= RATPOINTS_NO_REVERSE; }
+  { args->flags |= RATPOINTS_NO_REVERSE_AUTO; }
+    /* a private bit, cleared on entry: setting RATPOINTS_NO_REVERSE itself
+     * would latch the caller's input for the next call */
 
   if(args->flags & RATPOINTS_VERBOSE)
   { printf("\nfind_points:\n");
@@ -2399,7 +2459,7 @@ long find_points_work(ratpoints_args *args,
     { printf("  no isolation of connected components to be done\n"); }
     if(args->flags & RATPOINTS_NO_CHECK)
     { printf("  do not verify the points\n"); }
-    if(args->flags & RATPOINTS_NO_REVERSE)
+    if(args->flags & (RATPOINTS_NO_REVERSE | RATPOINTS_NO_REVERSE_AUTO))
     { printf("  do not reverse the polynomial\n"); }
     if(args->flags & RATPOINTS_NO_JACOBI)
     { printf("  do not perform Jacobi symbol test\n"); }
@@ -2418,7 +2478,7 @@ long find_points_work(ratpoints_args *args,
     * case 3: degree is odd, leading coefficient is not +-1,
               trailing coefficient is zero, coeff. of x is +-1
   */
-  if(!((args->flags) & RATPOINTS_NO_REVERSE))
+  if(!((args->flags) & (RATPOINTS_NO_REVERSE | RATPOINTS_NO_REVERSE_AUTO)))
   { if(args->flags & RATPOINTS_VERBOSE)
     { printf("Check if polynomial should be reversed "
              "for better performance:\n");
@@ -2509,10 +2569,10 @@ long find_points_work(ratpoints_args *args,
 #endif
 
   /* Deal with the intervals */
+  if(args->domain == NULL) { return(RATPOINTS_BAD_ARGS); }
   if(args->num_inter == 0)
   /* default interval (effectively ]-infty,infty[) if none is given */
-  { if(args->domain == NULL)  return(RATPOINTS_BAD_ARGS);
-    args->domain[0].low = -height; args->domain[0].up = height;
+  { args->domain[0].low = -height; args->domain[0].up = height;
     args->num_inter = 1;
   }
 
@@ -2526,7 +2586,8 @@ long find_points_work(ratpoints_args *args,
     { if(ret < 0) { printf("  polynomial is not squarefree ==> stop\n\n"); }
       else
       if(ret == 0)
-      { printf("  polynomial is always negative ==> no points\n\n"); }
+      { printf("  polynomial is negative on the whole search region"
+               " ==> no affine points\n\n"); }
       else
       { long n;
 
@@ -2536,9 +2597,18 @@ long find_points_work(ratpoints_args *args,
         printf("\n\n");
       }
     }
-    if(ret <= 0) /* not squarefree or no real points */
-    { if(ret == 0) { return(0); }
-      return(RATPOINTS_NON_SQUAREFREE);
+    if(ret < 0) { return(RATPOINTS_NON_SQUAREFREE); }
+    if(ret == 0)
+    { /* No real point in the search region: either f is negative everywhere
+       * (then the degree is even and the leading coefficient negative, so
+       * there is no point at infinity either) or the positivity region does
+       * not meet [-H, H].  In the second case the points at infinity are
+       * still there -- an odd degree always has one, an even degree with a
+       * square leading coefficient has two, and after a reversal that point
+       * is an affine point of the caller's curve -- so only the sieve is
+       * skipped, below, after those points have been dealt with. */
+      if(!((degree & 1) || lcfsq)) { return(0); }
+      sturm_empty = 1;
     }
   }
 
@@ -2608,6 +2678,17 @@ long find_points_work(ratpoints_args *args,
      2k+1 (which_bits = den_odd)
      need not be considered for denominators congruent to b mod 16.
    */
+
+  if(den_bits == 0 && !point_at_infty)
+  { /* No residue class of the denominator mod 16 admits any numerator, so
+     * there is no affine point.  There is none at infinity either: an odd
+     * degree always leaves the class v_2(b) >= 4 admissible, so the degree
+     * is even, and the leading coefficient then is not a square mod 16,
+     * hence not a square (the test on point_at_infty only says so). */
+    if(args->flags & RATPOINTS_VERBOSE)
+    { printf("  no denominator admits a numerator mod 16 ==> no points\n\n"); }
+    return(total);
+  }
 
 #ifdef DEBUG
   { long i, c = 0;
@@ -2771,6 +2852,7 @@ long find_points_work(ratpoints_args *args,
     }
     if(args->flags & RATPOINTS_VERBOSE) { printf("\n"); }
   }
+  if(sturm_empty) { return(total); } /* nothing left to sieve */
 
 #ifdef DEBUG
   printf("\nfind_points_work: start sieving...\n"); fflush(NULL);
@@ -2801,7 +2883,7 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_USE_SQUARES)
       /* need only take squares as denoms */
       { long b, bb;
-        long bp_list[args->sp3_max];
+        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
         long last_b = args->b_low;
@@ -2861,7 +2943,7 @@ long find_points_work(ratpoints_args *args,
       else /* args->flags & RATPOINTS_USE_SQUARES1 */
       { long *div = &divisors[0];
         long b, bb;
-        long bp_list[args->sp3_max];
+        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
 
@@ -2940,7 +3022,7 @@ long find_points_work(ratpoints_args *args,
     { if(args->flags & RATPOINTS_CHECK_DENOM)
       { forbidden_val *forb;
         long b;
-        long bp_list[args->sp3_max];
+        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
         long last_b = args->b_low;
@@ -3066,7 +3148,7 @@ long find_points_work(ratpoints_args *args,
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
       { long b;
-        long bp_list[args->sp3_max];
+        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
         long last_b = args->b_low;
@@ -3140,6 +3222,11 @@ long find_points_work(ratpoints_args *args,
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif
+
+  /* report the primes the sieve used (adapt_primes may have moved sp2 and
+   * sp3 during the run; find_points_work zeroed these on entry) */
+  args->sp1_used = args->sp1; args->sp2_used = args->sp2;
+  args->sp3_used = args->sp3;
 
 #ifdef DEBUG
   printf("\nfind_points_work: done. total = %ld.\n", total); fflush(NULL);

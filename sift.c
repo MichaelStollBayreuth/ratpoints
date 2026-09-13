@@ -1033,9 +1033,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       { long a0, da, d, k;
 
         if(which_bits == num_all)
-        { d = 1; a0 = i << RBA_SHIFT; da = LONG_LENGTH; }
+        { d = 1; a0 = i * RBA_LENGTH; da = LONG_LENGTH; }
         else
-        { d = 2; a0 = i << (RBA_SHIFT+1); da = 2*LONG_LENGTH;
+        { d = 2; a0 = i * (2*RBA_LENGTH); da = 2*LONG_LENGTH;
           if(which_bits == num_odd) { a0++; }
         }
 
@@ -1120,9 +1120,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
         /* Set d, a0, da according to which_bits. */
         if(which_bits == num_all)
-        { d = 1; a0 = i << RBA_SHIFT; da = LONG_LENGTH; }
+        { d = 1; a0 = i * RBA_LENGTH; da = LONG_LENGTH; }
         else
-        { d = 2; a0 = i << (RBA_SHIFT+1); da = 2*LONG_LENGTH;
+        { d = 2; a0 = i * (2*RBA_LENGTH); da = 2*LONG_LENGTH;
           if(which_bits == num_odd) { a0++; }
         }
 
