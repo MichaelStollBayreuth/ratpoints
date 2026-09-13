@@ -251,15 +251,19 @@
 # define RATPOINTS_CHECK_REFERENCE 306.0
 #endif
 
+#ifndef RATPOINTS_DEFAULT_NUM_PRIMES
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
      Unless num_primes is set explicitly, this is where the search starts:
      sieving_info() looks at further primes when a curve does not leave
      enough of them informative for sp2 to be sp1 + RATPOINTS_SP2_EXTRA. */
+#endif
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
 
 #define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
 
+#ifndef RATPOINTS_ARRAY_SIZE
 #define RATPOINTS_ARRAY_SIZE 256           /* Array size in bit-arrays */
+#endif
 
 /* data structure for intervals, used in finding the positivity region */
 typedef struct {double low; double up;} ratpoints_interval;
@@ -274,6 +278,10 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
+                 long sp1_used; long sp2_used; long sp3_used;
+                   /* output: the number of primes the last search used in
+                      the first stage, in the first two, and in all three;
+                      the input fields above come back as they went in */
         /* from here: private data */
                  mpz_t *work; long work_length;
                  void *se_buffer; void *se_next;
@@ -313,6 +321,10 @@ typedef struct { mpz_t *cof; long degree; long height;
   /* the Jacobi symbol test on the denominators applies: even degree, the
      leading coefficient is not a square, and RATPOINTS_NO_JACOBI is not set */
 #define RATPOINTS_COMPUTE_BC      (unsigned int)0x2000
+#define RATPOINTS_NO_REVERSE_AUTO (unsigned int)0x4000
+  /* the program itself decided not to reverse (intervals given, or bounds
+     on the denominator); kept apart from RATPOINTS_NO_REVERSE so that the
+     caller's input is not changed */
 
 /* Return values of find_points() */
 #define RATPOINTS_NON_SQUAREFREE (-1)

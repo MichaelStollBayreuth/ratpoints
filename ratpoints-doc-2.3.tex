@@ -639,7 +639,7 @@ to be able to override this change.
 
 %=========================================================================
 
-\section{How to use the library}
+\section{How to use the library}\label{sec:library}
 
 It is possible to use the ratpoints machinery from within your own programs.
 
@@ -671,16 +671,32 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
-                 unsigned int flags; ...}
+                 unsigned int flags;
+                 long sp1_used; long sp2_used; long sp3_used; ...}
         ratpoints_args;
 \end{verbatim}
 
 The dots at the end stand for additional fields that are used internally
-and are not of interest here. When calling \texttt{find\_points}, the
+and are not of interest here. All fields up to and including \texttt{flags}
+are inputs, and they come back from a call as they went in, with two
+exceptions that are described below: the coefficient array and
+\texttt{degree} when the polynomial has been reversed, and the flag bits
+that report on the run. (Up to version 2.2.4 the program wrote some of
+the values it chose or normalised into the input fields, so that a caller
+who fills the structure once and then loops over curves had to reset them
+before every call; this is no longer necessary.)
+The three \texttt{\_used} fields are outputs, see below.
+
+When calling \texttt{find\_points}, the
 \texttt{cof} field must point to an array of size $\text{\texttt{degree}} + 1$
 of properly initialized gmp integers; these are the coefficients of
 the polynomial. The program can alter the values of the integers in this
-array. To prevent this, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
+array: it may reverse the polynomial, and it drops a zero constant term
+on that occasion, in which case \texttt{degree} is lowered by one so that
+\texttt{cof} and \texttt{degree} still describe the polynomial the program
+worked with (the \texttt{RATPOINTS\_REVERSED} flag says when this has
+happened). Leading zero coefficients are dropped in the same way.
+To prevent the reversal, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
 in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
@@ -702,8 +718,11 @@ via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
 \texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
-The program may alter the values in the array {\em domain} points to,
-unless \texttt{sturm} has a negative value (which may lead to a performance loss).
+The program uses the array {\em domain} points to as its workspace when it
+intersects the given intervals with the region where $f$ is positive
+(unless \texttt{sturm} has a negative value, which may lead to a performance
+loss); on return, \texttt{num\_inter} and the first \texttt{num\_inter}
+entries of the array are what they were on entry.
 
 \texttt{b\_low} and \texttt{b\_high}
 carry the lower and upper bounds for the denominator; if non-positive, they are
@@ -716,7 +735,8 @@ in both sieving stages together, respectively. If negative, they are chosen
 from the curve, as described in Section~\ref{sec:spchoice}; this is what the
 command line program does when \verb+-n+ and \verb+-N+ are absent. In
 \texttt{ratpoints}, these fields are set by the
-\verb+-n+ and \verb+-N+ options. The fields
+\verb+-n+ and \verb+-N+ options. What was actually used, chosen or not,
+is reported in \texttt{sp1\_used} and \texttt{sp2\_used}. The fields
 \texttt{survivors\_per\_word} and \texttt{sp2\_extra} hold the two
 constants that govern that choice (options \verb+-r+ and \verb+-R+); if
 negative, the values compiled into \texttt{ratpoints.h} are used. So do
@@ -728,10 +748,11 @@ the program revising these numbers as it runs (option \verb+-A+,
 Section~\ref{sec:adapt}); it revises them only when it chose them, so a
 non-negative \texttt{sp1} or \texttt{sp2} has the same effect.
 
-\texttt{sp3}
+\texttt{sp3\_used}
 reports the number of primes used in all three stages together, so that
-\texttt{sp3} $-$ \texttt{sp2} of them belong to the third. It is an output
-field: what goes in is \texttt{sp3\_extra}, which fixes that difference when
+\texttt{sp3\_used} $-$ \texttt{sp2\_used} of them belong to the third.
+(\texttt{sp3} itself is a working field of no interest to the caller.)
+What goes in is \texttt{sp3\_extra}, which fixes that difference when
 it is non-negative (option \verb+-P+) and otherwise leaves the number to be
 chosen from the curve, and \texttt{sp3\_per\_denom} (option \verb+-Q+),
 which is the machine constant that choice turns on and takes the value
@@ -909,7 +930,12 @@ then it is slightly more efficient to use the sequence
   find_points_clear(&args);
 \end{verbatim}
 
-This avoids the repeated allocation and freeing of memory.
+This avoids the repeated allocation and freeing of memory. Inside the loop
+only \texttt{cof} and \texttt{degree} (and whatever else changes from curve
+to curve) need to be set; the other input fields keep their values across
+calls, since version 2.3. \texttt{rptest.c} with the \verb+-O+ option does
+exactly this, and \texttt{make test1once} checks that the points found are
+the same as with the fields set once per curve.
 
 For practical examples, see \texttt{main.c} (the code that wraps
 \texttt{find\_points} for the command line program \texttt{ratpoints}) or
@@ -1713,6 +1739,47 @@ and $2.1\%$ of \texttt{make testhighmany}. That is more than the share
 of denominators it excludes, because a prime that divides the leading
 coefficient passes every numerator of a denominator it divides, so those
 denominators reach the later stages with several times the usual survivors.
+
+A review of the code in September 2026 turned up five bugs, which are fixed
+here and, where they are older than this version, in 2.2.4 as well. A
+polynomial of degree~1 --- given as such, or reached from
+$y^2 = c_2x^2 + c_1x$ by the reversal, or from a zero leading coefficient
+--- made the Sturm sequence code read past the end of its arrays and crash.
+When the positivity region of~$f$ did not meet the search domain, the
+program returned before it had looked at the points at infinity, so that
+\texttt{ratpoints '-1000000000 0 0 1' 45} printed nothing where
+\verb+-s+ printed $(1:0:0)$, and after a reversal the lost point is an
+affine point of the given curve. When no residue class of the denominator
+modulo~16 admitted any numerator, the array of numerator patterns was read
+before it had been filled; by default the answer was still right, but the
+choice of parameters was not reproducible, and with \verb+-j -F 0+ the
+program printed nondeterministic points outside the height bound after a
+run several thousand times longer than necessary. When no {\em odd}
+denominator admitted a numerator but even ones did, the estimate of the
+run length fell to its floor, which switched the second and third sieving
+stages and the adaptive correction off for those curves (41 of the 900
+random test curves that sieve; the points were right, the run slow). And
+several input fields of \texttt{ratpoints\_args} were used as scratch
+space --- the number of forbidden divisors found was written into
+\texttt{max\_forbidden}, the intersected search intervals into
+\texttt{num\_inter}, the chosen numbers of primes into \texttt{sp1} and
+\texttt{sp2}, normalised values into several others --- so that a program
+which fills the structure once and then calls \texttt{find\_points\_work}
+for curve after curve, as Section~\ref{sec:library} suggests, had the
+forbidden-divisor test switched off after the first curve without forbidden
+divisors (a factor of two in running time), the first curve's choice of
+primes imposed on all the others, and its positivity region intersected
+into their search domains, which loses points. The input fields now come
+back as they went in, and \texttt{sp1\_used}, \texttt{sp2\_used} and
+\texttt{sp3\_used} report what was used; \texttt{make test1once} runs the
+test curves that way. \texttt{make test3} runs the invocations of
+\texttt{test3.sh}, one for each of these bugs, against \texttt{testbase3}.
+Also fixed: four left shifts of negative values (undefined in C, harmless
+with gcc so far), two arrays that could be declared with length zero under
+\verb+-n 0 -N 0+, an overflow in the enumeration of the divisors of the
+leading coefficient for denominator bounds above about $4\cdot10^{15}$, and
+two constants in \texttt{ratpoints.h} that could not be overridden from the
+compiler command line.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
