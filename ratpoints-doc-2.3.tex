@@ -208,8 +208,9 @@ so far only been tested indirectly (see the change log entry below), since
 I have no such CPU available; you should therefore run \texttt{make test}
 before relying on it. It is also worth timing the 256-bit and the 512-bit
 version against each other on your machine: the sieving loop is limited by
-memory bandwidth rather than by arithmetic, so wider registers do not
-automatically pay off, and some Intel server processors reduce their clock
+how fast it loads bit arrays from the first-level cache and by how much of
+that cache the sieve tables occupy, rather than by arithmetic, so wider
+registers do not automatically pay off, and some Intel server processors reduce their clock
 frequency when 512-bit instructions are used. The one data point available
 so far is encouraging, though: on an AMD Ryzen~9 9950X3D (Zen~5 architecture),
 \textbf{Drew Sutherland} measured a speed-up of 13 to 14\% over the 256-bit
@@ -707,7 +708,9 @@ describe the region it searched; and the flag bits that report on the
 run. (Up to version 2.2.4 the program also wrote the values it chose or
 normalised into the other input fields, so that a caller who fills the
 structure once and then loops over curves had to reset them before every
-call; this is no longer necessary.)
+call; this is no longer necessary.) Every input field has to be set before
+the call; a negative value asks for the compiled-in default, or for the
+value to be chosen from the curve, as described below.
 The three \texttt{\_used} fields are outputs, see below.
 
 When calling \texttt{find\_points}, the
@@ -741,7 +744,10 @@ the meaning of this should be clear. In \texttt{ratpoints}, this is set
 via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
-\texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
+\texttt{degree} intervals; a null pointer makes the call return
+\texttt{RATPOINTS\_BAD\_ARGS}, since the program stores the default
+interval $]-\texttt{height}, \texttt{height}[$ there. If \texttt{sturm} is
+negative, one interval is enough.)
 The program intersects the given intervals with the region where $f$ is
 positive (unless \texttt{sturm} has a negative value, which may lead to a
 performance loss) and searches the result; on return, \texttt{num\_inter}
@@ -914,6 +920,14 @@ int main(int argc, char *argv[])
     args.b_high        = b_high;
     args.sp1           = sieve_primes1;
     args.sp2           = sieve_primes2;
+    args.survivors_per_word = -1.0; /* negative: the compiled-in default */
+    args.sp2_extra     = -1;
+    args.sp2_u0        = -1.0;
+    args.cost_table    = -1.0;
+    args.adapt         = -1;
+    args.sp3_extra     = -1;        /* negative: chosen from the curve */
+    args.sp3_per_denom = -1.0;
+    args.check_cost    = -1.0;
     args.array_size    = array_size;
     args.sturm         = sturm_iter;
     args.num_primes    = num_primes;

@@ -428,7 +428,7 @@ static inline int jacobi1(long b, const long lcf)
   while((b & 1) == 0) b >>= 1;
   f = lcf;
   if(f < 0) { f = -f; neg = 1; }
-  if(b < 1UL<<(LONG_LENGTH - 4)) f = mod(f, b);
+  if(b < 1UL<<(LONG_LENGTH - 5)) f = mod(f, b); /* mod() forms 16*b */
   if(f == 0) return(1);
 
   while(1)
@@ -1541,7 +1541,9 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
    * has an admissible numerator: the even denominators are still sieved,
    * with num_odd forced in sift(), so exactly half the numerators are looked
    * at for them.  (Setting nums to zero here put U on its floor of 1, which
-   * switched the second and third stages off for those curves.) */
+   * switched the second and third stages off for those curves.)  Not
+   * modelled: with num_all the even denominators also sweep only half, so U
+   * is over-estimated by up to a third there; see TODO item 18. */
   if(which_bits != num_all) { nums *= 0.5; }
 
   *n_denom = keep*count;
@@ -2294,19 +2296,19 @@ long find_points_work(ratpoints_args *args,
    * with the positivity region of f; the program prints them), and the flag
    * bits that report on the run. */
   long b_low = args->b_low, b_high = args->b_high;
-  long sp1 = args->sp1, sp2 = args->sp2, sp3 = args->sp3;
+  long sp1 = args->sp1, sp2 = args->sp2;
   long array_size = args->array_size, sturm = args->sturm;
   long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
   long result;
 
+  /* sp3 is a working field the caller never sets, and the three _used
+   * fields are outputs: they stay 0 when the search ends before it has
+   * chosen its primes (no real points, nothing admissible mod 16, ...). */
+  args->sp3 = 0;
+  args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
   result = find_points_work_1(args, process, info);
-  if(result < 0) { args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0; }
-  else
-  { args->sp1_used = args->sp1; args->sp2_used = args->sp2;
-    args->sp3_used = args->sp3;
-  }
   args->b_low = b_low; args->b_high = b_high;
-  args->sp1 = sp1; args->sp2 = sp2; args->sp3 = sp3;
+  args->sp1 = sp1; args->sp2 = sp2;
   args->array_size = array_size; args->sturm = sturm;
   args->num_primes = num_primes; args->max_forbidden = max_forbidden;
   return(result);
@@ -2567,10 +2569,10 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
   /* Deal with the intervals */
+  if(args->domain == NULL) { return(RATPOINTS_BAD_ARGS); }
   if(args->num_inter == 0)
   /* default interval (effectively ]-infty,infty[) if none is given */
-  { if(args->domain == NULL)  return(RATPOINTS_BAD_ARGS);
-    args->domain[0].low = -height; args->domain[0].up = height;
+  { args->domain[0].low = -height; args->domain[0].up = height;
     args->num_inter = 1;
   }
 
@@ -3220,6 +3222,11 @@ static long find_points_work_1(ratpoints_args *args,
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif
+
+  /* report the primes the sieve used (adapt_primes may have moved sp2 and
+   * sp3 during the run; find_points_work zeroed these on entry) */
+  args->sp1_used = args->sp1; args->sp2_used = args->sp2;
+  args->sp3_used = args->sp3;
 
 #ifdef DEBUG
   printf("\nfind_points_work: done. total = %ld.\n", total); fflush(NULL);

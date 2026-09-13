@@ -95,13 +95,14 @@ reported in three new output fields `sp1_used`, `sp2_used`, `sp3_used`
 (`sp3` becomes a working field; it had only been documented as an output
 since 2026-09-10, unreleased).  Left as the search made them, on purpose:
 `cof` and `degree` when the polynomial was reversed or a leading zero
-dropped (`RATPOINTS_REVERSED` reports it; the pair still describes the
-polynomial worked with), and the flag bits that report on the run.
+dropped (`RATPOINTS_REVERSED` reports the reversal; a dropped leading zero sets
+no flag; the pair still describes the polynomial worked with), and the flag bits that report on the run.
 (2) The derived no-reversal condition sets a private bit
 `RATPOINTS_NO_REVERSE_AUTO`, cleared on entry by the input mask, and the
 two tests check both bits.  (3) The write into `max_forbidden` is deleted
-(nothing read the value).  `main.c` is unaffected: it prints the search
-intervals from the caller's copy *before* the call.  The documentation
+(nothing read the value).  (`main.c` was affected after all -- it reads
+`sp1`, `sp2`, `sp3`, `num_inter` and `domain` *after* the call for its
+end-of-run report -- see the review outcome below.)  The documentation
 now says which fields are inputs, that they come back unchanged, and what
 the two exceptions are.  For 2.2.4 the same wrapper (without the new
 fields, which would break the ABI) and the same documentation note.
@@ -119,7 +120,11 @@ divisor enumeration `t = *div0 * p; if(t <= b_high)` compares
 4e15.  `RATPOINTS_DEFAULT_NUM_PRIMES` and `RATPOINTS_ARRAY_SIZE` got the
 `#ifndef` guard their neighbours have.  Not done: `sieves0` is still not
 `const` (it is assigned to non-const pointers; no runtime effect), and the
-"2^60" comment the finders mention could not be found.
+"2^60" the finders mention is not a comment but the guard
+`b < 1UL<<(LONG_LENGTH - 4)` in front of `mod(f, b)` in `jacobi1`, one bit
+wider than the `b << 4` inside `mod()` allows; it is now `LONG_LENGTH - 5`
+(found by the second review; unreachable in practice, since `b` is a
+denominator below the height bound).
 
 ## Tests
 
@@ -144,7 +149,8 @@ The existing suites: `test1`, `test1many`, `testdegrees`, `test2`,
 `testhigh`, `testhighmany` byte-identical to their references, on the
 default build and, for `test1`, `test1once`, `test3`, `testdegrees`, on the
 128-bit, 64-bit, SSE, `RATPOINTS_CHUNK=1` and `USE_LONG_IN_PHASE_2` builds
-(scratch copy).  valgrind on the debug build: 0 errors on eight
+(scratch copy); a skeptic of the second review then ran all eight suites on
+all six builds of ee7d117, 48 comparisons, all identical.  valgrind on the debug build: 0 errors on eight
 reproducers including the former uninitialised read.
 
 ## Backport to 2.2.4
@@ -213,3 +219,43 @@ On the unfixed 2.2.3 the tests-old lens found: 7 of the 15 `test3.sh`
 invocations segfault, 5 print nothing where the reference has points,
 and `rptest -O` built against the old library reports the
 `max_forbidden` latch on 951 of 1008 curves.
+
+## The 2.3 review (2026-09-13, evening)
+
+Five lenses (mathematics, wrapper, hygiene, tests, docs), 46 agents;
+seventeen findings confirmed, three refuted.  The mathematics lens proved
+the Sturm clamp, the points-at-infinity argument, the `den_bits == 0`
+argument and the `num_none` factor and found them right.  What the others
+found, beyond the `main.c` report already fixed after the 2.2.4 review:
+
+* `sp3` is not an input -- no caller sets it -- so saving and restoring it
+  handed back an indeterminate value, and `sp1_used`/`sp2_used`/`sp3_used`
+  were copies of the raw inputs on the early returns.  Now the wrapper sets
+  `sp3` and the three outputs to 0 before the search, and the search fills
+  the outputs at its normal end; 0 means it ended before choosing primes.
+* `sturm.c`: `while(mpz_cmp_si(sturm[k][d2], 0) == 0 && d2 >= 0)` tested
+  the subscript before the bound and read `sturm[k][-1]` on every
+  non-squarefree input (UBSan reports it; the answer was right by luck of
+  the layout).  Conjuncts swapped, both lines; `'1 2 1' 20` is in test3.
+* A NULL `domain` returned `RATPOINTS_BAD_ARGS` only when `num_inter == 0`
+  and was dereferenced otherwise; the test is hoisted, both lines, and the
+  manual no longer says a negative `sturm` makes the pointer optional.
+* The `jacobi1` guard, above.  `RATPOINTS_DEFAULT_STURM` and
+  `RATPOINTS_DEFAULT_MAX_FORBIDDEN` guarded like their neighbours.
+* Tests: no suite ran the program without `-q`, so nothing looked at its
+  report; `test3` now has two pinned non-quiet invocations (`-n 5 -N 8
+  -P 2`, `sed` from "primes used" on), the not-squarefree case, and, on
+  the 2.3 line, a count of `-v` lines saying a stage uses no primes for the
+  `run_shape` curve (must be 0; with the bug it was 2).  `test1once` has a
+  third run with `-dl 0 -du 1000000 -S 100`, values the library normalises.
+* The manual's example set 14 of the 22 input fields; the eight tuning
+  fields of 2.3 are now in it, with the rule that a negative value asks for
+  the default.  README and manual no longer blame memory bandwidth for the
+  sieving loop (the review measured L1 load throughput and capacity).
+* Not done, recorded for TODO item 18: `run_shape` counts the even
+  denominators of a `num_all` curve at full width although `sift()` sweeps
+  half for them (U over-estimated by up to a third there; a model change to
+  be measured, not a bug fix); the manual's two "a fifth of the run is
+  table construction" sentences, which the review's counters contradict
+  (the fifth outside `sift()` is `jacobi1`, `bp_list` and the denominator
+  loop), left for the notes appendix of item 17.

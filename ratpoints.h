@@ -257,9 +257,13 @@
      sieving_info() looks at further primes when a curve does not leave
      enough of them informative for sp2 to be sp1 + RATPOINTS_SP2_EXTRA. */
 #endif
+#ifndef RATPOINTS_DEFAULT_STURM
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */
+#endif
 
+#ifndef RATPOINTS_DEFAULT_MAX_FORBIDDEN
 #define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
+#endif
 
 #ifndef RATPOINTS_ARRAY_SIZE
 #define RATPOINTS_ARRAY_SIZE 256           /* Array size in bit-arrays */

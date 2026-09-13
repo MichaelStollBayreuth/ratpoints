@@ -120,7 +120,8 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       for(n = 0; n < d2-d1; n++)
       { mpz_mul(sturm[k][n], sturm[k][n], work[0]); }
       d2--;
-      while(mpz_cmp_si(sturm[k][d2], 0) == 0 && d2 >= 0) { d2--; }
+      /* d2 reaches -1 when the remainder is zero: not squarefree */
+      while(d2 >= 0 && mpz_cmp_si(sturm[k][d2], 0) == 0) { d2--; }
       if(d2 < 0)  /* not squarefree */
       { for(n = 0; n <= degree; n++)
         { for(m = 0; m <= degree; m++)

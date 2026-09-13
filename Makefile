@@ -196,7 +196,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest.out rptest-many.out rptest-high.out \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
-            test3.out rptest-once.out rptest-once2.out
+            test3.out rptest-once.out rptest-once2.out rptest-once3.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
@@ -312,12 +312,15 @@ testdegrees: rptest-degrees testbase-degrees
 # (rptest prints a line whenever one has changed), and the points must be
 # the same.  The second run, with a lower bound on the denominator, makes
 # the library take its own decision not to reverse the polynomial, which
-# used to be stored in the caller's flags.
+# used to be stored in the caller's flags; the third gives values that the
+# library normalises, which used to be stored in the fields.
 test1once: rptest testbase
 	./rptest -O > rptest-once.out
 	cmp -s testbase rptest-once.out || echo ${FAILED}
 	./rptest -O -dl 2 -z > rptest-once2.out
 	grep -q changed rptest-once2.out && echo ${FAILED} || true
+	./rptest -O -dl 0 -du 1000000 -S 100 > rptest-once3.out
+	cmp -s testbase rptest-once3.out || echo ${FAILED}
 
 # Regression tests for the bugs found in the review of September 2026: a
 # list of invocations of ratpoints in test3.sh, against testbase3.

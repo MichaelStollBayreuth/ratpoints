@@ -92,7 +92,8 @@ There is also a variant that uses 512-bit AVX registers, which needs a CPU with 
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I
 have no such CPU available (it has only been checked indirectly, by having the compiler express the
 512-bit operations through narrower ones). It was also unclear whether it would be any faster at all,
-since the sieving loop is limited by memory bandwidth rather than by arithmetic; but one data point
+since the sieving loop is limited by how fast it loads bit arrays from the first-level cache, and by how
+much of that cache the sieve tables occupy, rather than by arithmetic; but one data point
 kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland), for a curve with many
 rational points on a Zen 5 CPU, shows a speedup of 13-14% over the 256-bit version. It is still
 advisable to run `make test` and compare the timings on your own machine.
