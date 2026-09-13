@@ -669,11 +669,12 @@ void message(long n, long total, ratpoints_args *args)
             } }
             printf("\n");
             break;
-    case 4: printf("%ld primes used for first stage of sieving,\n", args->sp1);
+    case 4: printf("%ld primes used for first stage of sieving,\n",
+                   args->sp1_used);
             printf("%ld primes used for both stages of sieving together,\n",
-                   args->sp2);
+                   args->sp2_used);
             printf("%ld further primes used in the third stage.\n",
-                   args->sp3 - args->sp2);
+                   args->sp3_used - args->sp2_used);
             break;
     case 5: printf("\nCurve equation is  y^2 = ");
             print_poly(args->cof, args->degree);

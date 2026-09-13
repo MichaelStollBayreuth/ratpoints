@@ -239,6 +239,16 @@ output of a sample run. The two should be identical; otherwise the
 message \texttt{Test failed!} will be displayed (on its own on a line).
 
 \begin{verbatim}
+> make test1once
+\end{verbatim}
+runs the same curves again, but with the input fields of the argument
+structure set once before the loop over the curves instead of once per
+curve, as a program using the library may do since version 2.3
+(Section~\ref{sec:library}); \texttt{rptest} prints a line whenever the
+library has changed one of those fields, and the output is compared
+against \texttt{testbase} as before.
+
+\begin{verbatim}
 > make test1many
 \end{verbatim}
 does the same with a second collection of curves, in
@@ -282,6 +292,13 @@ a fairly large height bound, times it, and compares the output to what is
 expected. This may take a few minutes, so be patient!
 
 \begin{verbatim}
+> make test3
+\end{verbatim}
+runs the invocations of \texttt{ratpoints} collected in \texttt{test3.sh},
+one or more for each of the bugs fixed in version 2.3 (and 2.2.4), and
+compares the output against \texttt{testbase3}.
+
+\begin{verbatim}
 > make timing
 \end{verbatim}
 times \texttt{ratpoints} on some curve with height bound $400\,000$.
@@ -291,7 +308,8 @@ Finally,
 \begin{verbatim}
 > make test
 \end{verbatim}
-runs \texttt{test1}, \texttt{test1many}, \texttt{test2} and \texttt{timing}.
+runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
+\texttt{testdegrees}, \texttt{test2}, \texttt{test3} and \texttt{timing}.
 The two large-height tests are not part of it; they are meant for judging a
 change to the sieve rather than for checking that the build works.
 
@@ -368,7 +386,10 @@ The archive contains the following files.
         the curves used by the test runs
   \item \texttt{testbase}, \texttt{testbase-many},
         \texttt{testbase-high-many}, \texttt{testbase-degrees},
-        \texttt{testbase2} --- the output they are expected to produce
+        \texttt{testbase2}, \texttt{testbase3} --- the output they are
+        expected to produce
+  \item \texttt{test3.sh} --- the script that \texttt{make test3} runs;
+        it has to be executable
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
@@ -678,13 +699,15 @@ typedef struct { mpz_t *cof; long degree; long height;
 
 The dots at the end stand for additional fields that are used internally
 and are not of interest here. All fields up to and including \texttt{flags}
-are inputs, and they come back from a call as they went in, with two
+are inputs, and they come back from a call as they went in, with three
 exceptions that are described below: the coefficient array and
-\texttt{degree} when the polynomial has been reversed, and the flag bits
-that report on the run. (Up to version 2.2.4 the program wrote some of
-the values it chose or normalised into the input fields, so that a caller
-who fills the structure once and then loops over curves had to reset them
-before every call; this is no longer necessary.)
+\texttt{degree}, which on return describe the polynomial the program
+worked with; \texttt{num\_inter} and \texttt{domain}, which on return
+describe the region it searched; and the flag bits that report on the
+run. (Up to version 2.2.4 the program also wrote the values it chose or
+normalised into the other input fields, so that a caller who fills the
+structure once and then loops over curves had to reset them before every
+call; this is no longer necessary.)
 The three \texttt{\_used} fields are outputs, see below.
 
 When calling \texttt{find\_points}, the
@@ -695,7 +718,8 @@ array: it may reverse the polynomial, and it drops a zero constant term
 on that occasion, in which case \texttt{degree} is lowered by one so that
 \texttt{cof} and \texttt{degree} still describe the polynomial the program
 worked with (the \texttt{RATPOINTS\_REVERSED} flag says when this has
-happened). Leading zero coefficients are dropped in the same way.
+happened). Leading zero coefficients are dropped in the same way, lowering
+\texttt{degree}, without a flag.
 To prevent the reversal, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
 in \texttt{flags}; this may result in a loss of performance, though.
 
@@ -718,11 +742,13 @@ via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
 \texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
-The program uses the array {\em domain} points to as its workspace when it
-intersects the given intervals with the region where $f$ is positive
-(unless \texttt{sturm} has a negative value, which may lead to a performance
-loss); on return, \texttt{num\_inter} and the first \texttt{num\_inter}
-entries of the array are what they were on entry.
+The program intersects the given intervals with the region where $f$ is
+positive (unless \texttt{sturm} has a negative value, which may lead to a
+performance loss) and searches the result; on return, \texttt{num\_inter}
+and the first \texttt{num\_inter} entries of the array describe that
+result, which is why the array has to be longer than the input. So
+\texttt{num\_inter} (and \texttt{domain}, if you restrict the search) must
+be set before every call.
 
 \texttt{b\_low} and \texttt{b\_high}
 carry the lower and upper bounds for the denominator; if non-positive, they are
@@ -931,11 +957,11 @@ then it is slightly more efficient to use the sequence
 \end{verbatim}
 
 This avoids the repeated allocation and freeing of memory. Inside the loop
-only \texttt{cof} and \texttt{degree} (and whatever else changes from curve
-to curve) need to be set; the other input fields keep their values across
-calls, since version 2.3. \texttt{rptest.c} with the \verb+-O+ option does
-exactly this, and \texttt{make test1once} checks that the points found are
-the same as with the fields set once per curve.
+only \texttt{cof}, \texttt{degree} and \texttt{num\_inter} (and whatever
+else changes from curve to curve) need to be set; the other input fields
+keep their values across calls, since version 2.3. \texttt{rptest.c} with
+the \verb+-O+ option does exactly this, and \texttt{make test1once} checks
+that the points found are the same as with the fields set once per curve.
 
 For practical examples, see \texttt{main.c} (the code that wraps
 \texttt{find\_points} for the command line program \texttt{ratpoints}) or
@@ -1770,10 +1796,12 @@ forbidden-divisor test switched off after the first curve without forbidden
 divisors (a factor of two in running time), the first curve's choice of
 primes imposed on all the others, and its positivity region intersected
 into their search domains, which loses points. The input fields now come
-back as they went in, and \texttt{sp1\_used}, \texttt{sp2\_used} and
-\texttt{sp3\_used} report what was used; \texttt{make test1once} runs the
-test curves that way. \texttt{make test3} runs the invocations of
-\texttt{test3.sh}, one for each of these bugs, against \texttt{testbase3}.
+back as they went in, except \texttt{num\_inter} and \texttt{domain}, which
+describe the region searched and are documented as such, and
+\texttt{sp1\_used}, \texttt{sp2\_used} and \texttt{sp3\_used} report what
+was used; \texttt{make test1once} runs the test curves that way.
+\texttt{make test3} runs the invocations of \texttt{test3.sh}, one or more
+for each of these bugs, against \texttt{testbase3}.
 Also fixed: four left shifts of negative values (undefined in C, harmless
 with gcc so far), two arrays that could be declared with length zero under
 \verb+-n 0 -N 0+, an overflow in the enumeration of the divisors of the

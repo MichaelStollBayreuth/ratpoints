@@ -156,3 +156,60 @@ not the header guards (`RATPOINTS_ARRAY_SIZE` exists there, check).  Plus
 `test3` (the same script and reference; 2.2.3's output for these must be
 checked to be the same point lists), the documentation (`ratpoints-doc-2.2.tex`
 change log and the field semantics), the version strings.
+
+## What the reviews found (2026-09-13, afternoon)
+
+Two Opus workflows, one per branch (`review-bugfixes`: five lenses, merge,
+two skeptics per finding; `bugfixes-2.2.4`: three lenses, same shape).
+The 2.2.4 review came back first, with twelve confirmed findings and one
+that mattered:
+
+**The program's own end-of-run report read the fields the wrapper
+restores.**  `main.c` prints "N primes used ..." from `args->sp1/sp2(/sp3)`
+and "Search intervals: [...]" from `args->num_inter/domain[]` *after* the
+call, in every non-quiet, non-verbose run.  With everything restored it
+printed "-1 primes used" and an empty interval list.  I had grepped
+`main.c` for reads after the call and missed these, which sit inside
+`message()`.  Decision, both lines: **`num_inter` and `domain` are in/out**
+-- on return they describe the region actually searched (the given
+intervals intersected with the positivity region), documented as such, to
+be set before every call; this is what the manual had always half said
+("the program may alter the values in the array").  The wrapper no longer
+touches them.  For the primes, the two lines differ:
+
+* 2.3 keeps the wrapper for the other inputs and `main.c` prints
+  `sp1_used`, `sp2_used`, `sp3_used`.
+* 2.2.4 **drops the wrapper altogether**.  Its documented contract already
+  was that a field asking for a default (negative `sp1`, `sp2`,
+  `num_primes`, `max_forbidden`, `sturm`; non-positive `b_low`, `b_high`,
+  `array_size`) is set to the value used, and in 2.2.3 the defaults are
+  constants, so the only harm in that behaviour is the `sp2 -> pnp` clamp
+  latching a smaller `sp2` for a reusing caller (slower, never wrong).
+  What 2.2.4 removes is exactly the two *undocumented* writes that broke
+  loops: the number of forbidden divisors into `max_forbidden` and the
+  no-reversal decision into `flags`.  The manual now lists every field
+  the program writes.  No ABI change, no change to the program's report.
+  `rptest -O` there checks only `height`, `max_forbidden`, the input
+  flags and the `domain` pointer, and resets `num_inter` per curve.
+
+The other findings, all applied on the line they concern (most on both):
+the manual's "Run a test" section and file list did not know `test1once`
+and `test3` (2.3's said `make test` runs four targets; it runs seven);
+`RATPOINTS_REVERSED` does not report a dropped leading zero (comment and
+manual reworded); `make test1once` never exercised the no-reversal latch,
+so it now also runs `rptest -O -dl 2 -z` and fails on any "changed" line;
+`test3` cases 13-14 produced the reference output on the unfixed code, so
+a verbose invocation whose "no denominator admits a numerator mod 16"
+line only the fixed program prints was added (case 14; `testbase3` grows
+to 311 lines, still identical on both lines); the README's "five bugs" for
+2.2.4 (four apply); a 2.3 identifier in a 2.2.4 comment; the file-scope
+`SHELL = /bin/bash` in the 2.2.4 Makefile (now target-specific for the
+three targets that use `time`; the same file-scope line is in the 2.3
+Makefile since the tuning work and was left alone -- worth the same
+change some day); the date lines of the 2.2.4 files bumped as the 2.2.3
+release did.  Not applied: nothing was refuted.
+
+On the unfixed 2.2.3 the tests-old lens found: 7 of the 15 `test3.sh`
+invocations segfault, 5 print nothing where the reference has points,
+and `rptest -O` built against the old library reports the
+`max_forbidden` latch on 951 of 1008 curves.

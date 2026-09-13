@@ -347,12 +347,13 @@ int main(int argc, char *argv[])
 
         args.cof           = &c[0];
         args.degree        = deg;
+        args.num_inter     = 0; /* in/out: comes back as the number of
+                                 * intervals actually searched */
         if(!set_once || (count == iterations && n == 0))
         { /* the input fields; with -O they are set here once and must come
            * back from every call as they went in */
           args.height        = height;
           args.domain        = &domain[0];
-          args.num_inter     = 0;
           args.b_low         = b_low;
           args.b_high        = b_high;
           args.sp1           = sieve_primes1;
@@ -395,7 +396,6 @@ int main(int argc, char *argv[])
           { printf("input field " #field " changed: %g -> %g\n", \
                    (double)(value), (double)args.field); }
           RP_CHECK_L(height, height)
-          RP_CHECK_L(num_inter, 0)
           RP_CHECK_L(b_low, b_low)
           RP_CHECK_L(b_high, b_high)
           RP_CHECK_L(sp1, sieve_primes1)

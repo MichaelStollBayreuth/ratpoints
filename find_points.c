@@ -2283,23 +2283,22 @@ long find_points_work(ratpoints_args *args,
   /* The input fields of args stay what the caller set them to.  The search
    * normalises them and, where they say "choose", used to write its choice
    * into them, which made a caller that fills args once and then loops over
-   * curves run every curve after the first with the first one's choices --
-   * or, for num_inter, with the first one's positivity region.  So they are
-   * saved here and put back on the way out; what was chosen is reported in
-   * sp1_used, sp2_used and sp3_used.  Deliberately left as the search made
-   * them: cof and degree when the polynomial was reversed or a zero leading
-   * coefficient was dropped (RATPOINTS_REVERSED says so), and the flag bits
-   * that report on the run. */
-  long num_inter = args->num_inter;
-  long n_dom = (args->domain != NULL && num_inter > 0) ? num_inter : 0;
-  ratpoints_interval saved_domain[n_dom > 0 ? n_dom : 1];
+   * curves run every curve after the first with the first one's choices.  So
+   * they are saved here and put back on the way out; what was chosen is
+   * reported in sp1_used, sp2_used and sp3_used.  Deliberately left as the
+   * search made them: cof and degree, which describe the polynomial the
+   * search worked with -- reversed (RATPOINTS_REVERSED says so) or with
+   * leading zero coefficients dropped (no flag reports that; the caller
+   * supplied them) --, num_inter and domain[], which on return describe the
+   * region that was actually searched (the intervals given, intersected
+   * with the positivity region of f; the program prints them), and the flag
+   * bits that report on the run. */
   long b_low = args->b_low, b_high = args->b_high;
   long sp1 = args->sp1, sp2 = args->sp2, sp3 = args->sp3;
   long array_size = args->array_size, sturm = args->sturm;
   long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
-  long result, k;
+  long result;
 
-  for(k = 0; k < n_dom; k++) { saved_domain[k] = args->domain[k]; }
   result = find_points_work_1(args, process, info);
   if(result < 0) { args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0; }
   else
@@ -2310,8 +2309,6 @@ long find_points_work(ratpoints_args *args,
   args->sp1 = sp1; args->sp2 = sp2; args->sp3 = sp3;
   args->array_size = array_size; args->sturm = sturm;
   args->num_primes = num_primes; args->max_forbidden = max_forbidden;
-  args->num_inter = num_inter;
-  for(k = 0; k < n_dom; k++) { args->domain[k] = saved_domain[k]; }
   return(result);
 }
 
