@@ -23,7 +23,7 @@
  *                                                                     *
  * Sturm sequence and positivity intervals                             *
  *                                                                     *
- * Michael Stoll, Jan 9, 2008                                          *
+ * Michael Stoll, Jan 9, 2008; Sep 13, 2026                            *
  ***********************************************************************/
 
 #include "ratpoints.h"

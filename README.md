@@ -9,7 +9,7 @@ The program is distributed under the GNU GPL, version 2 (or later).
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-2.2.pdf).
 
-The current version is ratpoints-2.2.4 from September 13, 2026, which fixes five bugs found in a
+The current version is ratpoints-2.2.4 from September 13, 2026, which fixes bugs found in a
 review of the code (see the change log in the documentation): a crash for polynomials of degree 1,
 lost points at infinity when the positivity region of `f` misses the search domain, an
 uninitialised read that could print wrong points under `-j -F 0`, and input fields of

@@ -23,7 +23,7 @@
  *                                                                     *
  * Header file for the ratpoints program and library                   *
  *                                                                     *
- * Michael Stoll, September 21, 2009; January 7, 2022                  *
+ * Michael Stoll, September 21, 2009; January 7, 2022; Sep 13, 2026    *
  * with changes by Bill Allombert, December 29, 2021                   *
  ***********************************************************************/
 

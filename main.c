@@ -23,7 +23,7 @@
  *                                                                     *
  * Main program file for the ratpoints executable                      *
  *                                                                     *
- * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6, 2026            *
+ * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6 and 13, 2026     *
  ***********************************************************************/
 
 #include <stdlib.h>

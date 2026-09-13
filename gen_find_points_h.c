@@ -23,7 +23,7 @@
  *                                                                     *
  * This program writes the file find_points.h                          *
  *                                                                     *
- * Michael Stoll, Mar 8, 2009; Sep 6, 2026                             *
+ * Michael Stoll, Mar 8, 2009; Sep 6 and 13, 2026                      *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 

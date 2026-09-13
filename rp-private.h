@@ -23,7 +23,7 @@
  *                                                                     *
  * Header file with information local to the ratpoints code            *
  *                                                                     *
- * Michael Stoll, Apr 14, 2009; Jan 7-18, 2022; Sep 6, 2026            *
+ * Michael Stoll, Apr 14, 2009; Jan 7-18, 2022; Sep 6 and 13, 2026     *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 

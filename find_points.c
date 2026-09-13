@@ -23,7 +23,7 @@
  *                                                                     *
  * Core program file for ratpoints                                     *
  *                                                                     *
- * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 6, 2026               *
+ * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 6 and 13, 2026        *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -697,10 +697,9 @@ static bit_selection get_2adic_info(ratpoints_args *args,
 
       if(db == 0)
       { /* No residue class of the denominator admits any numerator.  Return
-         * early -- but fill num_bits[] first: the caller reads all sixteen
-         * entries (bits_per_word and the test on every denominator), and
-         * the denominator loop that runs when RATPOINTS_CHECK_DENOM is off
-         * looks at nothing else. */
+         * early -- but fill num_bits[] first: the caller tests it for every
+         * denominator, and the denominator loop that runs when
+         * RATPOINTS_CHECK_DENOM is off looks at nothing else. */
         long i;
 
         for(i = 0; i < 16; i++) { num_bits[i] = zero; }
@@ -1286,42 +1285,7 @@ typedef struct {mpz_t *cof; long degree; long height;
    will hold the coefficents of the polynomial,
    multiplied by powers of the denominator b */
 
-static long find_points_work_1(ratpoints_args *args,
-                 int process(long, long, const mpz_t, void*, int*), void *info);
-
 long find_points_work(ratpoints_args *args,
-                 int process(long, long, const mpz_t, void*, int*), void *info)
-{
-  /* The input fields of args stay what the caller set them to.  The search
-   * normalises them and, where they say "choose", used to write its choice
-   * into them, which made a caller that fills args once and then loops over
-   * curves run every curve after the first with the first one's choices --
-   * or, for num_inter, with the first one's positivity region.  So they are
-   * saved here and put back on the way out.  Deliberately left as the
-   * search made them: cof and degree when the polynomial was reversed or a
-   * zero leading coefficient was dropped (RATPOINTS_REVERSED says so), and
-   * the flag bits that report on the run. */
-  long num_inter = args->num_inter;
-  long n_dom = (args->domain != NULL && num_inter > 0) ? num_inter : 0;
-  ratpoints_interval saved_domain[n_dom > 0 ? n_dom : 1];
-  long b_low = args->b_low, b_high = args->b_high;
-  long sp1 = args->sp1, sp2 = args->sp2;
-  long array_size = args->array_size, sturm = args->sturm;
-  long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
-  long result, k;
-
-  for(k = 0; k < n_dom; k++) { saved_domain[k] = args->domain[k]; }
-  result = find_points_work_1(args, process, info);
-  args->b_low = b_low; args->b_high = b_high;
-  args->sp1 = sp1; args->sp2 = sp2;
-  args->array_size = array_size; args->sturm = sturm;
-  args->num_primes = num_primes; args->max_forbidden = max_forbidden;
-  args->num_inter = num_inter;
-  for(k = 0; k < n_dom; k++) { args->domain[k] = saved_domain[k]; }
-  return(result);
-}
-
-static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;       /* total counts the points */

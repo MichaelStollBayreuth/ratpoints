@@ -23,7 +23,7 @@
  *                                                                     *
  * The sieving procedure for ratpoints                                 *
  *                                                                     *
- * Michael Stoll, Apr 14; 2009, January 7, 2022                        *
+ * Michael Stoll, Apr 14, 2009; January 7, 2022; Sep 13, 2026          *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
