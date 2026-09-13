@@ -119,8 +119,9 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  In some cases, using n=8 may be faster
 #  (e.g., Intel(R) Xeon(R) CPU E3-1220 V2 with -DUSE_AVX -mavx).
 
-# The following uses word-length registers.
-# This should work on essentially every machine.
+# The following uses 64-bit registers, i.e., plain unsigned longs.
+# This should work on every 64-bit machine; a 64-bit long is what the code
+# needs in any case (since 2.3; see rp-private.h).
 CCFLAGS64 =
 # The following uses 128-bit registers. In spite of its name, USE_AVX128 needs
 # only SSE2, which every x86-64 machine has, so this is as portable as the

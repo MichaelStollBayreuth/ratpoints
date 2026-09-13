@@ -33,22 +33,21 @@
 #include <math.h>
 #include <string.h>
 
-#define LONG_LENGTH (8*sizeof(long))
-   /* number of bits in an unsigned long */
-#define LONG_SHIFT ((LONG_LENGTH == 16) ? 4 : \
-                    (LONG_LENGTH == 32) ? 5 : \
-		    (LONG_LENGTH == 64) ? 6 : 0)
-#define LONG_MASK (~(-(1UL<<LONG_SHIFT)))
+/* The code assumes that an unsigned long has 64 bits, and has done so since
+ * version 2.3; the last version that accommodates a 32-bit long is 2.2.4.
+ * The test is written so that it is right in every mode of preprocessor
+ * arithmetic. */
+#if ((ULONG_MAX >> 31) >> 1) == 0
+# error "ratpoints needs a 64-bit long since version 2.3; use version 2.2.4 on this machine"
+#endif
+
+#define LONG_LENGTH 64  /* number of bits in an unsigned long */
+#define LONG_SHIFT 6    /* 2^LONG_SHIFT == LONG_LENGTH */
+#define LONG_MASK (LONG_LENGTH - 1)
 
 /* Check if SSE instructions can be used.  Both 128-bit variants need them:
- * USE_AVX128 uses only SSE2 intrinsics, in spite of its name.
- * We assume that one SSE word of 128 bit is two long's,
- * so check that a long is 64 bit = 8 byte. */
+ * USE_AVX128 uses only SSE2 intrinsics, in spite of its name. */
 #ifndef __SSE2__
-#undef USE_SSE
-#undef USE_AVX128
-#endif
-#if __WORDSIZE != 64
 #undef USE_SSE
 #undef USE_AVX128
 #endif

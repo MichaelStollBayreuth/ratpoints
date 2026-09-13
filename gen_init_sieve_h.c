@@ -35,10 +35,10 @@ int main(int argc, char *argv[])
 {
   long n;
 
-  /* See the corresponding comment in gen_find_points_h.c : which of the two
-   * CODE_INIT_SIEVE macros is used for a prime depends on LONG_LENGTH (which
-   * cannot appear in a preprocessor expression, but is fixed for a given
-   * platform), and the list of primes depends on RATPOINTS_NUM_PRIMES. */
+  /* See the corresponding comment in gen_find_points_h.c : the list of
+   * primes depends on RATPOINTS_NUM_PRIMES.  (Which of the two
+   * CODE_INIT_SIEVE macros a prime gets depends only on the prime, since
+   * LONG_LENGTH is fixed at 64.) */
   printf("#define RP_IS_H_NUM_PRIMES %d\n", (int)RATPOINTS_NUM_PRIMES);
   printf("#if (RP_IS_H_NUM_PRIMES != RATPOINTS_NUM_PRIMES)\n"
          "# error \"init_sieve.h was generated for a different configuration"
