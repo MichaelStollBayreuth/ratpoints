@@ -18,8 +18,12 @@
 # 16    no odd denominator admits a numerator, but the even ones do.  On the
 #       2.3 line this used to put the run-length estimate on its floor and
 #       switch two sieving stages off (the points were right, the run slow);
-#       2.2.4 has no such estimate, and there the case only pins the point
-#       list, so that this script and testbase3 are the same on both lines
+#       2.2.4 has no such estimate, and here the case only pins the point list
+# 17    not squarefree: the Sturm chain reaches a zero remainder, and the
+#       loop that found it used to index one below the array
+# 18-19 the report the program prints after a run (the primes used, the
+#       reversal, the search intervals), which no other test looks at; the
+#       numbers of primes are pinned so that they cannot drift
 RP=./ratpoints
 $RP '1 2' 20 -q
 $RP '1 2 0' 50 -q
@@ -37,3 +41,6 @@ $RP '2 0 3' 200 -q -j -F 0 -x
 $RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 16'
 $RP '2 0 3' 300000 -q -j -F 0
 $RP '10 10 5 -7 0 3 -2' 16383 -q
+$RP '1 2 1' 20 -q
+$RP '1 0 126 0 441' 100 -n 5 -N 8 -z | sed -n '/primes used/,$p'
+$RP '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -z | sed -n '/primes used/,$p'

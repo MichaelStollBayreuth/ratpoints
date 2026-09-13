@@ -595,7 +595,10 @@ the meaning of this should be clear. In \texttt{ratpoints}, this is set
 via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
-\texttt{degree} intervals, unless you set \texttt{sturm} to a negative value!)
+\texttt{degree} intervals; a null pointer makes the call return
+\texttt{RATPOINTS\_BAD\_ARGS}, since the program stores the default
+interval $]-\texttt{height}, \texttt{height}[$ there. If \texttt{sturm} is
+negative, one interval is enough.)
 The program intersects the given intervals with the region where $f$ is
 positive (unless \texttt{sturm} has a negative value, which may lead to a
 performance loss) and searches the result; on return, \texttt{num\_inter}

@@ -346,7 +346,7 @@ static inline int jacobi1(long b, const long lcf)
   while((b & 1) == 0) b >>= 1;
   f = lcf;
   if(f < 0) { f = -f; neg = 1; }
-  if(b < 1UL<<(LONG_LENGTH - 4)) f = mod(f, b);
+  if(b < 1UL<<(LONG_LENGTH - 5)) f = mod(f, b); /* mod() forms 16*b */
   if(f == 0) return(1);
 
   while(1)
@@ -1517,10 +1517,10 @@ long find_points_work(ratpoints_args *args,
 #endif
 
   /* Deal with the intervals */
+  if(args->domain == NULL) { return(RATPOINTS_BAD_ARGS); }
   if(args->num_inter == 0)
   /* default interval (effectively ]-infty,infty[) if none is given */
-  { if(args->domain == NULL)  return(RATPOINTS_BAD_ARGS);
-    args->domain[0].low = -height; args->domain[0].up = height;
+  { args->domain[0].low = -height; args->domain[0].up = height;
     args->num_inter = 1;
   }
 
