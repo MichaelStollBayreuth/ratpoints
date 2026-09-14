@@ -240,8 +240,8 @@ tune: rptest rptest-many
 # -- which is to say from what "make tune" found, since it reads the same
 # tuning.mk -- and asks only whether a factor of two in the threshold, in the
 # run length or in the table cost either way, or two more or fewer primes in
-# the second stage, is better.  That is thirteen settings a round rather than
-# twenty-one, and it rests on the two regimes not wanting wildly different
+# the second stage, is better.  That is fifteen settings a round rather than
+# twenty-four, and it rests on the two regimes not wanting wildly different
 # values.  If it moves a value, run it again from there.
 #
 # Running this after "make tune" is what pins RATPOINTS_SP2_U0, the third

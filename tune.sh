@@ -148,6 +148,16 @@ if [ -n "$C_FACTORS" ]; then
 fi
 [ -n "$R_FACTORS$E_DELTAS$U_FACTORS$C_FACTORS" ] && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES/ $C_VALUES"
 
+# Each stage carries the winners of the stages before it into every one of
+# its candidates, so the constant it sweeps must have its current value among
+# them as well: otherwise the combination "earlier winners, this constant
+# unchanged" is never timed and can never win, and a threshold that won
+# stage 1 by a clear margin could be lost again in stage 4 for want of a
+# candidate.  (Stage 1 needs nothing: its current value is "current".)
+case " $E_VALUES " in *" $DEF_E "*) ;; *) E_VALUES="$DEF_E $E_VALUES" ;; esac
+case " $U_VALUES " in *" $DEF_U "*) ;; *) U_VALUES="$DEF_U $U_VALUES" ;; esac
+case " $C_VALUES " in *" $DEF_C "*) ;; *) C_VALUES="$DEF_C $C_VALUES" ;; esac
+
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
 TMP=`mktemp -d` || exit 1

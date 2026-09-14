@@ -189,7 +189,90 @@ not noise between rounds (the rounds agree to half a point).
   -dl 1 -du 1 -l 559999999000 -u 560000001000` with `a0 = 5.6e11`, so that
   the word numbers exceed 2^31 and `f(a0) = a0^6` is a square: old and new
   binary both find `(a0 : a0^3 : 1)`, and both find nothing for `-dl 3 -du 3`.
-* ALT-PENDING
+* Every build variant reproduces the references on `test1`, `test1many`,
+  `testdegrees` and `test3` (`alt.sh`, worktree at 1f00249): plain 64-bit,
+  `USE_AVX128`, `USE_SSE`, `USE_AVX512` emulated (its usual two ABI
+  warnings, no others), `USE_AVX` with `-mavx` only (the `vptest` TEST and
+  TESTZ), `RATPOINTS_CHUNK=1` (the unchunked arm), `USE_LONG_IN_PHASE_2`,
+  `RP_MULMOD_DIVIDE` (the second phase dividing), `RP_PHASE_TIMING` with
+  `RP_PHASE_COUNTS` (identical on the three suites; `test3` differs there
+  as it must, since the report goes to stderr), and the default.  On the
+  default build also `test1once`, `test2`, `testhigh` and `testhighmany`,
+  and valgrind clean on the debug build and on the optimised one (a random
+  curve at 16383 and the sparse curve at 20000).
+
+## `COST_PHASE2` remeasured
+
+The review asked for it: the constant is what one AND on a surviving bit
+array costs in units of one first-phase AND per word, and both ends of that
+ratio moved.  Measured as in PARAM-NOTES (builds with `-DRP_PHASE_TIMING
+-DRP_PHASE_COUNTS` at `RP_STOP_AFTER` 0, 2 and 3, the phase-2 parts by
+differencing, pinned, old code and new back to back on the same evening;
+the counters of the two trees agree to the last digit, so they did the same
+work).  Old -> new:
+
+| | test1 | test1many | testhigh | testhighmany |
+|---|---|---|---|---|
+| the unit: one phase-1 AND per word, cycles | 0.227 -> 0.208 | 0.335 -> 0.306 | 0.165 -> 0.158 | 0.241 -> 0.232 |
+| one phase-2 AND, cycles | 17.9 -> 18.4 | 11.0 -> 9.3 | 29.5 -> 24.4 | 22.5 -> 14.0 |
+| `COST_PHASE2` | 79 -> 88 | 33 -> 30 | 179 -> 155 | 93 -> 61 |
+| the scan, cycles per bit array | 1.70 -> 1.74 | 2.34 -> 2.34 | 1.59 -> 1.45 | 1.91 -> 1.84 |
+| `COST_TABLE` | 19 -> 21 | 18 -> 20 | 29 -> 30 | 28 -> 29 |
+| `COST_BP` | 29 -> 31 | 9.7 -> 9.9 | 38 -> 38 | 14 -> 15 |
+
+The unit fell by 4 to 9 per cent, because the reductions for the phase-2
+primes at the head of every call were in the phase-1 timed region and are
+gone; that is why every other constant rose by that much.  The AND itself
+fell by 5 and 8.5 cycles at the large bound, one to three mispredicted
+fixup iterations' worth, and by nothing measurable at the small one, where
+the fixup ran 1.5 times per AND and the differencing of two 1.3-second
+runs is not precise to a cycle.  (The instrumented build sees the direction
+of P7 in the scan row but is not the measurement of it; the paired cycle
+counts above are.  The per-survivor row of PARAM-NOTES is not repeated
+here: it is the small difference of two large numbers from separate runs
+and moved by 30 per cent between two measurements of the *same* code.)
+
+**The constant stays at 110.**  It was compiled in as a value between the
+two large-height measurements, 170 and 105 at the time, because that is the
+regime in which the `-A 2` correction fires; it still lies between them
+(155 and 61), and the basin of every constant in this model is flat (TODO
+item 8).  Whether the ranking of the phase-2 primes would like it nearer 60
+is a question a `-D` pair can answer without any alignment confound, since
+only a constant changes; it is left for a tuning session.
+
+## `make tune` with the fourth stage
+
+Run on the final tree, idle machine, default three rounds (six minutes).
+The fourth stage ran and the current settings were kept, which is the
+designed outcome of a tuned build:
+
+    stage 1 (threshold):   current +0.7%   0.003 +11.5%   0.005 +2.0%   0.012 -4.2%   0.02 -1.8%
+    stage 2 (offset, r=0.012):  current -0.4%   4 +4.0%   6 +8.1%   9 +0.6%   13 +0.3%   18 +4.8%
+    stage 3 (run length):  current -1.2%   3e5 +1.6%   6e5 +1.5%   2.4e6 -1.3%   5e6 -0.6%
+    stage 4 (table cost):  current -1.6%   10 -0.2%   20 +0.2%   70 +2.0%   140 +2.5%
+    Nothing beat the current settings (0.0075, 11, 1.6e6, 38.0) by the required 3%.
+
+Two things came out of reading that report.  The `current` row is the
+settings timed against themselves and lands within 1.6 per cent of 1 in
+every stage, which is the noise the script tolerates (`NOISE` 0.02) and the
+reason it demands 3 per cent before it writes anything: the -4.2 per cent of
+the threshold 0.012 in stage 1 did not survive into stage 4, where every
+candidate carried it.  And it could not have survived as such, because the
+search had a gap that predates this branch: each stage carries the winners
+of the stages before it into every candidate, but the constant it sweeps
+appears only with its ladder values, never with its current one, so the
+combination "earlier winners, this constant unchanged" is never timed and
+can never win.  `tune.sh` now adds the current value to the candidates of
+stages 2 to 4 when the ladder lacks it (one more setting per stage and
+round: twenty-four a round in `tune`, fifteen in `tunehigh`), and was run
+again to validate that.  The second run showed the new candidates in every
+stage (`e=11`, `u=1.6e6`, `c=38.0`) and then declared the machine too noisy
+-- the settings measured 6 per cent away from themselves in stage 1 -- and
+wrote nothing.  That verdict was right: a stray test run of mine on another
+core fell into that stage, and the package power budget did the rest.  So
+the script's own guard was exercised as well.  A clean third run, and the
+first ever `make tunehigh`, follow the reviews; their results are below.
+TUNE3-PENDING
 
 ## How much of it is this machine (for item 22)
 
