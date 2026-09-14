@@ -220,7 +220,8 @@ static void _rp_sink_report(void)
  * prime, computed once per prime and curve and carried in the sieve entry.
  *
  * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead, which
- * is what the two callers cost without this. */
+ * is what the callers -- the third stage, the start of the first phase and
+ * the row look-up of the second -- cost without this. */
 #if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
 # define RP_MULMOD(u, p, m) \
     ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
@@ -450,6 +451,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   long sp1 = args->sp1; /* number of primes in first stage */
   long sp2 = args->sp2; /* number of primes in first and second stage combined */
   long nchecks = args->sp3 - sp2; /* further primes, for the third stage */
+  const unsigned long *magics = (const unsigned long *)args->magics;
+  /* Whether the reductions modulo the primes below can multiply by the
+   * reciprocal, which is exact for values below 2^32.  What is reduced is
+   * a word number plus a sieve_spec offset, and the offsets carry a
+   * multiple of the prime between 2^31 and 2^31 + p (RP_ROW_BIAS), so the
+   * values lie in [0, 2^32) for every word number in this range -- which
+   * reaches a height bound above 10^11.  Beyond it, mod() divides. */
+  int small = (w_low >= -RP_ROW_BIAS
+                && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME);
 
 #ifdef DEBUG
   /* There is nothing in the survivors array to print: since 2.3 the first
@@ -506,9 +516,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * It will need to be extended in the obvious way to allow more,
    * e.g., 32 registers when using 512-bit vector operations. */
 
-  /* First set the start fields for the first and second phases of sieving.
+  /* First set the start fields for the first phase of sieving.  (The second
+   * phase finds its rows directly; see there.)
    *
-   * This is the busiest reduction in the program: sp2 of them for every call,
+   * This is the busiest reduction in the program: sp1 of them for every call,
    * and a call handles at most RATPOINTS_ARRAY_SIZE bit arrays, so at a large
    * height bound there are of the order of a billion.  mod() is the wrong
    * shape for it.  Its conditional-subtraction chain only avoids the division
@@ -518,13 +529,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * data-dependent branches.  Multiplying by the reciprocal does the whole
    * job in a few cycles and branchlessly. */
   { long n;
-    const unsigned long *magics = (const unsigned long *)args->magics;
-    /* the reduction is exact up to RP_MULMOD_LIMIT, and the offset added
-     * below is less than the prime, so leave room for that */
-    int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
-                  && w_low < RP_MULMOD_LIMIT - RATPOINTS_MAX_PRIME);
 
-    for(n = 0; n < sp2; n++)
+    for(n = 0; n < sp1; n++)
     { long a = w_low + sieves[n].offset;
 
       sieves[n].start = sieves[n].ptr
@@ -842,10 +848,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   { long n;
     long range = w_high - w_low;
-    const unsigned long *magics = (const unsigned long *)args->magics;
-    /* as in the chunked arm above */
-    int small = (w_low > RATPOINTS_MAX_PRIME - RP_MULMOD_LIMIT
-                  && w_low < RP_MULMOD_LIMIT - RATPOINTS_MAX_PRIME);
 
     /* Write the 2-adic pattern into the bit arrays.  The chunked arm above
      * folds this into its first prime and so does not need the pass; this
@@ -918,14 +920,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
     }
 
-    /* initialize pointers in sieve for the second phase */
-    for(n = sp1; n < sp2; n++)
-    { long a = w_low + sieves[n].offset;
-
-      sieves[n].start = sieves[n].ptr
-                          + (small ? mod_mul(a, sieves[n].p, magics[n])
-                                   : mod(a, sieves[n].p));
-    }
   }
 #endif /* RATPOINTS_CHUNK */
 
@@ -976,7 +970,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   /* Second phase of the sieve: test each surviving bit array with more primes */
   { ratpoints_bit_array *surv0 = &survivors[0];
-    long i, base = 0;
+    ratpoints_bit_array *surv_end = &survivors[w_high - w_low];
+    long i;
 
     /* Step through the survivors array.  sp1 is chosen so that only a few
      * per cent of the bit-arrays are non-empty here, so nearly all the work
@@ -985,16 +980,24 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * bit-arrays together and stepping over the whole group at once was
      * tried, and is slower at this survival rate: a group that contains a
      * survivor has wasted its whole "or", and that happens often enough to
-     * cost more than the tests it saves.) */
-    for(i = w_low; i < w_high; i++, base++)
+     * cost more than the tests it saves.)
+     * The loop has no bound test either.  It steps until it meets a
+     * non-zero bit array, and the one written here, just past the range,
+     * is what it meets when nothing survived (find_points_work leaves room
+     * for it).  With the bound test the scan was nine instructions per bit
+     * array, two of them branches; now it is three, and the position is
+     * recovered from the pointer once per survivor instead. */
+    *surv_end = ~zero;
+    for(;;)
     { ratpoints_bit_array nums;
       long n;
 #ifndef USE_LONG_IN_PHASE_2
       sieve_spec *ssp = &sieves[sp1];
 #endif
 
-      while(i < w_high && !TEST(*surv0)) { surv0++; i++; base++; }
-      if(i >= w_high) { break; }
+      while(TESTZ(*surv0)) { surv0++; }
+      if(surv0 >= surv_end) { break; }
+      i = w_low + (surv0 - survivors);
       nums = *surv0++;
       args->n_arrays++;
 
@@ -1042,21 +1045,22 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
         for(k = 0; k < RBA_PACK; k++)
         { unsigned long numsk = EXT(nums, k);
           sieve_spec *sspk = &sieves[sp1];
+          const unsigned long *mg = &magics[sp1];
           long a, t, a0k = a0 + k*da;  /* first numerator of word no. k */
 
           if(!numsk) { continue; }
 
-          for(n = sp2-sp1; n && numsk; n--)
-          { unsigned long *ptr = (unsigned long *)sspk->start;
-            long pp = RBA_PACK*sspk->p;
+          for(n = sp2-sp1; n && numsk; n--, sspk++, mg++)
+          { /* word k of the table row for this bit array; the row is found
+             * as in the other arm below */
+            long p = sspk->p;
+            long v = i + sspk->offset;
+            long row = small ? RP_MULMOD(v, p, *mg) : mod(v, p);
 
 #ifdef RP_PHASE_COUNTS
             _rp_and2++;
 #endif
-            ptr += RBA_PACK*base + k;
-            while(ptr >= (unsigned long *)sspk->end) { ptr -= pp; }
-            numsk &= *ptr;
-            sspk++;
+            numsk &= ((const unsigned long *)sspk->ptr)[RBA_PACK*row + k];
           }
 
 #if RP_STOP_AFTER == 3
@@ -1080,26 +1084,33 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
         }
       }
 #else
-      /* Sieve with the next sp2-sp1 primes while some bits are set. */
-      for(n = sp2-sp1; n && TEST(nums); n--)
-      {
-#ifdef RP_PHASE_COUNTS
-        _rp_and2++;
-#endif
-        ratpoints_bit_array *ptr = (ssp->start) + base;
-        long p = ssp->p;
+      /* Sieve with the next sp2-sp1 primes while some bits are set.  The
+       * table row for word number i is the one at index (i + offset) mod p
+       * (see sieve_spec in rp-private.h), and the reduction multiplies by
+       * the reciprocal wherever small says that is exact.  Until 2.3 the
+       * row was reached from a pointer set up at the head of the call, by
+       * subtracting p until it pointed back into the table: one to three
+       * data-dependent branches per AND, most of them mispredicted, and one
+       * reduction per prime and call whether or not a single bit array had
+       * survived. */
+      { const unsigned long *mg = &magics[sp1];
 
-        while(ptr >= ssp->end) { ptr -= p; }
-        AND(nums, *ptr);
+        for(n = sp2-sp1; n && TEST(nums); n--, ssp++, mg++)
+        { long p = ssp->p;
+          long v = i + ssp->offset;
+
+#ifdef RP_PHASE_COUNTS
+          _rp_and2++;
+#endif
+          AND(nums, ssp->ptr[small ? RP_MULMOD(v, p, *mg) : mod(v, p)]);
 
 #ifdef DEBUG
-        printf("after prime p = %ld:\n ", p);
-        PRINT_RBA(nums);
-        printf("\n");
-        fflush(NULL);
+          printf("after prime p = %ld:\n ", p);
+          PRINT_RBA(nums);
+          printf("\n");
+          fflush(NULL);
 #endif
-
-        ssp++;
+        }
       }
 
 #if RP_STOP_AFTER == 3
@@ -1200,18 +1211,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
         }
       }
 #endif /* USE_LONG_IN_PHASE_2 */
-      /* Attempt to save some subtractions, but no improvement... */
-      /*
-      if(base == BASE_REPEAT)
-      { for(n = sp1; n < sp2; n++)
-        { ratpoints_bit_array *start = sieves[n].start + BASE_REPEAT;
-
-          while(start >= sieves[n].end) { start -= sieves[n].p; }
-          sieves[n].start = start;
-        }
-        base = 0;
-      }
-      */
     }
   }
 #endif /* RP_STOP_AFTER != 1 */

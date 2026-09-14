@@ -73,7 +73,15 @@ INSTALL = cp
 
 INSTALL_DIR = /usr/local
 
-CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
+# -funswitch-loops is an -O3 optimisation that is worth having on its own: it
+#  takes a loop-invariant test out of a loop by making two copies of the loop,
+#  which here removes the "which reduction" test from the per-call loop over
+#  the first-phase primes in sift.c and the which_bits tests from the
+#  per-denominator loops in find_points.c.  (Measured; see the note below on
+#  what it is worth.)  The rest of -O3 is not worth having: -fsplit-paths
+#  gives part of it back.  clang has no such flag and warns that it ignores
+#  it, which is harmless.
+CCFLAGS0 = -Wall -O2 -funswitch-loops -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first phase one
 #  64-bit word at a time instead of a whole bit-array at a time. The first
@@ -99,7 +107,8 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  runs; they produce wrong tables, and bench_init will say so.
 # Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
 #  than by multiplying with the reciprocal, which is what the third sieving
-#  stage and the start-of-sieve computation cost without that. "-DRP_MOD_CHOICE"
+#  stage, the start-of-sieve computation and the row look-up of the second
+#  phase cost without that. "-DRP_MOD_CHOICE"
 #  instead builds both forms of the latter into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
 #  other without the code-alignment difference two builds would bring; that is

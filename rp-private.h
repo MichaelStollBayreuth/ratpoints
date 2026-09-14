@@ -118,6 +118,8 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
  * the whole 64-byte vector to the stack and reads it back in 8-byte pieces,
  * which defeats store-to-load forwarding in the innermost loop of phase 2. */
 # define TEST(a) ( _mm512_test_epi64_mask((__m512i)(a), (__m512i)(a)) != 0 )
+/* and the test the scan over the survivors uses; see TESTZ below */
+# define TESTZ(a) ( _mm512_test_epi64_mask((__m512i)(a), (__m512i)(a)) == 0 )
 #else
 /* Fall-back version; also used when gcc lowers the 64-byte vectors itself
  * (i.e., when compiling with -DUSE_AVX512, but without -mavx512f). */
@@ -161,6 +163,18 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (32)));
 #else
 /* Fall-back version */
 # define TEST(a) (EXT(a,0) || EXT(a,1) || EXT(a,2) || EXT(a,3))
+#endif
+#ifdef __AVX__
+/* Whether a bit array is empty, for the loop in sift.c that scans the
+ * survivors of the first phase.  That loop runs into a sentinel, so this
+ * test is the whole of its body: a load, one vptest and the branch per bit
+ * array.  (vptest against an all-ones register could take the memory
+ * operand directly, but gcc 14 loads it anyway and then rebuilds the
+ * constant inside the loop, which is one instruction more, not less.)
+ * TEST above is left as it is: it tests a value that is already in a
+ * register, and there the two forms cost the same.  This needs AVX, not
+ * AVX2. */
+# define TESTZ(a) ( _mm256_testz_si256((__m256i)(a), (__m256i)(a)) )
 #endif
 #define RBA(a) ((ratpoints_bit_array){((unsigned long) a), ((unsigned long) a), \
                                       ((unsigned long) a), ((unsigned long) a)})
@@ -264,6 +278,14 @@ typedef unsigned long ratpoints_bit_array;
 
 #endif /* various register lengths */
 
+/* Whether a bit array is all zero.  The loop that scans the survivors of
+ * the first phase in sift.c uses this on the bit arrays in memory; the AVX
+ * variants above have a form of their own, and everywhere else it is TEST
+ * negated. */
+#ifndef TESTZ
+# define TESTZ(a) (!TEST(a))
+#endif
+
 /* The following is used for printing bit-arrays. */
 #define WIDTH (LONG_LENGTH/4)
 
@@ -321,9 +343,24 @@ typedef unsigned long ratpoints_bit_array;
 
 /* define some datatypes */
 
-/* this is used to hold the preliminary sieving information for one prime p */
+/* This is used to hold the preliminary sieving information for one prime p.
+ * The table at ptr has p bit arrays (and a few more repeating the first
+ * ones, for the first phase to run past the end), and the one for word
+ * number i is at index (i + offset) mod p.  Besides the shift that odd
+ * numerators need, offset carries a multiple of p of at least RP_ROW_BIAS,
+ * so that i + offset is never negative for a word number the program
+ * handles and the reduction needs no sign fix; sift() in find_points.c
+ * adds it.  start and end serve the first phase, which walks the table
+ * with a pointer; the second phase computes the row from i directly. */
 typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                  ratpoints_bit_array *start; ratpoints_bit_array *end; } sieve_spec;
+
+/* The multiple of p in the offset lies in [RP_ROW_BIAS, RP_ROW_BIAS + p).
+ * The reductions in sift.c multiply by the reciprocal, which is exact below
+ * 2^32, so with this value they are exact for every word number in
+ * [-2^31, 2^31 - 2*RATPOINTS_MAX_PRIME]; _ratpoints_sift0 tests for that
+ * and divides otherwise. */
+#define RP_ROW_BIAS 2147483648L
 
 /* What the third stage needs to test one numerator against one prime: the
  * prime, the inverse of the denominator modulo it, and the table saying
@@ -351,7 +388,9 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 typedef struct
         { ratpoints_init_fun init; long p; int *is_f_square;
           const long *inverses; unsigned long magic; double r;
-          long offset; ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
+          long offset;  /* the shift of the table row for odd numerators */
+          long bias;    /* the multiple of p added to it; see RP_ROW_BIAS */
+          ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
         ratpoints_sieve_entry;
 
 /* The following function is provided in find_points.c : */
