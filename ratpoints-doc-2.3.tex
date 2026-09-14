@@ -1211,15 +1211,18 @@ alone.
 
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
-The three constants above were tuned on my current laptop by minimising the
+The four constants above --- the threshold, the offset, the run length at
+which a second-stage prime pays for setting itself up, and what one row of a
+sieving table costs --- were tuned on my current laptop by minimising the
 sum of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
 that on your machine, run
 \begin{verbatim}
 > make tune
 \end{verbatim}
 which does the whole thing: it sweeps the threshold, then the offset, then
-the run length at which a second-stage prime pays for setting itself up, over
-both test sets, and writes the values it finds to a file
+the run length at which a second-stage prime pays for setting itself up, and
+last what one row of a sieving table costs, over both test sets, and writes
+the values it finds to a file
 \texttt{tuning.mk} that the \texttt{Makefile} includes, so that a subsequent
 \texttt{make all} builds with them. No source file is touched; deleting
 \texttt{tuning.mk} restores the values compiled into \texttt{ratpoints.h}.
@@ -1253,8 +1256,9 @@ One timing there is two minutes rather than three seconds, so it does not sweep
 the whole ladder of candidates. It starts from the settings in force --- which
 is to say from what \texttt{make tune} found, since the two read and write the
 same \texttt{tuning.mk} --- and asks only whether a factor of two in the
-threshold or in the run length either way, or two more or fewer primes in the
-second stage, is better. That is ten settings in a round rather than fifteen,
+threshold, in the run length or in the table cost either way, or two more or
+fewer primes in the second stage, is better. That is thirteen settings in a
+round rather than twenty-one,
 and it rests on the assumption that the two regimes do not want wildly
 different values. If it moves a value it has not finished looking, and should
 be run again from there. Expect a couple of hours at the default three rounds;
@@ -1269,12 +1273,13 @@ sees only the product and cannot separate the two. Two tunings at run lengths
 a hundred times apart can.
 
 The candidates themselves can be chosen too. \texttt{R\_VALUES},
-\texttt{E\_VALUES} and \texttt{U\_VALUES} give an absolute ladder, which is
-what \texttt{make tune} uses, and \texttt{R\_FACTORS}, \texttt{E\_DELTAS} and
-\texttt{U\_FACTORS} give a neighbourhood of the current settings --- multiples
-of the threshold and of the run length, and offsets added to the middle
-constant --- which is what \texttt{make tunehigh} uses and which takes
-precedence when set.
+\texttt{E\_VALUES}, \texttt{U\_VALUES} and \texttt{C\_VALUES} give an
+absolute ladder, which is what \texttt{make tune} uses, and
+\texttt{R\_FACTORS}, \texttt{E\_DELTAS}, \texttt{U\_FACTORS} and
+\texttt{C\_FACTORS} give a neighbourhood of the current settings ---
+multiples of the threshold, of the run length and of the table cost, and
+offsets added to the number of primes --- which is what \texttt{make
+tunehigh} uses and which takes precedence when set.
 
 Timing this reliably is harder than it looks, and \texttt{tune.sh} goes to
 some trouble over it. The cost surface is flat --- anything within a factor of
@@ -1297,7 +1302,7 @@ a laptop, for instance --- may well report itself inconclusive however often it
 is run; raising \texttt{ROUNDS}, or using a machine that does not throttle,
 is then the remedy.
 
-Should you prefer to do it by hand, the two constants can be set directly:
+Should you prefer to do it by hand, the constants can be set directly:
 \begin{verbatim}
 > ./rptest -r 0.0075 -R 5 -z
 > ./rptest-many -r 0.0075 -R 5 -z
@@ -1833,6 +1838,30 @@ The code now assumes that \texttt{long} has 64~bits and refuses to compile
 otherwise, so the 32-bit architectures are no longer supported; what used
 to allow for a 32-bit word has been removed. Version~2.2.4 is the last one
 that accommodates a 32-bit \texttt{long}.
+
+Two loops of the second sieving phase have been rewritten. The scan that
+steps over the empty bit arrays after the first phase used to carry a bound
+test and two counters, nine instructions per bit array; it now runs into a
+non-zero sentinel written just past the range, and is a load, a test and a
+branch. And the phase used to reach the table row of a surviving bit array
+from a pointer set up at the start of every call, subtracting the prime until
+the pointer was back inside the table --- one to three data-dependent, mostly
+mispredicted branches for every \texttt{AND}, and one such set-up per prime
+and call whether or not anything had survived. It now computes the row from
+the word number, by the reduction with a precomputed reciprocal that the
+first phase and the third stage already use, with a multiple of the prime
+folded into the offset so that the value reduced is never negative. Together
+the two are worth $3\%$ of \texttt{make test1} and of \texttt{make
+test1many}, and $7.5\%$ of \texttt{make testhigh} and of \texttt{make
+testhighmany}: the first by taking instructions out of the busiest short loop
+of the program, the second by taking out branch mispredictions, which fall
+by a fifth to a quarter at the large height bound.
+\texttt{make tune} also measures a fourth constant now, what building one
+row of a sieving table costs, which is what decides how strongly the program
+prefers a smaller prime to a larger one at a small height bound. It could be
+set with \verb+-C+ since the rule was introduced, but nothing had measured
+it, and of the four constants it is the one most likely to differ between
+machines, being the ratio of two different kinds of work.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.
