@@ -64,12 +64,13 @@
  * non-empty bit-array entering the second phase.  Anything within a factor
  * of about two of the value below costs less than 3%.
  *
- * To retune them for another machine, run "make tune", which measures both
- * over the two test sets and writes what it finds to tuning.mk; it takes
- * several minutes and wants an idle machine.  By hand, no rebuild is needed
- * either, since the two can be set on the command line:
- *   ./rptest -r <x> -R <n> -z          (random curves)
- *   ./rptest-many -r <x> -R <n> -z     (curves with many rational points)
+ * To retune them for another machine, run "make tune", which measures these
+ * two, the run length below and the table cost further down, over the two
+ * test sets and writes what it finds to tuning.mk; it takes several minutes
+ * and wants an idle machine.  By hand, no rebuild is needed either, since
+ * all four can be set on the command line:
+ *   ./rptest -r <x> -R <n> -U <u> -C <c> -z        (random curves)
+ *   ./rptest-many -r <x> -R <n> -U <u> -C <c> -z   (curves with many points)
  * minimising the sum of the two times.  Use both tests: they cover the two
  * regimes that matter, and a value that suits one can be poor for the other.
  * The offset for sp2 matters much less than the threshold, and at large
@@ -165,7 +166,8 @@
  * and falls as the run gets longer.  At equal information a smaller prime is
  * therefore strictly better, and at a small height bound it is much better.
  * Setting COST_TABLE to zero (the cost_table field, or -C 0) drops the term
- * and restores ranking by information alone. */
+ * and restores ranking by information alone.  "make tune" sweeps it as its
+ * fourth stage, after the three constants above. */
 #ifndef RATPOINTS_COST_TABLE
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif

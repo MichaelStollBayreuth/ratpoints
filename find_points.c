@@ -1354,8 +1354,10 @@ static int examine_prime(ratpoints_args *args, long pn,
 
   /* set up sieve_entry :
      typedef struct
-       { ratpoints_init_fun init; long p; int *is_f_square; int *inverses;
-         long offset; (ratpoints_bit_array *)sieve[RATPOINTS_MAX_PRIME]; }
+       { ratpoints_init_fun init; long p; int *is_f_square;
+         const long *inverses; unsigned long magic; double r;
+         long offset; long bias;
+         ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
        ratpoints_sieve_entry;
    */
   { ratpoints_sieve_entry *se = (ratpoints_sieve_entry *)args->se_next;
@@ -1367,13 +1369,18 @@ static int examine_prime(ratpoints_args *args, long pn,
     se->p = p;
     se->is_f_square = is_f_square;
     se->inverses = &inverses[pn][0];
-    /* the reciprocal the third stage reduces with; see stage3() in sift.c .
-     * One division per prime and curve, against one per survivor saved. */
+    /* the reciprocal the sieve reduces with: the third stage (see stage3()
+     * in sift.c), and the first and second phases through the magics array
+     * of sieving_info.  One division per prime and curve, against one per
+     * survivor and one per call saved. */
     se->magic = ULONG_MAX/(unsigned long)p + 1;
     /* the entry keeps the density too, so that the choice of primes can be
      * revisited during the run, when prec[] is long gone */
     se->r = prec_entry->r;
     se->offset = offsets[pn];
+    /* the multiple of p that sift() adds to the offset, so that the word
+     * number plus the offset is never negative; see RP_ROW_BIAS */
+    se->bias = p*((RP_ROW_BIAS + p - 1)/p);
     /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
      * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
     se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
@@ -2007,7 +2014,7 @@ static long sieving_info(ratpoints_args *args,
     alloc_ba_buffer(args, pn_lim);
   }
 
-  /* the reciprocals the first phase reduces word numbers with, in the order
+  /* the reciprocals the first two phases reduce word numbers with, in the order
    * the primes are used; see the note in find_points_init */
   { long n;
     unsigned long *magics = (unsigned long *)args->magics;
@@ -2058,7 +2065,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
-  /* typedef struct { long p; long offset; ratpoints_bit_array *ptr; }
+  /* typedef struct { long p; long offset; ratpoints_bit_array *ptr;
+                     ratpoints_bit_array *start; ratpoints_bit_array *end; }
              sieve_spec; */
   sieve_spec ssp[args->sp2 > 0 ? args->sp2 : 1]; /* length 0 is undefined */
   /* what the third stage needs per denominator; see find_points_init on why
@@ -2132,10 +2140,13 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
           sptr = se->sieve[bp];
 
           ssp[n].p = p;
-          ssp[n].offset = (which_bits == num_odd) ? se->offset : 0;
+          /* the shift for odd numerators, plus the multiple of p that keeps
+           * the row index non-negative (see sieve_spec in rp-private.h) */
+          ssp[n].offset = ((which_bits == num_odd) ? se->offset : 0) + se->bias;
 
 #ifdef DEBUG
-          printf("\np = %ld, bp = %ld, offset = %ld\n", p, bp, ssp[n].offset);
+          printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
+                 p, bp, ssp[n].offset - se->bias, se->bias);
           fflush(NULL);
 #endif
           /* copy if already initialized, else initialize */
@@ -2145,9 +2156,10 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             ssp[n].ptr = (*(se->init))(se, bp, args);
             RP_INIT_TOC(t_init, p);
           }
-          /* put a meaningful value in the start field */
-          ssp[n].start = ssp[n].ptr;
-          /* set the end field */
+          /* the end of the table, which the first phase's wrap-around
+           * compares against; the start field is set by sift0 at the head
+           * of every call, for the first-phase primes, and nothing reads
+           * it before that */
           ssp[n].end = ssp[n].ptr + p;
 
 #ifdef DEBUG
@@ -2869,8 +2881,11 @@ static long find_points_work_1(ratpoints_args *args,
     fflush(NULL);
 #endif
 
-    /* allocate space for survivors array; make sure of correct alignment */
-    survivors_na = malloc((args->array_size+1)*sizeof(ratpoints_bit_array));
+    /* allocate space for survivors array; make sure of correct alignment.
+     * One spare bit array pays for the alignment, and one more for the
+     * sentinel that the scan in _ratpoints_sift0 runs into: it sits just
+     * past the range, and the range can be all of array_size. */
+    survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
     survivors = (ratpoints_bit_array *)
                 pointer_align(survivors_na, sizeof(ratpoints_bit_array));
 #ifdef DEBUG

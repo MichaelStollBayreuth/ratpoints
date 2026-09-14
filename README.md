@@ -49,6 +49,17 @@ pass is gone and with it one store and one load per bit array. That is worth 5.6
 `make testhigh`, 5.3% of the degree suite at a height bound of 200000, 3.4% of
 `make testhighmany` and 2.6% of `make test1`.
 
+Two loops of the second sieving phase have been rewritten. The scan that steps over the empty bit
+arrays after the first phase used to carry a bound test and two counters, nine instructions per bit
+array; it now runs into a non-zero sentinel written just past the range and is a load, a test, a
+branch and the pointer step. And the phase used to reach the table row of a surviving bit array
+from a pointer set up at the start of every call, subtracting the prime until the pointer was back
+inside the table -- one to three data-dependent, mostly mispredicted branches for every AND; it now
+computes the row from the word number with a precomputed reciprocal, with a multiple of the prime
+folded into the offset so that nothing is ever negative. Together they are worth 3% of
+`make test1` and `make test1many` and 7.5% of `make testhigh` and `make testhighmany` at the
+default code placement, between 4.5% and 7.5% at others.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single
@@ -72,10 +83,9 @@ running time by as much as half a per cent on any test set, because the rule it 
 own optimum; what it buys is that the constants mean what they are documented to mean for curves
 outside the ones they were tuned on.
 
-Three machine-dependent constants govern the choice. They can be set with the `-r`, `-R` and `-U`
-options,
-reasonable values are compiled in, and `make tune` will measure better ones for your machine if
-you want it to: it minimises the sum of the times of `make test1` (random curves) and
+Four machine-dependent constants govern the choice. They can be set with the `-r`, `-R`, `-U` and
+`-C` options; reasonable values are compiled in, and `make tune` will measure better ones for your
+machine if you want it to: it minimises the sum of the times of `make test1` (random curves) and
 `make test1many` (curves with many points), and writes what it finds to `tuning.mk`, which the
 Makefile picks up. No source file is touched, and deleting that file restores the compiled-in
 values.

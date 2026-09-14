@@ -39,9 +39,9 @@
 #               where the sieve and not the set-up decides the running time
 #   testhighmany  the curves of test1many that run out of primes, at the same
 #               height; testhigh and testhighmany take about a minute each
-#   tune        measure the two machine-dependent constants that decide how
-#               many primes each sieving stage uses, and write them to
-#               tuning.mk (see tune.sh); takes several minutes, wants an idle
+#   tune        measure the four machine-dependent constants that decide how
+#               many primes each sieving stage uses and which, and write them
+#               to tuning.mk (see tune.sh); takes several minutes, wants an idle
 #               machine, and must not be run under -j
 #   bench_init  correctness check and benchmark for the sieve table set-up
 #   bench_check benchmark for the exact check, and how to remeasure the four
@@ -73,6 +73,15 @@ INSTALL = cp
 
 INSTALL_DIR = /usr/local
 
+# -funswitch-loops, the -O3 optimisation that compiles a loop with an
+#  invariant test inside it twice, once per outcome, was measured and is not
+#  used.  It removes 1 to 3% of the instructions -- the "which reduction" test
+#  in the per-call start loop and in the second-phase loop of sift.c, and the
+#  which_bits tests in the per-denominator loops of find_points.c -- and
+#  gains nothing in cycles: a
+#  wash on the two suites at height 16383 and 0 to 2% slower on the two at
+#  200000, measured at three code alignments (TRIO-NOTES.md on the sieve-trio
+#  branch).  Instruction counts predicted a gain; cycles are what count.
 CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first phase one
@@ -99,8 +108,9 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  runs; they produce wrong tables, and bench_init will say so.
 # Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
 #  than by multiplying with the reciprocal, which is what the third sieving
-#  stage and the start-of-sieve computation cost without that. "-DRP_MOD_CHOICE"
-#  instead builds both forms of the latter into one binary, selected by the
+#  stage, the start-of-sieve computation and the row look-up of the second
+#  phase cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
+#  the start-of-sieve computation into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
 #  other without the code-alignment difference two builds would bring; that is
 #  how the 2-3% in DIVISION-NOTES.md was measured. "-DRP_MOD_COUNTS" reports
@@ -151,8 +161,8 @@ CCFLAGS512 = -DUSE_AVX512 -mavx512f
 # CCFLAGS1 = ${CCFLAGS128}
 CCFLAGS1 = ${CCFLAGS256}
 
-# Machine-dependent tuning of the two constants that decide how many primes
-# each sieving stage uses.  "make tune" writes tuning.mk; without it the
+# Machine-dependent tuning of the constants that decide how many primes each
+# sieving stage uses and which.  "make tune" writes tuning.mk; without it the
 # values compiled into ratpoints.h are used.  This needs GNU make for the
 # conditionals; if yours is not GNU make, delete the block and either leave
 # tuning.mk out or trust it unconditionally.
@@ -212,7 +222,7 @@ doc: ratpoints-doc-2.2.pdf
 
 test: test1 test1once test1many testdegrees test2 test3 timing
 
-# Measure good values for the two machine-dependent constants and write them
+# Measure good values for the four machine-dependent constants and write them
 # to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
 # couple of minutes, wants an otherwise idle machine, and must not run under
 # "make -j".  Run "make all" afterwards to rebuild with the result.
@@ -223,17 +233,18 @@ tune: rptest rptest-many
 # The same, measured on the large-height suites instead (see testhigh and
 # testhighmany below).  Which one to use depends on the runs that matter: at
 # the 16383 of "make test" a fifth of the time is spent building sieve tables,
-# which the two constants have no effect on, so a short-run tuning judges them
-# partly on work they do not touch.
+# which the threshold and the offset have no effect on (the table cost is the
+# one constant that bears on it), so a short-run tuning judges them partly on
+# work they do not touch.
 #
 # One timing here is two minutes against three seconds there, so this does not
 # sweep the whole ladder of candidates.  It starts from the settings in force
 # -- which is to say from what "make tune" found, since it reads the same
-# tuning.mk -- and asks only whether a factor of two in the threshold or in
-# the run length either way, or two more or fewer primes in the second stage,
-# is better.  That is ten settings a round rather than fifteen, and it rests
-# on the two regimes not wanting wildly different values.  If it moves a
-# value, run it again from there.
+# tuning.mk -- and asks only whether a factor of two in the threshold, in the
+# run length or in the table cost either way, or two more or fewer primes in
+# the second stage, is better.  That is fifteen settings a round rather than
+# twenty-four, and it rests on the two regimes not wanting wildly different
+# values.  If it moves a value, run it again from there.
 #
 # Running this after "make tune" is what pins RATPOINTS_SP2_U0, the third
 # constant: the offset it scales is the number of extra primes an
@@ -246,7 +257,8 @@ tunehigh: rptest rptest-high-many
 	@TUNE_CONFIG='${TUNE_CONFIG}' \
 	 TUNE_TESTS='./rptest:testbase ./rptest-high-many:testbase-high-many' \
 	 TUNE_HEIGHT='${TESTHEIGHT}' \
-	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' ./tune.sh
+	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' C_FACTORS='0.5 2' \
+	 ./tune.sh
 
 # Run ratpoints on a set of 1008 test cases -- 1000 random genus 2 curves and
 # eight chosen to reach the test on the denominators at a prime dividing the
