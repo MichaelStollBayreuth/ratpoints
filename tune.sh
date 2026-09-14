@@ -1,8 +1,9 @@
 #!/bin/sh
 # Find good values for the four machine-dependent constants that decide how
-# many primes each sieving stage uses and which ones -- RATPOINTS_SURVIVORS_PER_WORD,
-# RATPOINTS_SP2_EXTRA, RATPOINTS_SP2_U0 and RATPOINTS_COST_TABLE in
-# ratpoints.h -- and write them to tuning.mk, which the Makefile includes.  Run it as "make tune"; it needs ./rptest and
+# many primes each sieving stage uses and which ones --
+# RATPOINTS_SURVIVORS_PER_WORD, RATPOINTS_SP2_EXTRA, RATPOINTS_SP2_U0 and
+# RATPOINTS_COST_TABLE in ratpoints.h -- and write them to tuning.mk, which
+# the Makefile includes.  Run it as "make tune"; it needs ./rptest and
 # ./rptest-many, and it modifies no source file.
 #
 # Both tests are used throughout: they cover the two regimes that occur in
@@ -43,18 +44,20 @@ NOISE=${NOISE:-0.02}       # ... and the baseline's self-ratio is within this
 WARMUP=${WARMUP:-20}       # seconds of load before measuring
 
 # The candidates for each constant.  There are two ways to say what they are.
-# R_VALUES and E_VALUES are an absolute ladder, bracketing the compiled-in
-# 0.0075 and 5 either way; a factor of two in the threshold is worth about one
-# prime in the first phase.  R_FACTORS and E_DELTAS instead describe a
-# neighbourhood of the settings being measured against -- multiples of the
-# threshold and offsets added to the other constant -- and take precedence when
+# R_VALUES, E_VALUES, U_VALUES and C_VALUES are an absolute ladder, bracketing
+# the compiled-in values either way; a factor of two in the threshold is worth
+# about one prime in the first phase.  R_FACTORS, E_DELTAS, U_FACTORS and
+# C_FACTORS instead describe a neighbourhood of the settings being measured
+# against -- multiples of the threshold, of the run length and of the table
+# cost, and offsets added to the number of primes -- and take precedence when
 # they are set.
 #
 # Which to use depends on what a run costs.  "make tune" sweeps the ladder,
 # since one timing there is three seconds.  "make tunehigh" costs two minutes a
 # timing, so it starts from what "make tune" found and only asks whether a step
-# either way is better: seven settings a round rather than ten, which is half
-# an hour off a run of two.  The assumption is that the two regimes do not want
+# either way is better: fifteen settings a round rather than twenty-four, which
+# is more than half an hour off a run of two.  The assumption is that the two
+# regimes do not want
 # wildly different values; if a neighbourhood run
 # moves a value, it has not finished looking, and should be run again from
 # there.
@@ -109,7 +112,8 @@ DEF_R=`sed -n 's/^# *define  *RATPOINTS_SURVIVORS_PER_WORD  *\([0-9.eE+-]*\).*/\
 DEF_E=`sed -n 's/^# *define  *RATPOINTS_SP2_EXTRA  *\([0-9]*\).*/\1/p' ratpoints.h`
 DEF_U=`sed -n 's/^# *define  *RATPOINTS_SP2_U0  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
 DEF_C=`sed -n 's/^# *define  *RATPOINTS_COST_TABLE  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
-[ -n "$DEF_R" ] && [ -n "$DEF_E" ] && [ -n "$DEF_U" ] && [ -n "$DEF_C" ] || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
+[ -n "$DEF_R" ] && [ -n "$DEF_E" ] && [ -n "$DEF_U" ] && [ -n "$DEF_C" ] \
+  || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
 if [ -f tuning.mk ] && [ "`sed -n 's/^TUNED_FOR *= *//p' tuning.mk`" = "${TUNE_CONFIG:-}" ]
 then
   v=`sed -n 's/.*RATPOINTS_SURVIVORS_PER_WORD=\([^ 	]*\).*/\1/p' tuning.mk`
@@ -146,7 +150,6 @@ if [ -n "$C_FACTORS" ]; then
     'BEGIN { n = split(f, a, " ")
              for (i = 1; i <= n; i++) printf "%.4g ", c*a[i] }'`
 fi
-[ -n "$R_FACTORS$E_DELTAS$U_FACTORS$C_FACTORS" ] && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES/ $C_VALUES"
 
 # Each stage carries the winners of the stages before it into every one of
 # its candidates, so the constant it sweeps must have its current value among
@@ -157,6 +160,8 @@ fi
 case " $E_VALUES " in *" $DEF_E "*) ;; *) E_VALUES="$DEF_E $E_VALUES" ;; esac
 case " $U_VALUES " in *" $DEF_U "*) ;; *) U_VALUES="$DEF_U $U_VALUES" ;; esac
 case " $C_VALUES " in *" $DEF_C "*) ;; *) C_VALUES="$DEF_C $C_VALUES" ;; esac
+[ -n "$R_FACTORS$E_DELTAS$U_FACTORS$C_FACTORS" ] \
+  && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES/ $C_VALUES"
 
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
@@ -308,14 +313,15 @@ case $verdict in
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
 # Measured on $TUNE_TESTS${TUNE_HEIGHT:+ at height $TUNE_HEIGHT}, starting
-# from $DEF_R / $DEF_E / $DEF_U / $DEF_C.  That is a note to the reader, not something the
-# Makefile looks at: "make tune" and "make tunehigh" write the same file and
-# each takes the other's result as its starting point.
+# from $DEF_R / $DEF_E / $DEF_U / $DEF_C.  That is a note to the reader, not
+# something the Makefile looks at: "make tune" and "make tunehigh" write the
+# same file and each takes the other's result as its starting point.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
 TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E -DRATPOINTS_SP2_U0=$BEST_U -DRATPOINTS_COST_TABLE=$BEST_C
 EOF
     echo "Wrote tuning.mk: threshold $BEST_R, offset $BEST_E, run length $BEST_U,"
-    echo "table cost $BEST_C -- `awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current $DEF_R / $DEF_E / $DEF_U / $DEF_C."
+    echo "table cost $BEST_C: `awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current"
+    echo "$DEF_R / $DEF_E / $DEF_U / $DEF_C."
     echo "Run 'make all' to rebuild with it; delete tuning.mk to discard it."
     ;;
 esac

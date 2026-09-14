@@ -76,8 +76,9 @@ INSTALL_DIR = /usr/local
 # -funswitch-loops, the -O3 optimisation that compiles a loop with an
 #  invariant test inside it twice, once per outcome, was measured and is not
 #  used.  It removes 1 to 3% of the instructions -- the "which reduction" test
-#  in the per-call loop of sift.c and the which_bits tests in the
-#  per-denominator loops of find_points.c -- and gains nothing in cycles: a
+#  in the per-call start loop and in the second-phase loop of sift.c, and the
+#  which_bits tests in the per-denominator loops of find_points.c -- and
+#  gains nothing in cycles: a
 #  wash on the two suites at height 16383 and 0 to 2% slower on the two at
 #  200000, measured at three code alignments (TRIO-NOTES.md on the sieve-trio
 #  branch).  Instruction counts predicted a gain; cycles are what count.
@@ -108,8 +109,8 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 # Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
 #  than by multiplying with the reciprocal, which is what the third sieving
 #  stage, the start-of-sieve computation and the row look-up of the second
-#  phase cost without that. "-DRP_MOD_CHOICE"
-#  instead builds both forms of the latter into one binary, selected by the
+#  phase cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
+#  the start-of-sieve computation into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
 #  other without the code-alignment difference two builds would bring; that is
 #  how the 2-3% in DIVISION-NOTES.md was measured. "-DRP_MOD_COUNTS" reports
@@ -232,8 +233,9 @@ tune: rptest rptest-many
 # The same, measured on the large-height suites instead (see testhigh and
 # testhighmany below).  Which one to use depends on the runs that matter: at
 # the 16383 of "make test" a fifth of the time is spent building sieve tables,
-# which the two constants have no effect on, so a short-run tuning judges them
-# partly on work they do not touch.
+# which the threshold and the offset have no effect on (the table cost is the
+# one constant that bears on it), so a short-run tuning judges them partly on
+# work they do not touch.
 #
 # One timing here is two minutes against three seconds there, so this does not
 # sweep the whole ladder of candidates.  It starts from the settings in force

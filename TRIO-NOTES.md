@@ -74,7 +74,9 @@ curve beside `magic`).  Every reduction of `w + offset` is unchanged modulo
 says that every value the call reduces lies in `[0, 2^32)`.  That reaches a
 height bound above 10^11; beyond it `mod()` divides, as the third stage does
 beyond its own limit.  The first phase's start loop uses the same offsets
-through `mod_mul`, whose sign branch is now never taken.
+through `mod_mul`, whose sign branch is never taken there; in the unchunked
+arm the value is `-w_low - offset`, negative on every call now, and
+`mod_mul` takes its absolute value, which is bounded the same way.
 
 **What went with it.**  The start fields are set for the first-phase primes
 only, in both arms of `sift0`; the unchunked arm's second start loop is gone;
@@ -93,7 +95,8 @@ kept, because it would be a second copy of the loop for a compiler that
 does not exist in practice (every 64-bit gcc, clang and icc has `__int128`),
 and `RP_MULMOD_DIVIDE` is a development switch whose purpose is to measure
 what the reciprocal is worth.  The `RP_MOD_CHOICE` runtime switch covers
-the start loop only, as before.
+the start loop of the chunked arm only, as before (the unchunked arm never
+had it).
 
 ### P8: `-funswitch-loops` -- measured and dropped
 
@@ -101,7 +104,8 @@ One flag in `CCFLAGS0`, tried as the third step.  It duplicates a loop whose
 body contains a loop-invariant test, one copy per outcome: the "which
 reduction" test in the start loop and now in the second-phase loop of
 `sift.c`, and the `which_bits` tests in the per-denominator loops of
-`find_points.c`.  `sift0` grows from 5450 to 6673 bytes.  It removes 1 to 3
+`find_points.c`.  `sift0` grows from 6233 to 6673 bytes with it (5450 in the
+base tree).  It removes 1 to 3
 per cent of the instructions and gains nothing in cycles at any of three code
 alignments (table below), so it is not used, and the Makefile records that.
 
@@ -113,8 +117,10 @@ matters at small heights; `-C` existed as a runtime option but nothing
 tuned it.  `tune.sh` now sweeps it after the run length (`C_VALUES`,
 default `10 20 70 140` around the compiled-in 38; `C_FACTORS='0.5 2'` in
 `make tunehigh`), passes the current value to every other stage, and writes
-`-DRATPOINTS_COST_TABLE` into `tuning.mk`.  Thirteen settings a round in
-`tunehigh` rather than ten, twenty-one in `tune` rather than sixteen.
+`-DRATPOINTS_COST_TABLE` into `tuning.mk`.  With each stage's current value
+carried into the candidates (see the tune section below), that is
+twenty-four settings a round in `tune` rather than sixteen, and fifteen in
+`tunehigh` rather than ten.
 
 ## What it is worth
 
@@ -185,10 +191,13 @@ not noise between rounds (the rounds agree to half a point).
 * Outputs byte-identical after each step on `test1`, `test1many` and
   `testdegrees`, compared before any timing (pair.sh refuses to time a
   binary whose output differs).
-* The division path (`small == 0`): `ratpoints "a0^2 -2a0 1 0 0 0 1" 6e11
-  -dl 1 -du 1 -l 559999999000 -u 560000001000` with `a0 = 5.6e11`, so that
-  the word numbers exceed 2^31 and `f(a0) = a0^6` is a square: old and new
-  binary both find `(a0 : a0^3 : 1)`, and both find nothing for `-dl 3 -du 3`.
+* The division path (`small == 0`), with `a0 = 560000000000`:
+  `ratpoints "313600000000000000000000 -1120000000000 1 0 0 0 1" 600000000000
+  -dl 1 -du 1 -l 559999999000 -u 560000001000`, i.e. `f = x^6 + (x - a0)^2`,
+  so that the word numbers exceed 2^31 and `f(a0) = a0^6` is a square (the
+  height must be written out in full: the program reads it with `%ld`, and
+  `6e11` would be 6).  Old and new binary both find `(a0 : a0^3 : 1)`, and
+  both find nothing for `-dl 3 -du 3`.
 * Every build variant reproduces the references on `test1`, `test1many`,
   `testdegrees` and `test3` (`alt.sh`, worktree at 1f00249): plain 64-bit,
   `USE_AVX128`, `USE_SSE`, `USE_AVX512` emulated (its usual two ABI

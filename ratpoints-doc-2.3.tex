@@ -1247,8 +1247,9 @@ noisy.
 
 Which tests it measures on is worth a thought. At the height bound
 \texttt{test1} and \texttt{test1many} use, a fifth of the time on the random
-curves goes into building sieve tables, which neither constant has any effect
-on, so a setting is judged partly on work it does not touch. \texttt{make
+curves goes into building sieve tables, which the threshold and the offset
+have no effect on (the table cost is the one constant that bears on it), so a
+setting is judged partly on work it does not touch. \texttt{make
 tunehigh} measures on the large-height tests instead, where the sieve is nearly
 all of the run; use it if the runs that matter to you are long ones.
 
@@ -1304,8 +1305,8 @@ is then the remedy.
 
 Should you prefer to do it by hand, the constants can be set directly:
 \begin{verbatim}
-> ./rptest -r 0.0075 -R 5 -z
-> ./rptest-many -r 0.0075 -R 5 -z
+> ./rptest -r 0.0075 -R 11 -U 1.6e6 -C 38 -z
+> ./rptest-many -r 0.0075 -R 11 -U 1.6e6 -C 38 -z
 \end{verbatim}
 for a few values of each, minimising the sum of the two times; then put the
 values you found into \texttt{ratpoints.h}. The option \verb+-T+ makes the
@@ -1322,8 +1323,8 @@ edit \texttt{rptest.c} if necessary to adapt the degree and height settings)
 and then time \texttt{./rptest -z} (the \verb+-z+ option suppresses the output)
 for various combinations of the parameter settings. \texttt{rptest} accepts
 most of the optional parameters of \texttt{ratpoints}, in particular
-the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-P+,
-\verb+-Q+, \verb+-F+ and \verb+-S+ parameters, as well as \verb+-T+ (print the CPU time used, and
+the \verb+-p+, \verb+-N+, \verb+-n+, \verb+-r+, \verb+-R+, \verb+-U+,
+\verb+-C+, \verb+-P+, \verb+-Q+, \verb+-F+ and \verb+-S+ parameters, as well as \verb+-T+ (print the CPU time used, and
 nothing else),
 so you can easily change the parameters used on the command line. In addition,
 there is an option \verb+-h+ $H$ to change the default height bound
@@ -1657,7 +1658,7 @@ testhighmany}, which run the two regimes at a height bound of $2\cdot10^5$
 instead of $16383$. The point of them is that the old bound is short enough
 for a fifth of the run to be table construction rather than sieving, so it
 measures a change to the sieving loops through a filter; at the new one that
-share is half a per cent. \texttt{make tunehigh} tunes the two constants on
+share is half a per cent. \texttt{make tunehigh} tunes the constants on
 them. The test programs also no longer pass the default number of primes
 explicitly, which had quietly stopped them from ever using the new rule above.
 
@@ -1842,8 +1843,8 @@ that accommodates a 32-bit \texttt{long}.
 Two loops of the second sieving phase have been rewritten. The scan that
 steps over the empty bit arrays after the first phase used to carry a bound
 test and two counters, nine instructions per bit array; it now runs into a
-non-zero sentinel written just past the range, and is a load, a test and a
-branch. And the phase used to reach the table row of a surviving bit array
+non-zero sentinel written just past the range, and is a load, a test, a
+branch and the pointer step. And the phase used to reach the table row of a surviving bit array
 from a pointer set up at the start of every call, subtracting the prime until
 the pointer was back inside the table --- one to three data-dependent, mostly
 mispredicted branches for every \texttt{AND}, and one such set-up per prime
@@ -1853,9 +1854,11 @@ first phase and the third stage already use, with a multiple of the prime
 folded into the offset so that the value reduced is never negative. Together
 the two are worth $3\%$ of \texttt{make test1} and of \texttt{make
 test1many}, and $7.5\%$ of \texttt{make testhigh} and of \texttt{make
-testhighmany}: the first by taking instructions out of the busiest short loop
-of the program, the second by taking out branch mispredictions, which fall
-by a fifth to a quarter at the large height bound.
+testhighmany} at the default code placement, between $4.5$ and $7.5\%$ at
+others: the first by taking instructions out of the busiest short loop of
+the program, the second by taking out branch mispredictions, which fall by a
+fifth to nearly a third at the large height bound.
+
 \texttt{make tune} also measures a fourth constant now, what building one
 row of a sieving table costs, which is what decides how strongly the program
 prefers a smaller prime to a larger one at a small height bound. It could be

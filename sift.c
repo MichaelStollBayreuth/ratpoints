@@ -985,8 +985,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * non-zero bit array, and the one written here, just past the range,
      * is what it meets when nothing survived (find_points_work leaves room
      * for it).  With the bound test the scan was nine instructions per bit
-     * array, two of them branches; now it is three, and the position is
-     * recovered from the pointer once per survivor instead. */
+     * array, two of them branches; now it is four -- the load, the test,
+     * the branch and the pointer step -- and the position is recovered from
+     * the pointer once per survivor instead. */
     *surv_end = ~zero;
     for(;;)
     { ratpoints_bit_array nums;
@@ -1026,7 +1027,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
        * the words that are themselves non-zero are sieved with the remaining
        * primes and then extracted.  No different table layout is needed --
        * the tables hold RBA_PACK copies of the pattern, so the word wanted is
-       * the one at index RBA_PACK*base + k.
+       * word k of the table row for the bit array, found as in the other
+       * arm.
        * This is slower than sieving the whole bit-array at once, by a few per
        * cent at 128 and 256 bits, and it is instructive that it is: the
        * number of AND steps is the same either way, because the other words
