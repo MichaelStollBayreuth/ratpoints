@@ -306,7 +306,16 @@ wrote nothing.  That verdict was right: a stray test run of mine on another
 core fell into that stage, and the package power budget did the rest.  So
 the script's own guard was exercised as well.  A clean third run, and the
 first ever `make tunehigh`, follow the reviews; their results are below.
-TUNE3-PENDING
+
+**The third run**, on an idle machine after the reviews: the current
+settings measured within 1.4 per cent of themselves in every stage, every
+candidate came within 4 per cent of them, and nothing beat them by the 3 per
+cent the script demands, so they were kept -- 0.0075, 11, 1.6e6 and 38 on
+this machine and the two default suites.  The fourth stage ran with the
+current value among its candidates (`c=38.0`, -0.2 per cent).  `make
+tunehigh` at the default three rounds, never run before, was started after
+the merge; its result is appended below when it is in.
+TUNEHIGH-PENDING
 
 ## The reviews
 
