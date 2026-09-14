@@ -296,6 +296,12 @@ verdict=`awk -v b="$BEST" -v s="$SELF" -v m="$MARGIN" -v z="$NOISE" \
   'BEGIN { d = s - 1; if (d < 0) d = -d
            if (d > z) print "noisy"; else if (b < m) print "accept"; else print "keep" }'`
 
+# A candidate that carries every constant at its current value is the current
+# settings measured a second time; if noise puts that row past the margin, it
+# is not an improvement and must not be announced as one.
+[ "$verdict" = accept ] && [ "$BEST_R" = "$DEF_R" ] && [ "$BEST_E" = "$DEF_E" ] \
+  && [ "$BEST_U" = "$DEF_U" ] && [ "$BEST_C" = "$DEF_C" ] && verdict=keep
+
 case $verdict in
   noisy)
     echo "The current settings measured `awk -v s=$SELF 'BEGIN{printf "%.1f", 100*(s-1)}'`% away from themselves, so this"

@@ -233,6 +233,12 @@ static void _rp_sink_report(void)
 /* The largest value this file will reduce that way; above it the callers
  * fall back on the division.  See mod_mul() and stage3(). */
 #define RP_MULMOD_LIMIT 4294967295L
+/* The second phase keeps the value it reduces, a word number plus an offset
+ * that carries RP_ROW_BIAS, below 2*RP_ROW_BIAS by the test at the head of
+ * _ratpoints_sift0; that is only exact if the two limits agree.  An array
+ * of negative size does not compile. */
+typedef char rp_row_bias_within_mulmod_limit[
+  (2*RP_ROW_BIAS - 1 <= RP_MULMOD_LIMIT) ? 1 : -1];
 
 /* Development switch: with -DRP_MOD_CHOICE the two ways of reducing a word
  * number modulo a prime live in the same binary, chosen by the environment
