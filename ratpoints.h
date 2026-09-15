@@ -264,7 +264,12 @@
 #endif
 
 #ifndef RATPOINTS_DEFAULT_MAX_FORBIDDEN
-#define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
+#define RATPOINTS_DEFAULT_MAX_FORBIDDEN 64 /* Default value for max_forbidden:
+     how many primes the denominators are tested against with bit arrays
+     or by their valuation (option -F).  Since the denominators are taken a
+     word of 64 at a time, one such prime costs a few instructions per word,
+     so the cap is a generous one; it was 30 up to 2.2.4, which the primes
+     of the compiled table alone reach at a height bound of 200000. */
 #endif
 
 #ifndef RATPOINTS_ARRAY_SIZE
@@ -296,6 +301,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *sieve_list; void *stage3_list; void *magics;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
+                 void *forb_words; long forb_words_len;
                  void *ba_buffer_na; long ba_buffer_primes;
                  double run_words; double run_denoms;
                  unsigned long n_words; unsigned long n_arrays;

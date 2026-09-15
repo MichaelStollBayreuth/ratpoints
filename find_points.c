@@ -234,8 +234,12 @@ void find_points_init(ratpoints_args *args)
   /* allocate remaining data structures */
   args->den_info = malloc((PRIMES1000+2)*sizeof(use_squares1_info));
   args->divisors = malloc((MAX_DIVISORS+1)*sizeof(long));
-  args->forb_ba = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_entry));
-  args->forbidden = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_val));
+  args->forb_ba = malloc((PRIMES1000 + 1)*sizeof(forbidden_entry));
+  args->forbidden = malloc((PRIMES1000 + 1)*sizeof(forbidden_val));
+  /* the bit patterns for forbidden divisors beyond the compiled table of
+   * primes are built per curve, in a buffer that grows as needed; see
+   * sieving_info */
+  args->forb_words = NULL; args->forb_words_len = 0;
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -269,6 +273,7 @@ void find_points_clear(ratpoints_args *args)
   free(args->divisors);
   free(args->forb_ba);
   free(args->forbidden);
+  free(args->forb_words);
 
   /* clear pointer in args */
   args->work = NULL; args->work_length = 0;
@@ -280,6 +285,7 @@ void find_points_clear(ratpoints_args *args)
   args->magics = NULL;
   args->den_info = NULL; args->divisors = NULL;
   args->forb_ba = NULL; args->forbidden = NULL;
+  args->forb_words = NULL; args->forb_words_len = 0;
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -1906,25 +1912,38 @@ static long sieving_info(ratpoints_args *args,
   /* Terminate the array of forbidden divisors, having first looked for
    * more of them among the primes the loop above did not reach.  This is
    * done here, before the primes are chosen, because the choice needs to
-   * know how many denominators will survive these tests: see run_shape. */
+   * know how many denominators will survive these tests: see run_shape.
+   *
+   * The search goes up to the square root of the height bound, or to the
+   * end of prime[] if that comes first, and so beyond the compiled table of
+   * sieving primes, whose word patterns in sieves0 the arrays used to be
+   * limited to; for a prime beyond it the patterns are built here, in a
+   * buffer that stays with args.  Why the square root: the Jacobi symbol
+   * test lets a denominator through when it has an even number of bad
+   * primes -- those with (lcf/p) = -1 -- and with every bad prime up to
+   * sqrt(b_high) in the arrays, what gets through both tests is the product
+   * of two bad primes beyond the table (b = q1*q2 or 2*q1*q2), which at a
+   * height bound of 200000 with the table ending at 251 was 1.2 per cent of
+   * the denominators sifted (the review's count, item P13). */
   if((args->flags & RATPOINTS_CHECK_DENOM)
        && !mpz_perfect_square_p(c[degree]))
        /* the test below asks for a non-square residue, which a square
         * leading coefficient never has; such a curve gets here since the
         * valuation test above applies to it */
-  { long n;
+  { long n, first = fba, words = 0;
 
-    for(n = pn_lim;
-        fba + fdc < args->max_forbidden && n < RATPOINTS_NUM_PRIMES;
-        n++)
+    for(n = pn_lim; fba + fdc < args->max_forbidden && n < PRIMES1000; n++)
     { long p = prime[n];
 
       if(p*p > args->b_high) break;
       if(mpz_kronecker_si(c[degree], p) == -1)
-      { forb_ba[fba].p     = p;
-        forb_ba[fba].start = &sieves0[n][0];
-        forb_ba[fba].end   = &sieves0[n][p];
-        forb_ba[fba].curr  = forb_ba[fba].start;
+      { forb_ba[fba].p = p;
+        if(n < RATPOINTS_NUM_PRIMES)
+        { forb_ba[fba].start = &sieves0[n][0];
+          forb_ba[fba].end   = &sieves0[n][p];
+        }
+        else
+        { forb_ba[fba].start = NULL; words += p; } /* built below */
         fba++;
 
 #ifdef DEBUG
@@ -1932,6 +1951,32 @@ static long sieving_info(ratpoints_args *args,
         fflush(NULL);
 #endif
 
+      }
+    }
+
+    /* the patterns for the primes beyond the table: p words for the prime
+     * p, word r of them for the word numbers congruent to r mod p, with bit
+     * j clear iff p divides 64*r + j -- what sieves0 holds for the compiled
+     * primes (gen_find_points_h.c), and what the denominator loop expects */
+    if(words > args->forb_words_len)
+    { free(args->forb_words);
+      args->forb_words = malloc(words*sizeof(unsigned long));
+      args->forb_words_len = words;
+    }
+    { unsigned long *row = (unsigned long *)args->forb_words;
+
+      for(n = first; n < fba; n++)
+      { if(forb_ba[n].start == NULL)
+        { long p = forb_ba[n].p, r, m;
+
+          for(r = 0; r < p; r++) { row[r] = ~0UL; }
+          for(m = 0; m < LONG_LENGTH*p; m += p)
+          { row[m >> LONG_SHIFT] &= ~(1UL << (m & LONG_MASK)); }
+          forb_ba[n].start = row;
+          forb_ba[n].end   = row + p;
+          row += p;
+        }
+        forb_ba[n].curr = forb_ba[n].start;
       }
     }
   }
@@ -2568,8 +2613,8 @@ static long find_points_work_1(ratpoints_args *args,
   if(args->b_high > height) { args->b_high = height; }
   if(args->max_forbidden < 0)
   { args->max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN; }
-  if(args->max_forbidden > RATPOINTS_NUM_PRIMES)
-  { args->max_forbidden = RATPOINTS_NUM_PRIMES; }
+  if(args->max_forbidden > PRIMES1000)
+  { args->max_forbidden = PRIMES1000; }
   if(args->array_size <= 0) { args->array_size = RATPOINTS_ARRAY_SIZE; }
   { long s = 2*CEIL(height, LONG_LENGTH);
     if(args->array_size > s) { args->array_size = s; }
