@@ -322,17 +322,22 @@ static inline int relprime(long m, long n)
   if(m < 0) { m = -m; }
   if(!(m & 1)) /* m is even */
   { if(!(n & 1)) { return(0); } /* n is also even */
-    m >>= 1; while(!(m & 1)) { m >>= 1; } /* n odd: replace m by odd part */
+    m >>= RP_CTZL((unsigned long)m); /* n odd: replace m by its odd part */
   }
-  while(!(n & 1)) { n >>= 1; } /* replace n by odd part */
-  /* successively subtract the smaller from the larger
-   * and replace the result by its odd part,
-   * until both are equal (to their gcd) */
+  n >>= RP_CTZL((unsigned long)n); /* replace n by its odd part */
+  /* Successively subtract the smaller from the larger and replace the
+   * difference by its odd part, until both are equal (to their gcd).
+   * Without a branch on which one is the smaller, and without a loop over
+   * the trailing zeros: both were data-dependent branches, and at one
+   * survivor in ten thousand numerators they were a tenth of all the
+   * mispredicted branches of make test1. */
   while(n != m)
-  { if(n > m)
-    { n -= m; n >>= 1; while(!(n & 1)) { n >>= 1; } }
-    else
-    { m -= n; m >>= 1; while(!(m & 1)) { m >>= 1; } }
+  { long d = m - n;
+    long msk = d >> (LONG_LENGTH - 1); /* -1 iff m < n */
+
+    n += d & msk;                      /* n = min(m, n) */
+    d = (d ^ msk) - msk;               /* d = |m - n|, even and non-zero */
+    m = d >> RP_CTZL((unsigned long)d);
   }
   return(m == 1);
 }
