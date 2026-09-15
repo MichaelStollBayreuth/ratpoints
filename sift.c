@@ -467,8 +467,8 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
  * pointers and leaves them as they are.  (They are recomputed at the next
  * call anyway; nothing reads them after the first phase.) */
 #ifndef RP_UNROLL_REGS  /* -DRP_UNROLL_REGS= builds without the pragma */
-# if defined(__GNUC__) || defined(__clang__)
-#  define RP_UNROLL_REGS _Pragma("GCC unroll 8")
+# if (defined(__GNUC__) && __GNUC__ >= 8) || defined(__clang__)
+#  define RP_UNROLL_REGS _Pragma("GCC unroll 8")  /* gcc 8 and later, clang */
 # else
 #  define RP_UNROLL_REGS
 # endif
@@ -925,6 +925,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * arrays swept at height 16383, four fifths at height 1000.) */
     { long t = w_high - w_high_full;
 
+#if (RATPOINTS_CHUNK > 16)
+# error "the tail legs cover lengths up to 15: widen them with the ladder"
+#endif
 #if (RATPOINTS_CHUNK > 8)
       if(t & 8) { tail_leg(8, 0, surv, bits16, sieves, sp1); }
 #endif
