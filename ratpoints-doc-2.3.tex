@@ -1443,14 +1443,16 @@ a$, which is a non-square as well. In addition, we use the necessary
 condition that the Jacobi symbol $\left(\frac{l}{b'}\right)$ must be $+1$,
 where $b'$ is the part of $b$ coprime to~$2l$. Since version~2.3 that symbol
 is not computed by a binary algorithm for each denominator but as a product
-of Legendre symbols: for $l = \pm 2^v \prod_i q_i^{e_i}$ it is
+of Legendre symbols: for $l = \pm 2^v \prod_i q_i^{e_i}$, with $\epsilon = 1$
+if $l < 0$ and $0$ otherwise, it is
 $\left(\frac{-1}{b'}\right)^{\epsilon} \left(\frac{2}{b'}\right)^{v}
 \prod_i \left(\frac{q_i}{b'}\right)^{e_i}$, where by quadratic reciprocity
 each factor is the Legendre symbol of $b' \bmod q_i$ modulo~$q_i$ times a
 sign that depends on $b' \bmod 4$, and the first two factors depend on $b'
 \bmod 8$. The program tabulates the non-squares modulo each~$q_i$ once per
 curve, so that the test costs one multiplication and one table look-up per
-prime factor of~$l$; when $l$ has a prime factor above $1021$ it falls back
+prime factor of~$l$; when $l$ has a prime factor above $1021$ or more than
+sixteen odd prime factors, or the denominators exceed $2^{32}$, it falls back
 on the binary algorithm.
 
 When $p$ divides~$l$, the congruence says nothing, since $F(a,b)$ is then
@@ -1903,7 +1905,8 @@ reaches it rather than for every denominator. Measured step by step against
 the version before, the six are worth $14$, $2$, $7$, $2$, $0$ and $2\%$ of
 \texttt{make test1}; together they are $24\%$ of \texttt{make test1}, $4\%$
 of \texttt{make test1many}, $6\%$ of \texttt{make testhigh} and $2\%$ of
-\texttt{make testhighmany} at the default code placement, and within a point of that at two other placements, and two thirds of the branch
+\texttt{make testhighmany} at the default code placement, and within a
+point of that at two other placements, and two thirds of the branch
 mispredictions of \texttt{make test1} are gone.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so

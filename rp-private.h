@@ -367,8 +367,9 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
  * magic), the remainder of u modulo p is the top half of (m*u mod 2^64) * p,
  * and the quotient floor(u/p) is the top half of m*u; both are exact for
  * every u below 2^32, which every caller checks for in its own way.  The
- * callers are the third stage, the start of the first phase and the row
- * look-up of the second (sift.c), and the Jacobi symbol test on the
+ * callers are the third stage and its set-up, the start of the first phase
+ * and the row look-up of the second (sift.c), and the reduction of the
+ * denominator modulo each sieving prime and the Jacobi symbol test on the
  * denominators (find_points.c).
  *
  * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead,
@@ -414,10 +415,23 @@ static inline long RP_CTZL(unsigned long w)
 }
 #endif
 
+/* The inlining attributes sift.c relies on: accepted() and what it calls
+ * must be inlined into the extraction sites, and the on-demand fill of the
+ * third stage's data must not be, or gcc stops inlining accepted() (measured
+ * at a per cent).  Empty on a compiler without them, for the reason above. */
+#if defined(__GNUC__) || defined(__clang__)
+# define RP_ALWAYS_INLINE __attribute__((always_inline))
+# define RP_NOINLINE __attribute__((noinline))
+#else
+# define RP_ALWAYS_INLINE
+# define RP_NOINLINE
+#endif
+
 /* What the third stage needs to test one numerator against one prime: the
  * prime, the inverse of the denominator modulo it, and the table saying
  * which residues admit points.  There is no sieve table, which is the point
- * of that stage: a prime costs it nothing per denominator but the inverse.
+ * of that stage: a prime costs it nothing per denominator, and the inverse
+ * is looked up only for a denominator that brings a numerator this far.
  * binv == 0 means the prime divides the denominator, in which case it says
  * the same thing about every numerator and is skipped. */
 typedef struct { long p; long binv; long bias; unsigned long magic;

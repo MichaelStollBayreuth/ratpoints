@@ -71,8 +71,8 @@ tests a candidate for lowest terms is branchless; the forbidden-divisor bit arra
 excluded prime up to the square root of the height bound, not only the compiled sieving primes
 (the default of `-F` is 64 now); and the third stage's per-denominator set-up happens only when a
 candidate reaches it. Together: 24% of `make test1`, 4% of `make test1many`, 6% of
-`make testhigh` and 2% of `make testhighmany` at the default code placement, and within a point of that at two others, with two thirds of the branch
-mispredictions of `make test1` gone.
+`make testhigh` and 2% of `make testhighmany` at the default code placement, and within a point of
+that at two others, with two thirds of the branch mispredictions of `make test1` gone.
 
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the

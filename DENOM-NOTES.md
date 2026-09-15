@@ -32,10 +32,10 @@ character modulo `8*rad_odd(lcf)`, and the others reduce to `b/q`.  Both
 skeptics built it, with byte-identical output.  It is not what was done,
 for two reasons that the data made plain.  First, the period is the odd
 radical of `lcf`, and while that is at most 33 on the thousand random
-curves of `testdata.h`, it is 10^5 to 10^10 on the point-rich curves that
-have a Jacobi test at all (16 of the 21 in `testdata-many.h`), where no
-pattern of that length can be built and the prototype fell back on the
-symbol.  Second, the table costs memory in the height bound (100 KB at
+curves of `testdata.h`, it is beyond 500 on 16 of the 21 point-rich curves
+that have a Jacobi test at all (`testdata-many.h`), beyond 10^4 on 13 of
+them and up to 10^10, where no pattern of that length can be built and the
+prototype fell back on the symbol.  Second, the table costs memory in the height bound (100 KB at
 200000), wants a cap and a fallback beyond it, and is filled for every
 denominator while only a quarter of them are ever looked up.
 
@@ -66,10 +66,11 @@ that covers every one of the 915 Jacobi curves of `testdata.h` and the 48
 of `testdata-degrees.h`, and 8 of the 21 in `testdata-many.h` (the rest
 have a prime of five or six digits in `lcf`, where the old symbol was never
 a noticeable cost: those curves spend their time in the sieve).  A leading
-coefficient that fits a long always fits the 8 KB of tables (at most seven
-odd-exponent primes below 1024 multiply to less than 2^63, and no seven
-take more than 6100 bytes); one beyond a long can have more, and then the
-mpz symbol is used as before.
+coefficient that fits a long always fits the 8 KB of tables: distinct odd
+primes below 1024 whose product stays below 2^63 sum to at most 6057, for
+the six largest and a 7 (the sweep review corrected an earlier count here),
+and only those with an odd exponent need a table; one beyond a long can
+have more, and then the mpz symbol is used as before.
 
 **Order of the tests.**  The Jacobi test used to come after the valuation
 test on the primes dividing `lcf`, which divides; now that it is the cheap
@@ -179,10 +180,13 @@ there, because the cap was not what limited the arrays; the table was).
 Nothing changes below a height bound of 63001, and no reference output
 pins the list of excluded denominators.
 
-Not done: the review's remark that with the arrays complete the Jacobi
-factor in `run_shape` is 0.65 rather than 0.5.  That is a model constant,
-to be tried as a `-D` pair in a tuning session, not in a step whose output
-must not change.
+Not done, and not to be done: the review's remark that with the arrays
+complete the Jacobi factor in `run_shape` would be 0.65 rather than 0.5.
+The sweep review counted exactly, over all odd `b <= 200000` free of a bad
+prime below the array bound, for five leading coefficients: the symbol keeps
+0.51 to 0.53 of them with the arrays to 251 and 0.53 to 0.55 with the arrays
+to 443.  So 0.5 stands, and so does the code's comment that the test
+rejects half of what reaches it.
 
 ### P11, first half: the third stage's set-up on demand
 
@@ -202,11 +206,10 @@ review found that any call gcc might inline into `accepted` stopped it from
 inlining `accepted` into the five extraction sites of `sift0`, at a cost of
 a per cent, and that the attribute alone was worth 0.16 per cent.
 
-Two model constants are now overstatements: `RATPOINTS_COST_BP` is charged
-for every prime including those of the third stage, whose per-denominator
-step is gone, and `RATPOINTS_SP3_PER_DENOM` stood for a fill that no longer
-happens per denominator.  Both are compiled-in constants of the parameter
-model, for a tuning session.
+Two model constants were overstated by this: `RATPOINTS_COST_BP`, which is
+remeasured and set to 8 below, and `RATPOINTS_SP3_PER_DENOM`, which stood
+for a fill that no longer happens per denominator and, being a tuned
+constant, is left to a tuning session.
 
 ## What it is worth
 
@@ -396,10 +399,9 @@ means; nothing needs retuning for it, and `make tune` does not touch it.
 `COST_SETUP` (30 per prime) is 17-32 per prime on the four suites and
 stays.  `COST_SURVIVOR` (1400 compiled) is read by the adaptive correction
 of `sp2` only (`-A 2`), which is off by default; measured at 260 to 2030 it
-straddles the compiled value as it did before, and stays.  The third stage's `RATPOINTS_SP3_PER_DENOM`, which
-stood for a per-denominator cost the stage no longer has, is a tuned
-constant and is left to a tuning session, as is `run_shape`'s Jacobi
-factor of P13.
+straddles the compiled value as it did before, and stays.  The third stage's
+`RATPOINTS_SP3_PER_DENOM`, which stood for a per-denominator cost the stage
+no longer has, is a tuned constant and is left to a tuning session.
 
 ## How much of it is this machine (for item 22)
 
@@ -439,3 +441,40 @@ followed in the same way.  The per-round spread is about 1.5 points either
 way on the two three-second suites and half a point on the two long ones;
 a step measured at 0.5 per cent on a short suite is inside the noise, and
 the notes say so where it applies.
+
+## The reviews
+
+Two Opus agents in their own worktrees at 1caef25, one sweeping for
+completeness and consistency, one told to break it.
+
+**The sweep** built fifteen configurations from clean (every one
+reproduces the references with no warning beyond the two known AVX-512 ABI
+notes; the dividing fallback is clean now), ran `make test`, the debug
+build under valgrind, `--leak-check=full` on a curve at 70000 and on
+forty-eight curves reusing one `args` (the buffer of P13 grows and is
+freed), compared the run-time patterns of P13 with the compiled ones by
+building at `PRIME_SIZE` 10 (identical excluded lists and points), checked
+the word walk on ninety-six sub-ranges against the full runs, recomputed
+every count and percentage in these notes, the README and the change log
+(all reproduce, two excepted: see below), and compiled the manual against
+the one of 4bfc676 (the same four overfull boxes, none new).  It found no
+fault in the code.  What it found was text the code had left behind: the
+`bp_list` entry still called "stepped" in five comments, two of them
+claiming a per-denominator cost for the third stage's primes; the two
+phase-timing region labels these notes quote describing what the regions
+no longer contain; the `COST_SETUP` comment calling the `bp_list` entry
+"about the same" two lines under a constant three times smaller; the
+caller lists of `RP_MULMOD` in `rp-private.h` and the Makefile without the
+reduction that calls it thirty million times a suite; the `check_spec`
+and third-stage comments describing `b` as carried along; the manual's
+fallback sentence naming one condition of three and using an undefined
+symbol; two unwrapped lines; the `always_inline`/`noinline` attributes
+written out where the file's convention (`RP_CTZL`) keeps the plain build
+free of gcc-isms -- now `RP_ALWAYS_INLINE` and `RP_NOINLINE`; and two
+wrong statements in these notes: the "seven primes" arithmetic of
+`jacobi_setup`'s comment (fourteen small primes fit below 2^63; the bound
+that matters, 6057 bytes, holds), and the count "10^5 to 10^10 on 16 of
+21" (13 of 21, the other three between 500 and 10^4).  Its last finding is
+the one worth the most: the review's "0.65" for `run_shape`'s Jacobi
+factor is 0.53 by exact count, so that parked remark is withdrawn above.
+All applied.

@@ -65,14 +65,16 @@ unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
  * cost of one check is (cyc3 - cycbc)/checks, not cyc3/checks.
  * Written by _ratpoints_check_point in find_points.c . */
 unsigned long long _rp_bc_cycles = 0, _rp_bc_calls = 0;
-/* the per-denominator loop that steps b modulo each sieving prime */
+/* the per-denominator loop that computes b modulo each prime of the first
+ * two phases */
 unsigned long long _rp_bp_cycles = 0, _rp_bp_dens = 0, _rp_bp_steps = 0;
 /* building a sieve table: once for each pair (prime, denominator class), so
  * at most p times for the prime p however long the run is.  rows counts the
  * bit-arrays written, which is what the cost should be proportional to. */
 unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
-/* filling in sieve_spec and check_spec, which is done once per denominator
- * for each prime of the first two phases and each prime of the third */
+/* filling in sieve_spec once per denominator for each prime of the first two
+ * phases; the third stage's check_spec is filled on demand, outside this
+ * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
 /* clearing the two boundary words and the bit arrays that only exist to
  * make the count a multiple of RATPOINTS_CHUNK.  Until 2.3 this was a pass
@@ -289,7 +291,7 @@ static inline long mod_mul(long a, long p, unsigned long m)
  * removed by the gcd, and there is no point in testing them here first.
  * --------------------------------------------------------------------- */
 
-static inline __attribute__((always_inline))
+static inline RP_ALWAYS_INLINE
 int stage3(long a, const check_spec *csp, long n)
 { long i;
 
@@ -316,7 +318,7 @@ int stage3(long a, const check_spec *csp, long n)
  * check if m and n are relatively prime                                  *
  **************************************************************************/
 
-static inline __attribute__((always_inline)) int relprime(long m, long n)
+static inline RP_ALWAYS_INLINE int relprime(long m, long n)
 {
   /* n (the denominator) is always positive here */
   if(m == 0) { return(n == 1); }
@@ -403,7 +405,7 @@ static inline long mod(long a, long b)
  * Out of line on purpose: accepted() is inlined into the five extraction
  * sites of sift0, and a call inside it that gcc might inline was measured
  * to stop that, at a cost of a per cent. */
-static void __attribute__((noinline))
+static void RP_NOINLINE
 fill_checks(long b, check_spec *csp, ratpoints_args *args)
 { ratpoints_sieve_entry **sieve_list
     = (ratpoints_sieve_entry **)args->sieve_list;
@@ -435,7 +437,7 @@ fill_checks(long b, check_spec *csp, ratpoints_args *args)
  * far, which is what lets the number of primes be corrected during the run
  * instead of predicted before it; they cost one increment each on paths
  * taken a few times in a million. */
-static inline __attribute__((always_inline))
+static inline RP_ALWAYS_INLINE
 int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 { if(!relprime(a, b)) { return(0); }
   args->n_coprime++;

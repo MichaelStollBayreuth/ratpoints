@@ -69,9 +69,9 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
 # define RP_BC_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BC_TOC(t) do { _rp_bc_cycles += __rdtsc() - (t); _rp_bc_calls++; } \
                       while(0)
-/* and the loop that steps b modulo each sieving prime, which is per
- * denominator and per prime, so that a third stage using further primes
- * would pay it whether or not a survivor turns up */
+/* and the loop that computes b modulo each prime of the first two phases,
+ * once per denominator and prime; the primes of the third stage have no
+ * such cost, since their set-up is done on demand (fill_checks in sift.c) */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
 extern unsigned long long _rp_arrays_swept;
 /* and building one sieve table, which is the fixed cost a prime has to earn
@@ -515,8 +515,9 @@ static inline int jacobi1(long b, const long lcf)
  * denominators stay below 2^32 (the reductions multiply by a reciprocal, see
  * RP_MULDIV); otherwise it says so, and the denominator loop calls jacobi1
  * or jacobi as before.  A leading coefficient that fits a long always fits
- * the tables: at most seven of its primes can have an odd exponent while
- * their product stays below 2^63, and no seven take more than 6100 bytes. */
+ * the tables: distinct odd primes below 1024 with a product below 2^63 sum
+ * to at most 6057 (the six largest and a 7), and only those with an odd
+ * exponent need a table. */
 #define RP_JACOBI_PRIMES 16   /* odd prime factors of lcf, at most */
 #define RP_JACOBI_TABLE 8192  /* bytes of non-square tables, at most */
 
@@ -1068,7 +1069,9 @@ static int compare_by_r(const void *a, const void *b)
  * rate): 1 in the first phase, COST_PHASE2*rate in the second, and the
  * third stage's own cost per survivor in the third.  The other two terms are
  * paid once and spread over the run: the sieve table, which the third stage
- * does not build, and the step of bp_list, which every stage pays.
+ * does not build, and the entry of bp_list, which the first two phases pay
+ * for every denominator.  (The third stage's primes have neither: their
+ * set-up is done on demand, and they are ranked by another rule, below.)
  */
 static double prime_cost(long p, double per_word, int tabled,
                          double cost_table, double u_words, double n_denoms)
@@ -1331,7 +1334,7 @@ static long primes_for_phase_1(entry *prec, long pnp,
 }
 
 /* How many primes the second phase adds to the first.  A phase-2 prime is
- * paid for once -- its sieve table, and its step in bp_list -- and then used
+ * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
  * offset, which is what every version before 2.3 used. */
@@ -1542,7 +1545,7 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * them.  Both are wanted by the rule that picks the sieving primes, because
  * two of the costs of a prime are paid once and then spread over the whole
  * run -- its sieve table, built for at most p denominator classes, and its
- * entry in bp_list, stepped once per denominator.  Per word of numerators
+ * entry in bp_list, computed once per denominator.  Per word of numerators
  * those come to k*p*min(D,p)/U and l*D/U, and they are the reason the best
  * number of primes at a height bound of 200000 is not the best number at
  * 16383.
@@ -2150,7 +2153,7 @@ static long sieving_info(ratpoints_args *args,
 
     /* Put the rest of the primes in sieve_list too, in the order the third
      * stage would take them.  They cost nothing to keep -- no table is built
-     * and no bp_list entry stepped until a prime is actually used -- and
+     * and nothing computed for it until a prime is actually used -- and
      * having them there is what lets adapt_primes() reach for one more
      * during the run. */
     { long n;

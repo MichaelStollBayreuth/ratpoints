@@ -108,8 +108,9 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  runs; they produce wrong tables, and bench_init will say so.
 # Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
 #  than by multiplying with the reciprocal, which is what the third sieving
-#  stage, the start-of-sieve computation and the row look-up of the second
-#  phase cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
+#  stage, the start-of-sieve computation, the row look-up of the second
+#  phase, the reduction of the denominator modulo each sieving prime and the
+#  Jacobi symbol test cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
 #  the start-of-sieve computation into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
 #  other without the code-alignment difference two builds would bring; that is
