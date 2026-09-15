@@ -1781,12 +1781,32 @@ numerators modulo~16, and that pattern used to be written into all of them on
 a pass of its own before the phase began; the first prime now ANDs it in as
 it sieves, so the pass is gone and with it one store and one load for every
 bit array --- 1.7\,$\cdot\,10^{10}$ of them in \texttt{make testhigh}. The
-two boundary words and the padding that makes the count a multiple of
-\texttt{RATPOINTS\_CHUNK} are cleared after the phase instead of before it,
-which comes to the same thing because \texttt{AND} is commutative. It is
+two boundary words are cleared after the phase instead of before it, which
+comes to the same thing because \texttt{AND} is commutative. It is
 worth $5.6\%$ of \texttt{make testhigh}, $5.3\%$ of \texttt{make
 testdegrees} at a height bound of $2\cdot10^5$, $3.4\%$ of \texttt{make
 testhighmany} and $2.6\%$ of \texttt{make test1}.
+
+Nor does the first phase sieve bit arrays that are then thrown away. It works
+on \texttt{RATPOINTS\_CHUNK} $= 16$ bit arrays at a time, one per vector
+register, and the range of every denominator and interval used to be padded
+up to a multiple of that: the padding was sieved with every prime of the
+phase, walked by the scan of the second phase and then zeroed, and it came to
+a seventh of all the bit arrays swept in \texttt{make test1}, a quarter of
+them at a height bound of 4000 and four fifths at 1000, where the whole
+interval of a denominator is three bit arrays long. Now the chunk loop stops
+at the last whole chunk, and the bit arrays left over --- fewer than
+sixteen --- are sieved in legs of 8, 4, 2 and 1 registers, one leg for each
+set bit of their number. A leg is cheaper than a chunk per prime, and not
+only for being narrower: it reads its rows from the pointers the chunk loop
+left, up to fifteen rows past them, which is what the wrap-around copies at
+the end of every table are there for, so it neither wraps the pointers
+around nor stores them back --- nothing reads them after the phase, and the
+next call recomputes them. Worth $10\%$ of \texttt{make test1} ($9.5$ to
+$11.4\%$ at three placements of the code), $6.5\%$ of \texttt{make
+test1many}, $2\%$ of \texttt{make testhigh}, between nothing and $2.5\%$
+of \texttt{make testhighmany}, and a fifth of the run at the height bounds
+1000 and 4000.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind

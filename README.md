@@ -74,6 +74,17 @@ candidate reaches it. Together: 24% of `make test1`, 4% of `make test1many`, 6% 
 `make testhigh` and 2% of `make testhighmany` at the default code placement, and within a point of
 that at two others, with two thirds of the branch mispredictions of `make test1` gone.
 
+The first sieving phase no longer sieves bit arrays that are then thrown away. It works on 16 bit
+arrays at a time, one per vector register, and the range of every denominator and interval used to
+be padded up to a multiple of that; the padding was sieved with every prime of the phase, walked by
+the scan of the second phase and zeroed -- a seventh of all the bit arrays swept in `make test1`,
+four fifths of them at a height bound of 1000. The chunk loop now stops at the last whole chunk, and
+the bit arrays left over are sieved in legs of 8, 4, 2 and 1 registers, one leg for each set bit of
+their number, which neither wrap the table pointers around nor store them back. Worth 10% of
+`make test1` (9.5% to 11.4% at three code placements), 6.5% of `make test1many`, 2% of
+`make testhigh`, between nothing and 2.5% of `make testhighmany`, and a fifth of the run at height
+bounds of 1000 and 4000.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single
