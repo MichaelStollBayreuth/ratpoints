@@ -617,9 +617,11 @@ coefficient its valuation at~$p$ is restricted instead --- the program
 works out which valuations can occur at all (Section~\ref{sec:elim}), which
 typically rules out a power of~$p$, or one particular valuation, or~$p$
 itself. Each such prime counts as one forbidden divisor. The program
-constructs a list of them against which to check the denominators, and this
-option specifies how many of these should be used. With \verb+-v+ it prints
-what it found.
+constructs a list of them against which to check the denominators, taking
+the primes up to the square root of the height bound, and this option caps
+the length of the list; the default is~$64$, which the list reaches at a
+height bound of about half a million. A prime in the list costs a few
+instructions per 64 denominators. With \verb+-v+ it prints what it found.
 
 The other option is \\
 \strut\quad\verb+-S+ $S$ \quad or\quad \verb+-s+ \,. \\
@@ -1022,7 +1024,7 @@ primes that carry any information at all.
 That offset is not the same for every run, because part of what a prime costs
 is paid once and then spread over the whole run. Its sieving table is built
 at most $p$ times, however many numerators there are, and its entry in the
-list of denominators reduced modulo the sieving primes is stepped once per
+list of denominators reduced modulo the sieving primes is computed once per
 denominator; per word of numerators both fall like $1/U$, where $U$ is the
 number of numerator words the run will sweep. The program computes $U$, and
 the number $D$ of denominators, before it looks at a single prime --- the
@@ -1439,7 +1441,19 @@ denominators divisible by a prime~$p$ such that $l$ is a non-square
 mod~$p$: for $p \mid b$ we have $F(a,b) \equiv l a^n \bmod p$ with $p \nmid
 a$, which is a non-square as well. In addition, we use the necessary
 condition that the Jacobi symbol $\left(\frac{l}{b'}\right)$ must be $+1$,
-where $b'$ is the part of $b$ coprime to~$2l$.
+where $b'$ is the part of $b$ coprime to~$2l$. Since version~2.3 that symbol
+is not computed by a binary algorithm for each denominator but as a product
+of Legendre symbols: for $l = \pm 2^v \prod_i q_i^{e_i}$, with $\epsilon = 1$
+if $l < 0$ and $0$ otherwise, it is
+$\left(\frac{-1}{b'}\right)^{\epsilon} \left(\frac{2}{b'}\right)^{v}
+\prod_i \left(\frac{q_i}{b'}\right)^{e_i}$, where by quadratic reciprocity
+each factor is the Legendre symbol of $b' \bmod q_i$ modulo~$q_i$ times a
+sign that depends on $b' \bmod 4$, and the first two factors depend on $b'
+\bmod 8$. The program tabulates the non-squares modulo each~$q_i$ once per
+curve, so that the test costs one multiplication and one table look-up per
+prime factor of~$l$; when $l$ has a prime factor above $1021$, or more odd
+prime factors than the tables allow for (sixteen, or 8~KB), or the
+denominators exceed $2^{32}$, it falls back on the binary algorithm.
 
 When $p$ divides~$l$, the congruence says nothing, since $F(a,b)$ is then
 $0$ mod~$p$; the valuation does. Write $v_p(b) = m \ge 1$ and let $w_j$ be
@@ -1466,7 +1480,11 @@ While computing the sieving information, we make a list of these primes,
 each with the set of valuations it excludes, which we then use to eliminate
 denominators: a prime that is excluded altogether is tested for with bit
 arrays in the manner of the sieve, the others by computing the valuation of
-the denominator.
+the denominator. The bit arrays cover every excluded prime up to the square
+root of the height bound (or up to~$1021$), building the patterns for the
+primes beyond the compiled sieving primes as needed: past the square root a
+denominator can have at most one excluded prime left, and the Jacobi symbol
+sees that one, whereas it lets an even number of them through.
 
 Up to version~2.2.3 the valuation test never ran. It sat behind a guard that
 asked for $l$ to be a non-square modulo~$p$, and $l \equiv 0$ is a square.
@@ -1493,13 +1511,14 @@ slow process. It turned out that quite some improvement of the performance
 was possible by removing as many instances of integer division operations
 as reasonably possible.
 
-For example, we use gcd and Jacobi symbol routines that rely (almost)
-entirely on differences and shifts. We compute the residue classes
-of~$b$ modulo the various sieving primes by addition of the difference
-from the last~$b$ and then correcting by subtracting $p$ a number of
-times if necessary, and we implement most of the testing of `forbidden
-divisors' of~$b$ using bit arrays similar to those used for sieving
-the numerators.
+For example, the gcd that tests a candidate for lowest terms is a binary
+gcd without a data-dependent branch; the Jacobi symbol test on the
+denominators is evaluated as a product of Legendre symbols read from tables
+built once per curve (Section~\ref{sec:elim}); the residue classes of~$b$
+modulo the various sieving primes are computed by a multiplication with a
+precomputed reciprocal rather than by a division; and most of the testing of
+`forbidden divisors' of~$b$ is done with bit arrays similar to those used
+for sieving the numerators, a word of 64 denominators at a time.
 
 \subsection{Change log}
 
@@ -1706,7 +1725,7 @@ The rule that chooses the primes has been taken further, and in three
 directions at once, all of which come from noticing that the old rule valued
 every prime the same and assumed every run was infinitely long. A prime's
 sieving table is built at most $p$ times however many numerators there are,
-and its entry in the list of reduced denominators is stepped once per
+and its entry in the list of reduced denominators is computed once per
 denominator, so per word of numerators both fall like $1/U$ with the length
 of the run. The program now works out $U$, and the number of denominators,
 before it looks at a single prime. With that it (i)~scales the offset from
@@ -1865,6 +1884,30 @@ prefers a smaller prime to a larger one at a small height bound. It could be
 set with \verb+-C+ since the rule was introduced, but nothing had measured
 it, and of the four constants it is the one most likely to differ between
 machines, being the ratio of two different kinds of work.
+
+The loop over the denominators, and what is done once per denominator, have
+been reworked, six changes together. The Jacobi symbol test on the
+denominators no longer computes a symbol for each denominator by a binary
+algorithm but evaluates it as a product of Legendre symbols read from tables
+built once per curve (Section~\ref{sec:elim}); that computation was $12\%$ of
+\texttt{make test1} and a third of its branch mispredictions. The tests that
+depend on $b \bmod 64$ alone are applied to a word of 64 denominators at
+once, and the loop visits only the denominators that pass them. The residues
+of~$b$ modulo the sieving primes are computed by a multiplication with a
+precomputed reciprocal instead of being stepped from the previous denominator
+by conditional subtractions, which were mispredicted a quarter of the time.
+The gcd that tests a candidate for lowest terms has no data-dependent branch
+left. The bit arrays that test for forbidden divisors cover every excluded
+prime up to the square root of the height bound rather than only the compiled
+sieving primes, and the default of \verb+-F+ is $64$ instead of $30$. And what
+the third stage needs for a denominator is set up when the first candidate
+reaches it rather than for every denominator. Measured step by step against
+the version before, the six are worth $14$, $2$, $7$, $2$, $0$ and $2\%$ of
+\texttt{make test1}; together they are $24\%$ of \texttt{make test1}, $4\%$
+of \texttt{make test1many}, $6\%$ of \texttt{make testhigh} and $2\%$ of
+\texttt{make testhighmany} at the default code placement, and within a
+point of that at two other placements, and two thirds of the branch
+mispredictions of \texttt{make test1} are gone.
 
 Finally, the \texttt{ratpoints\_args} structure has gained fields, so
 programs using the library must be recompiled against the new header.

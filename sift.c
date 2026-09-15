@@ -65,14 +65,16 @@ unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
  * cost of one check is (cyc3 - cycbc)/checks, not cyc3/checks.
  * Written by _ratpoints_check_point in find_points.c . */
 unsigned long long _rp_bc_cycles = 0, _rp_bc_calls = 0;
-/* the per-denominator loop that steps b modulo each sieving prime */
+/* the per-denominator loop that computes b modulo each prime of the first
+ * two phases */
 unsigned long long _rp_bp_cycles = 0, _rp_bp_dens = 0, _rp_bp_steps = 0;
 /* building a sieve table: once for each pair (prime, denominator class), so
  * at most p times for the prime p however long the run is.  rows counts the
  * bit-arrays written, which is what the cost should be proportional to. */
 unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
-/* filling in sieve_spec and check_spec, which is done once per denominator
- * for each prime of the first two phases and each prime of the third */
+/* filling in sieve_spec once per denominator for each prime of the first two
+ * phases; the third stage's check_spec is filled on demand, outside this
+ * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
 /* clearing the two boundary words and the bit arrays that only exist to
  * make the count a multiple of RATPOINTS_CHUNK.  Until 2.3 this was a pass
@@ -213,32 +215,9 @@ static void _rp_sink_report(void)
 { fprintf(stderr, "[stopafter] level=%d sink=%lu\n", RP_STOP_AFTER, _rp_sink); }
 #endif
 
-/* Reducing modulo one of the sieving primes, by multiplying rather than
- * dividing.  With m = 2^64/p rounded up, the remainder of u modulo p is the
- * top half of (m*u mod 2^64) * p; that is exact for every u below 2^32,
- * which every caller here checks for in its own way.  m is a property of the
- * prime, computed once per prime and curve and carried in the sieve entry.
- *
- * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead, which
- * is what the callers -- the third stage, the start of the first phase and
- * the row look-up of the second -- cost without this. */
-#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
-# define RP_MULMOD(u, p, m) \
-    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
-                             * (unsigned long)(p)) >> 64))
-#else
-# define RP_MULMOD(u, p, m) ((long)((unsigned long)(u) % (unsigned long)(p)))
-#endif
-
-/* The largest value this file will reduce that way; above it the callers
- * fall back on the division.  See mod_mul() and stage3(). */
-#define RP_MULMOD_LIMIT 4294967295L
-/* The second phase keeps the value it reduces, a word number plus an offset
- * that carries RP_ROW_BIAS, below 2*RP_ROW_BIAS by the test at the head of
- * _ratpoints_sift0; that is only exact if the two limits agree.  An array
- * of negative size does not compile. */
-typedef char rp_row_bias_within_mulmod_limit[
-  (2*RP_ROW_BIAS - 1 <= RP_MULMOD_LIMIT) ? 1 : -1];
+/* The reductions modulo a prime by a multiplication, RP_MULMOD and
+ * RP_MULDIV, and the limit RP_MULMOD_LIMIT below which they are exact, are
+ * in rp-private.h; find_points.c uses them too. */
 
 /* Development switch: with -DRP_MOD_CHOICE the two ways of reducing a word
  * number modulo a prime live in the same binary, chosen by the environment
@@ -277,21 +256,9 @@ static inline long mod_mul(long a, long p, unsigned long m)
  * a0 + d*t.  Stepping through every bit position up to the highest one set
  * costs about thirty iterations for each bit that is actually there, at the
  * survival rate the parameters aim at, so go straight to the set bits
- * instead: the lowest is at __builtin_ctzl(w), and w &= w-1 clears it.
+ * instead: the lowest is at RP_CTZL(w) (rp-private.h), and w &= w-1 clears
+ * it.
  */
-#if defined(__GNUC__) || defined(__clang__)
-# define RP_CTZL(w) ((long)__builtin_ctzl(w))
-#else
-/* Only reached on a compiler without the builtin; the rest of this file
- * needs gcc anyway once bit-arrays are used, but the plain unsigned long
- * build does not, so keep it buildable. */
-static long RP_CTZL(unsigned long w)
-{ long t = 0;
-
-  while(!(w & 1UL)) { w >>= 1; t++; }
-  return(t);
-}
-#endif
 
 /* Body runs once per set bit of w, with a set to that bit's numerator and t
  * to its position.  w is consumed. */
@@ -324,7 +291,8 @@ static long RP_CTZL(unsigned long w)
  * removed by the gcd, and there is no point in testing them here first.
  * --------------------------------------------------------------------- */
 
-static inline int stage3(long a, const check_spec *csp, long n)
+static inline RP_ALWAYS_INLINE
+int stage3(long a, const check_spec *csp, long n)
 { long i;
 
   for(i = 0; i < n; i++)
@@ -350,24 +318,29 @@ static inline int stage3(long a, const check_spec *csp, long n)
  * check if m and n are relatively prime                                  *
  **************************************************************************/
 
-static inline int relprime(long m, long n)
+static inline RP_ALWAYS_INLINE int relprime(long m, long n)
 {
   /* n (the denominator) is always positive here */
   if(m == 0) { return(n == 1); }
   if(m < 0) { m = -m; }
   if(!(m & 1)) /* m is even */
   { if(!(n & 1)) { return(0); } /* n is also even */
-    m >>= 1; while(!(m & 1)) { m >>= 1; } /* n odd: replace m by odd part */
+    m >>= RP_CTZL((unsigned long)m); /* n odd: replace m by its odd part */
   }
-  while(!(n & 1)) { n >>= 1; } /* replace n by odd part */
-  /* successively subtract the smaller from the larger
-   * and replace the result by its odd part,
-   * until both are equal (to their gcd) */
+  n >>= RP_CTZL((unsigned long)n); /* replace n by its odd part */
+  /* Successively subtract the smaller from the larger and replace the
+   * difference by its odd part, until both are equal (to their gcd).
+   * Without a branch on which one is the smaller, and without a loop over
+   * the trailing zeros: both were data-dependent branches, and at one
+   * survivor in ten thousand numerators they were a tenth of all the
+   * mispredicted branches of make test1. */
   while(n != m)
-  { if(n > m)
-    { n -= m; n >>= 1; while(!(n & 1)) { n >>= 1; } }
-    else
-    { m -= n; m >>= 1; while(!(m & 1)) { m >>= 1; } }
+  { long d = m - n;
+    long msk = d >> (LONG_LENGTH - 1); /* -1 iff m < n */
+
+    n += d & msk;                      /* n = min(m, n) */
+    d = (d ^ msk) - msk;               /* d = |m - n|, even and non-zero */
+    m = d >> RP_CTZL((unsigned long)d);
   }
   return(m == 1);
 }
@@ -418,15 +391,57 @@ static inline long mod(long a, long b)
   return(a);
 }
 
+/* What the third stage needs for the denominator in hand, filled in on the
+ * first numerator that reaches the stage rather than by sift() for every
+ * denominator: on a random curve one denominator in seven brings a
+ * survivor that far at a height bound of 16383, one in forty at 200000, so
+ * most of that filling was for nothing (review item P11).  Nothing in it
+ * changes while the denominator does not; sift() clears the flag.  Per prime
+ * it is the inverse of the denominator modulo the prime, a table look-up
+ * (the inverses modulo every prime that can be used are compiled in, see
+ * gen_find_points_h.c) at the residue of b, which the multiply-high
+ * reduction gives, or a division for a denominator beyond 2^32.
+ *
+ * Out of line on purpose: accepted() is inlined into the five extraction
+ * sites of sift0, and a call inside it that gcc might inline was measured
+ * to stop that, at a cost of a per cent. */
+static void RP_NOINLINE
+fill_checks(long b, check_spec *csp, ratpoints_args *args)
+{ ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
+  const unsigned long *magics = (const unsigned long *)args->magics;
+  long sp2 = args->sp2, sp3 = args->sp3, height = args->height, n;
+
+  for(n = sp2; n < sp3; n++)
+  { ratpoints_sieve_entry *se = sieve_list[n];
+    long p = se->p;
+    long bp = (b <= RP_MULMOD_LIMIT) ? RP_MULMOD(b, p, magics[n]) : b % p;
+    check_spec *cs = &csp[n - sp2];
+
+    cs->p = p;
+    cs->is_f_square = se->is_f_square;
+    cs->binv = bp ? se->inverses[bp] : 0;
+    cs->magic = se->magic;
+    /* the numerator is shifted by this multiple of p to make it
+     * non-negative, so that the reduction can be the cheap one; a zero
+     * says the shifted value would not fit and the slow path is to be
+     * taken (see stage3()) */
+    cs->bias = ((double)p*(double)(2*height) < RP_STAGE3_LIMIT)
+                 ? p*height : 0;
+  }
+  args->stage3_filled = 1;
+}
+
 /* What happens to one surviving numerator: the test for common factors,
  * then the third stage.  The two counters say how many numerators got that
  * far, which is what lets the number of primes be corrected during the run
  * instead of predicted before it; they cost one increment each on paths
  * taken a few times in a million. */
-static inline int accepted(long a, long b, const check_spec *csp, long n,
-                           ratpoints_args *args)
+static inline RP_ALWAYS_INLINE
+int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 { if(!relprime(a, b)) { return(0); }
   args->n_coprime++;
+  if(n && !args->stage3_filled) { fill_checks(b, csp, args); }
   if(!stage3(a, csp, n)) { return(0); }
   args->n_checks++;
   return(1);

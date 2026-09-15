@@ -69,9 +69,9 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
 # define RP_BC_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BC_TOC(t) do { _rp_bc_cycles += __rdtsc() - (t); _rp_bc_calls++; } \
                       while(0)
-/* and the loop that steps b modulo each sieving prime, which is per
- * denominator and per prime, so that a third stage using further primes
- * would pay it whether or not a survivor turns up */
+/* and the loop that computes b modulo each prime of the first two phases,
+ * once per denominator and prime; the primes of the third stage have no
+ * such cost, since their set-up is done on demand (fill_checks in sift.c) */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
 extern unsigned long long _rp_arrays_swept;
 /* and building one sieve table, which is the fixed cost a prime has to earn
@@ -234,8 +234,12 @@ void find_points_init(ratpoints_args *args)
   /* allocate remaining data structures */
   args->den_info = malloc((PRIMES1000+2)*sizeof(use_squares1_info));
   args->divisors = malloc((MAX_DIVISORS+1)*sizeof(long));
-  args->forb_ba = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_entry));
-  args->forbidden = malloc((RATPOINTS_NUM_PRIMES + 1)*sizeof(forbidden_val));
+  args->forb_ba = malloc((PRIMES1000 + 1)*sizeof(forbidden_entry));
+  args->forbidden = malloc((PRIMES1000 + 1)*sizeof(forbidden_val));
+  /* the bit patterns for forbidden divisors beyond the compiled table of
+   * primes are built per curve, in a buffer that grows as needed; see
+   * sieving_info */
+  args->forb_words = NULL; args->forb_words_len = 0;
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -269,6 +273,7 @@ void find_points_clear(ratpoints_args *args)
   free(args->divisors);
   free(args->forb_ba);
   free(args->forbidden);
+  free(args->forb_words);
 
   /* clear pointer in args */
   args->work = NULL; args->work_length = 0;
@@ -280,6 +285,7 @@ void find_points_clear(ratpoints_args *args)
   args->magics = NULL;
   args->den_info = NULL; args->divisors = NULL;
   args->forb_ba = NULL; args->forbidden = NULL;
+  args->forb_words = NULL; args->forb_words_len = 0;
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -484,6 +490,124 @@ static inline int jacobi1(long b, const long lcf)
       }
     }
   }
+}
+
+/* The Jacobi symbol test on the denominators without the Jacobi symbol.
+ *
+ * What the test asks of a denominator b is that (lcf/b*) = 1, where b* is b
+ * with the prime factors of 2*lcf taken out; jacobi1 above computes exactly
+ * that, by a binary gcd-like loop of some two hundred instructions with half
+ * a dozen mispredicted branches, for about a quarter of all denominators.
+ * Written out with lcf = +-2^v * prod q_i^(e_i), the symbol is
+ *
+ *   (-1/b*)^neg * (2/b*)^v * prod_i (q_i/b*)^(e_i) ,
+ *
+ * where the first two factors depend on b* mod 8 alone, and quadratic
+ * reciprocity turns (q_i/b*) into the Legendre symbol (b* mod q_i / q_i)
+ * times a sign that depends on b* mod 4.  So the test needs a table of the
+ * non-squares modulo each odd prime factor of lcf with an odd exponent, and
+ * a table of eight signs; the primes with an even exponent contribute
+ * nothing, but still have to be taken out of b.  That makes the test one
+ * multiplication, one table look-up and one exclusive or per prime.
+ *
+ * jacobi_setup prepares this for one curve.  It applies when every odd prime
+ * factor of lcf is in prime[] (trial division finds them) and the
+ * denominators stay below 2^32 (the reductions multiply by a reciprocal, see
+ * RP_MULDIV); otherwise it says so, and the denominator loop calls jacobi1
+ * or jacobi as before.  A leading coefficient that fits a long always fits
+ * the tables: distinct odd primes below 1024 with a product below 2^63 sum
+ * to at most 6057 (the six largest and a 7), and only those with an odd
+ * exponent need a table. */
+#define RP_JACOBI_PRIMES 16   /* odd prime factors of lcf, at most */
+#define RP_JACOBI_TABLE 8192  /* bytes of non-square tables, at most */
+
+typedef struct { long nq;                   /* the odd primes of lcf */
+                 long q[RP_JACOBI_PRIMES];
+                 unsigned long magic[RP_JACOBI_PRIMES];
+                 const unsigned char *nonsq[RP_JACOBI_PRIMES];
+                   /* nonsq[i][r] = 1 iff r is a non-square modulo q[i];
+                      NULL when the exponent of q[i] is even */
+                 unsigned char sign[8];
+                   /* sign[b mod 8] = 1 iff the factors (-1/b), (2/b) and
+                      the reciprocity signs multiply to -1 */
+               } jacobi_info;
+
+static int jacobi_setup(jacobi_info *ji, unsigned char *tab, long tab_len,
+                        const mpz_t lcf, mpz_t tmp, long b_high)
+{ long i, v, n3 = 0, used = 0;
+  int neg = (mpz_sgn(lcf) < 0);
+
+  if(b_high > RP_MULMOD_LIMIT) { return(0); }
+  ji->nq = 0;
+  mpz_abs(tmp, lcf);
+  v = mpz_scan1(tmp, 0);
+  mpz_fdiv_q_2exp(tmp, tmp, v);
+  for(i = 0; i < PRIMES1000 && mpz_cmp_ui(tmp, 1) != 0; i++)
+  { long q = prime[i], e = 0; /* prime[] holds the odd primes */
+
+    if(!mpz_divisible_ui_p(tmp, q)) { continue; }
+    do { mpz_divexact_ui(tmp, tmp, q); e++; } while(mpz_divisible_ui_p(tmp, q));
+    if(ji->nq == RP_JACOBI_PRIMES) { return(0); }
+    ji->q[ji->nq] = q;
+    ji->magic[ji->nq] = ULONG_MAX/(unsigned long)q + 1;
+    if(e & 1)
+    { unsigned char *ns = tab + used;
+      long x, s;
+
+      if(used + q > tab_len) { return(0); }
+      used += q;
+      /* mark the squares x^2 mod q for 0 < x < q/2, which are all of them,
+       * stepping from x^2 to (x+1)^2 by 2x+1; entry 0 is never looked at */
+      for(x = 0; x < q; x++) { ns[x] = 1; }
+      for(x = 1, s = 1; x <= q/2; x++)
+      { ns[s] = 0;
+        s += 2*x + 1; if(s >= q) { s -= q; }
+      }
+      ji->nonsq[ji->nq] = ns;
+      if(q & 2) { n3++; } /* q = 3 mod 4: reciprocity brings a sign */
+    }
+    else { ji->nonsq[ji->nq] = NULL; }
+    ji->nq++;
+  }
+  if(mpz_cmp_ui(tmp, 1) != 0) { return(0); } /* a prime beyond the table */
+  for(i = 0; i < 8; i++)
+  { int s = 0;
+
+    /* (-1/b) = -1 and (q/b) = -(b/q) for q = 3 mod 4, both iff b = 3 mod 4 */
+    if((i & 3) == 3) { s ^= (n3 + neg) & 1; }
+    /* (2/b) = -1 iff b = 3 or 5 mod 8 */
+    if(i == 3 || i == 5) { s ^= v & 1; }
+    ji->sign[i] = s;
+  }
+  return(1);
+}
+
+/* Is (lcf/b*) = 1 ?  b > 0 is a denominator below 2^32. */
+static inline int jacobi_test(long b, const jacobi_info *ji)
+{ long i;
+  unsigned char s;
+
+  b >>= RP_CTZL((unsigned long)b); /* the odd part */
+  for(i = 0; i < ji->nq; i++)      /* take the primes of lcf out */
+  { long q = ji->q[i];
+    unsigned long m = ji->magic[i];
+
+    for(;;)
+    { long k = RP_MULDIV(b, q, m); /* b/q rounded down */
+
+      if(b - k*q) { break; }
+      b = k;
+    }
+  }
+  s = ji->sign[b & 7];
+  for(i = 0; i < ji->nq; i++)
+  { if(ji->nonsq[i])
+    { long q = ji->q[i];
+
+      s ^= ji->nonsq[i][b - RP_MULDIV(b, q, ji->magic[i])*q];
+    }
+  }
+  return(s == 0);
 }
 
 /************************************************************************
@@ -945,7 +1069,9 @@ static int compare_by_r(const void *a, const void *b)
  * rate): 1 in the first phase, COST_PHASE2*rate in the second, and the
  * third stage's own cost per survivor in the third.  The other two terms are
  * paid once and spread over the run: the sieve table, which the third stage
- * does not build, and the step of bp_list, which every stage pays.
+ * does not build, and the entry of bp_list, which the first two phases pay
+ * for every denominator.  (The third stage's primes have neither: their
+ * set-up is done on demand, and they are ranked by another rule, below.)
  */
 static double prime_cost(long p, double per_word, int tabled,
                          double cost_table, double u_words, double n_denoms)
@@ -1049,8 +1175,9 @@ static double check_cost(const ratpoints_args *args)
  * Changing the number of primes part-way through a run is safe by
  * construction: sieving only ever removes numerators that cannot be points,
  * so using more or fewer of them for later denominators changes the running
- * time and nothing else.  What it must not do is get ahead of bp_list, which
- * is why sp3_valid says how many of its entries are up to date.
+ * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
+ * makes this correction first and then computes every entry the current
+ * number of primes asks for.
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -1207,7 +1334,7 @@ static long primes_for_phase_1(entry *prec, long pnp,
 }
 
 /* How many primes the second phase adds to the first.  A phase-2 prime is
- * paid for once -- its sieve table, and its step in bp_list -- and then used
+ * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
  * offset, which is what every version before 2.3 used. */
@@ -1418,7 +1545,7 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * them.  Both are wanted by the rule that picks the sieving primes, because
  * two of the costs of a prime are paid once and then spread over the whole
  * run -- its sieve table, built for at most p denominator classes, and its
- * entry in bp_list, stepped once per denominator.  Per word of numerators
+ * entry in bp_list, computed once per denominator.  Per word of numerators
  * those come to k*p*min(D,p)/U and l*D/U, and they are the reason the best
  * number of primes at a height bound of 200000 is not the best number at
  * 16383.
@@ -1525,8 +1652,8 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       nums *= count/RUN_SHAPE_SAMPLES;
     }
     /* b congruent to j modulo 64 is tested against bit j of den_bits (the
-     * loop shifts before it tests, which is what puts b and the bit index
-     * in step) and against num_bits[b mod 16] */
+     * word for the denominators 64w..64w+63 has b at bit b mod 64) and
+     * against num_bits[b mod 16] */
     for(j = 0; j < 64; j++)
     { if(((den_bits >> j) & 1UL) && EXT0(num_bits[j & 0xf])) { good++; } }
     keep = (double)good/64.0;
@@ -1673,7 +1800,6 @@ static long sieving_info(ratpoints_args *args,
    * they stay fixed. */
   args->adapt_at = (args->adapt != 0 && args->sp1 < 0 && args->sp2 < 0)
                      ? RP_ADAPT_WORDS : ULONG_MAX;
-  args->sp3_valid = 0;
 
   /* What one exact check costs on this curve, relative to the curves the
    * third-stage constants were tuned on.  It is what those constants are
@@ -1789,25 +1915,38 @@ static long sieving_info(ratpoints_args *args,
   /* Terminate the array of forbidden divisors, having first looked for
    * more of them among the primes the loop above did not reach.  This is
    * done here, before the primes are chosen, because the choice needs to
-   * know how many denominators will survive these tests: see run_shape. */
+   * know how many denominators will survive these tests: see run_shape.
+   *
+   * The search goes up to the square root of the height bound, or to the
+   * end of prime[] if that comes first, and so beyond the compiled table of
+   * sieving primes, whose word patterns in sieves0 the arrays used to be
+   * limited to; for a prime beyond it the patterns are built here, in a
+   * buffer that stays with args.  Why the square root: the Jacobi symbol
+   * test lets a denominator through when it has an even number of bad
+   * primes -- those with (lcf/p) = -1 -- and with every bad prime up to
+   * sqrt(b_high) in the arrays, what gets through both tests is the product
+   * of two bad primes beyond the table (b = q1*q2 or 2*q1*q2), which at a
+   * height bound of 200000 with the table ending at 251 was 1.2 per cent of
+   * the denominators sifted (the review's count, item P13). */
   if((args->flags & RATPOINTS_CHECK_DENOM)
        && !mpz_perfect_square_p(c[degree]))
        /* the test below asks for a non-square residue, which a square
         * leading coefficient never has; such a curve gets here since the
         * valuation test above applies to it */
-  { long n;
+  { long n, first = fba, words = 0;
 
-    for(n = pn_lim;
-        fba + fdc < args->max_forbidden && n < RATPOINTS_NUM_PRIMES;
-        n++)
+    for(n = pn_lim; fba + fdc < args->max_forbidden && n < PRIMES1000; n++)
     { long p = prime[n];
 
       if(p*p > args->b_high) break;
       if(mpz_kronecker_si(c[degree], p) == -1)
-      { forb_ba[fba].p     = p;
-        forb_ba[fba].start = &sieves0[n][0];
-        forb_ba[fba].end   = &sieves0[n][p];
-        forb_ba[fba].curr  = forb_ba[fba].start;
+      { forb_ba[fba].p = p;
+        if(n < RATPOINTS_NUM_PRIMES)
+        { forb_ba[fba].start = &sieves0[n][0];
+          forb_ba[fba].end   = &sieves0[n][p];
+        }
+        else
+        { forb_ba[fba].start = NULL; words += p; } /* built below */
         fba++;
 
 #ifdef DEBUG
@@ -1815,6 +1954,37 @@ static long sieving_info(ratpoints_args *args,
         fflush(NULL);
 #endif
 
+      }
+    }
+
+    /* the patterns for the primes beyond the table: p words for the prime
+     * p, word r of them for the word numbers congruent to r mod p, with bit
+     * j clear iff p divides 64*r + j -- what sieves0 holds for the compiled
+     * primes (gen_find_points_h.c), and what the denominator loop expects */
+    if(words > args->forb_words_len)
+    { free(args->forb_words);
+      args->forb_words = malloc(words*sizeof(unsigned long));
+      args->forb_words_len = (args->forb_words == NULL) ? 0 : words;
+    }
+    if(words > args->forb_words_len)
+    { /* no memory for the patterns: do without the primes beyond the table,
+       * which are the last entries added */
+      while(fba > first && forb_ba[fba-1].start == NULL) { fba--; }
+    }
+    { unsigned long *row = (unsigned long *)args->forb_words;
+
+      for(n = first; n < fba; n++)
+      { if(forb_ba[n].start == NULL)
+        { long p = forb_ba[n].p, r, m;
+
+          for(r = 0; r < p; r++) { row[r] = ~0UL; }
+          for(m = 0; m < LONG_LENGTH*p; m += p)
+          { row[m >> LONG_SHIFT] &= ~(1UL << (m & LONG_MASK)); }
+          forb_ba[n].start = row;
+          forb_ba[n].end   = row + p;
+          row += p;
+        }
+        forb_ba[n].curr = forb_ba[n].start;
       }
     }
   }
@@ -1988,7 +2158,7 @@ static long sieving_info(ratpoints_args *args,
 
     /* Put the rest of the primes in sieve_list too, in the order the third
      * stage would take them.  They cost nothing to keep -- no table is built
-     * and no bp_list entry stepped until a prime is actually used -- and
+     * and nothing computed for it until a prime is actually used -- and
      * having them there is what lets adapt_primes() reach for one more
      * during the run. */
     { long n;
@@ -2085,6 +2255,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
   /* Note that b is new */
   args->flags |= RATPOINTS_COMPUTE_BC;
+  args->stage3_filled = 0; /* see fill_checks() in sift.c */
 
   { long k;
     long height = args->height;
@@ -2178,29 +2349,10 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
         }
 
-        /* and the primes of the third stage, which need no table: only the
-         * inverse of b modulo each of them.  It is a table lookup, not a
-         * division, because the inverses modulo every prime that can be used
-         * are compiled in (see gen_find_points_h.c).  Note that bp is the
-         * denominator itself here, not halved as it is above: the third
-         * stage tests the numerator, not the bit that stands for it. */
-        for(n = args->sp2; n < args->sp3; n++)
-        { ratpoints_sieve_entry *se = sieve_list[n];
-          long bp = bp_list[n];
-          long m = n - args->sp2;
-
-          csp[m].p = se->p;
-          csp[m].is_f_square = se->is_f_square;
-          csp[m].binv = bp ? se->inverses[bp] : 0;
-          csp[m].magic = se->magic;
-          /* the numerator is shifted by this multiple of p to make it
-           * non-negative, so that the reduction can be the cheap one; a zero
-           * says the shifted value would not fit and the slow path is to be
-           * taken (see stage3() in sift.c) */
-          csp[m].bias = ((double)se->p*(double)(2*args->height)
-                           < RP_STAGE3_LIMIT)
-                          ? se->p*args->height : 0;
-        }
+        /* the primes of the third stage need no table, only the inverse of
+         * b modulo each of them, and fill_checks() in sift.c looks that up
+         * on the first numerator that reaches the stage: most denominators
+         * bring none that far */
         RP_SETUP_TOC(t_setup);
       }
 
@@ -2264,6 +2416,35 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 /**************************************************************************
  * Find points by looping over the denominators and sieving numerators    *
  **************************************************************************/
+
+/* The denominator modulo each prime of the first two phases, in bp_list,
+ * computed afresh for every denominator by the multiply-high reduction
+ * (RP_MULMOD; a division for a denominator beyond 2^32).  It used to be
+ * stepped from the previous denominator, bp += d followed by while(bp >= p)
+ * bp -= p: one to three data-dependent branches per prime and denominator,
+ * mispredicted a quarter of the time, an eighth of all the branch misses of
+ * make test1.  Computing it afresh also does away with the bookkeeping of
+ * which entries were up to date when adapt_primes had just brought another
+ * prime into play, which is why that correction is made here first: it is
+ * due once the sieve has swept as many words as adapt_at says.  The primes
+ * of the third stage are not in the list any more: what that stage needs is
+ * looked up when a numerator reaches it, see fill_checks() in sift.c. */
+static inline void fill_bp_list(long b, long *bp_list, ratpoints_args *args,
+                                ratpoints_sieve_entry **sieve_list)
+{ long n, sp2;
+  const unsigned long *magics = (const unsigned long *)args->magics;
+
+  if(args->n_words >= args->adapt_at) { adapt_primes(args); }
+  sp2 = args->sp2;
+  RP_BP_TIC(t_bp);
+  if(b <= RP_MULMOD_LIMIT)
+  { for(n = 0; n < sp2; n++)
+    { bp_list[n] = RP_MULMOD(b, sieve_list[n]->p, magics[n]); }
+  }
+  else
+  { for(n = 0; n < sp2; n++) { bp_list[n] = mod(b, sieve_list[n]->p); } }
+  RP_BP_TOC(t_bp, sp2);
+}
 
 /*
 typedef struct {mpz_t *cof; long degree; long height;
@@ -2424,8 +2605,8 @@ static long find_points_work_1(ratpoints_args *args,
   if(args->b_high > height) { args->b_high = height; }
   if(args->max_forbidden < 0)
   { args->max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN; }
-  if(args->max_forbidden > RATPOINTS_NUM_PRIMES)
-  { args->max_forbidden = RATPOINTS_NUM_PRIMES; }
+  if(args->max_forbidden > PRIMES1000)
+  { args->max_forbidden = PRIMES1000; }
   if(args->array_size <= 0) { args->array_size = RATPOINTS_ARRAY_SIZE; }
   { long s = 2*CEIL(height, LONG_LENGTH);
     if(args->array_size > s) { args->array_size = s; }
@@ -2900,45 +3081,18 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
 
 #ifdef DEBUG
         printf("\n  using squares\n");
         fflush(NULL);
 #endif
 
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
-        }
-
         for(b = 1; bb = b*b, bb <= args->b_high; b++)
         { if(bb >= args->b_low)
           { ratpoints_bit_array bits = num_bits[bb & 0xf];
 
             if(TEST(bits))
-            { long n;
-              long d = bb - last_b;
-
-              /* fill bp_list, after any correction to how many primes
-               * the sieve is using (see adapt_primes): one just brought into
-               * play has no entry yet and is set from the denominator. */
-              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-              RP_BP_TIC(t_bp);
-              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                        : args->sp3;
-
-                for(n = 0; n < nv; n++)
-                { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-                for(n = nv; n < args->sp3; n++)
-                { bp_list[n] = mod(bb, sieve_list[n]->p); }
-                args->sp3_valid = args->sp3;
-              }
-              RP_BP_TOC(t_bp, args->sp3);
-              last_b = bb;
-
+            { fill_bp_list(bb, bp_list, args, sieve_list);
               total += sift(bb, survivors, args, which_bits, bits,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
@@ -2967,19 +3121,11 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
         for( ; *div; div++)
-        { long last_b = *div;
-
+        {
 #ifdef DEBUG
           printf("\n  divisor = %ld\n", *div);
           fflush(NULL);
 #endif
-
-          { long n;
-
-            for(n = 0; n < args->sp3; n++)
-            { bp_list[n] = mod(*div, sieve_list[n]->p); }
-            args->sp3_valid = args->sp3;
-          }
 
           for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
           { if(bb >= args->b_low)
@@ -2988,23 +3134,6 @@ static long find_points_work_1(ratpoints_args *args,
 
               if(EXT0(bits))
               { long i;
-                long n;
-                long d = bb - last_b;
-
-                /* fill bp_list; see the note at the same place above */
-                if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-                RP_BP_TIC(t_bp);
-                { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                          : args->sp3;
-
-                  for(n = 0; n < nv; n++)
-                  { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-                  for(n = nv; n < args->sp3; n++)
-                  { bp_list[n] = mod(bb, sieve_list[n]->p); }
-                  args->sp3_valid = args->sp3;
-                }
-                RP_BP_TOC(t_bp, args->sp3);
-                last_b = bb;
 
                 for(i = 0; den_info[i].p; i++)
                 { int v = valuation1(bb, den_info[i].p);
@@ -3013,7 +3142,7 @@ static long find_points_work_1(ratpoints_args *args,
                   { flag = 0; break; }
                 }
                 if(flag)
-                {
+                { fill_bp_list(bb, bp_list, args, sieve_list);
                   total += sift(bb, survivors, args, which_bits, bits,
                                 sieve_list, &bp_list[0],
                                 &quit, process, info);
@@ -3039,69 +3168,97 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
-        unsigned long b_bits;
+        unsigned long keep_bits; /* the tests on b mod 64, as one word */
+        long w, w_low = args->b_low >> LONG_SHIFT;
+        long w_high = args->b_high >> LONG_SHIFT;
+        /* the Jacobi symbol test as a product of Legendre symbols, when the
+         * leading coefficient allows it; see jacobi_setup */
+        jacobi_info ji;
+        unsigned char jtab[RP_JACOBI_TABLE];
+        int fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
+                            && jacobi_setup(&ji, jtab, RP_JACOBI_TABLE,
+                                            c[degree], work[0], args->b_high);
 
 #ifdef DEBUG
         printf("\n  taking account of forbidden divisors of the denominator\n");
-        fflush(NULL);
-#endif
-
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
+        if(args->flags & RATPOINTS_USE_JACOBI)
+        { printf("  Jacobi symbol test %s\n",
+                 fast_jacobi ? "by Legendre symbols" : "by jacobi1/jacobi");
         }
-
-#ifdef DEBUG
-        printf("\n  bp_list initialized\n");
         fflush(NULL);
 #endif
 
-        { forbidden_entry *fba = &forb_ba[0];
-          long b_low = args->b_low;
-          long w_low = (b_low-1) >> LONG_SHIFT;
+        /* Two of the tests on a denominator depend on b mod 64 alone -- bit
+         * b mod 64 of den_bits, and whether num_bits[b mod 16] has any bit
+         * set -- and the forbidden-divisor arrays are words indexed by b mod
+         * 64 as well.  So the denominators are taken a word of 64 at a time:
+         * the word of those that pass all three tests is one AND per array,
+         * and the loop below visits only the bits that are set, which on a
+         * random curve are a third of the denominators.  Bit j of the word
+         * for w stands for b = 64*w + j. */
+        { long j;
+          unsigned long nm = 0;
 
-          b_bits = den_bits;
+          for(j = 0; j < LONG_LENGTH; j++)
+          { if(EXT0(num_bits[j & 0xf])) { nm |= 1UL << j; } }
+          keep_bits = den_bits & nm;
+        }
+        { forbidden_entry *fba = &forb_ba[0];
+
           while(fba->p)
           { fba->curr = fba->start + mod(w_low, fba->p);
-            b_bits &= *(fba->curr);
             fba++;
           }
-          b_bits >>= (b_low-1) & LONG_MASK;
         }
 
 #ifdef DEBUG
-          printf("\n  initial b_bits = %*.*lx\n", WIDTH, WIDTH, b_bits);
-          fflush(NULL);
+        printf("\n  keep_bits = %*.*lx\n", WIDTH, WIDTH, keep_bits);
+        fflush(NULL);
 #endif
 
-        for(b = args->b_low; b <= args->b_high; b++)
-        { ratpoints_bit_array bits = num_bits[b & 0xf];
+        for(w = w_low; w <= w_high; w++)
+        { unsigned long b_bits = keep_bits;
+          long base = w << LONG_SHIFT;
 
-          if((b & LONG_MASK) == 0)
-          { /* next b_bits */
-            forbidden_entry *fba = &forb_ba[0];
+          { forbidden_entry *fba = &forb_ba[0];
 
-            b_bits = den_bits;
             while(fba->p)
-            { fba->curr++;
+            { b_bits &= *(fba->curr);
+              fba->curr++;
               if(fba->curr == fba->end) { fba->curr = fba->start; }
-              b_bits &= *(fba->curr);
               fba++;
             }
           }
-          else
-          { b_bits >>= 1; }
+          /* the first and the last word may be entered part way */
+          if(w == w_low) { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
+          if(w == w_high)
+          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
 
 #ifdef DEBUG
-          printf("\n  b_bits = %*.*lx\n", WIDTH, WIDTH, b_bits);
+          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
           fflush(NULL);
 #endif
 
-          if((b_bits & 1) && EXT0(bits))
-          { /* check if denominator is excluded: is v_p(b) one of the
+          while(b_bits)
+          { ratpoints_bit_array bits;
+
+            b = base + RP_CTZL(b_bits);
+            b_bits &= b_bits - 1UL;
+            bits = num_bits[b & 0xf];
+
+            /* the Jacobi symbol test comes first when it is the cheap one:
+             * a few multiplications against the divisions of the valuation
+             * test, and it rejects half of what gets here */
+            if(fast_jacobi && !jacobi_test(b, &ji))
+            {
+#ifdef DEBUG
+              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+              fflush(NULL);
+#endif
+              continue;
+            }
+
+            /* check if denominator is excluded: is v_p(b) one of the
              * valuations the entry for p forbids? */
             for(forb = &forbidden[0];
                 forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
@@ -3116,33 +3273,11 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
             if(forb->p == 0
-                && (!(args->flags & RATPOINTS_USE_JACOBI)
+                && (fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
-            { long n;
-              long d = b - last_b;
-
-              /* fill bp_list; see the note at the same place above */
-              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-              RP_BP_TIC(t_bp);
-              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                        : args->sp3;
-
-                for(n = 0; n < nv; n++)
-                { long bp = bp_list[n] + d;
-                  long p = sieve_list[n]->p;
-
-                  while(bp >= p) { bp -= p; }
-                  bp_list[n] = bp;
-                }
-                for(n = nv; n < args->sp3; n++)
-                { bp_list[n] = mod(b, sieve_list[n]->p); }
-                args->sp3_valid = args->sp3;
-              }
-              RP_BP_TOC(t_bp, args->sp3);
-              last_b = b;
-
+            { fill_bp_list(b, bp_list, args, sieve_list);
               total += sift(b, survivors, args, which_bits, bits,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
@@ -3158,6 +3293,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
           }
+          if(quit) { break; }
         }
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
@@ -3165,42 +3301,12 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
-
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
-        }
 
         for(b = args->b_low; b <= args->b_high; b++)
         { ratpoints_bit_array bits = num_bits[b & 0xf];
 
           if(EXT0(bits))
-          { long n;
-            long d = b - last_b;
-
-            /* fill bp_list; see the note at the same place above */
-            if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-            RP_BP_TIC(t_bp);
-            { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                      : args->sp3;
-
-              for(n = 0; n < nv; n++)
-              { long bp = bp_list[n] + d;
-                long p = sieve_list[n]->p;
-
-                while(bp >= p) { bp -= p; }
-                bp_list[n] = bp;
-              }
-              for(n = nv; n < args->sp3; n++)
-              { bp_list[n] = mod(b, sieve_list[n]->p); }
-              args->sp3_valid = args->sp3;
-            }
-            RP_BP_TOC(t_bp, args->sp3);
-            last_b = b;
-
+          { fill_bp_list(b, bp_list, args, sieve_list);
             total += sift(b, survivors, args, which_bits, bits,
                           sieve_list, &bp_list[0],
                           &quit, process, info);

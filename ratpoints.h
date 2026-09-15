@@ -89,7 +89,7 @@
 /* ...but only for a run long enough that the fixed costs of a prime no
  * longer matter.  A prime is set up once and then used for the whole run:
  * its sieve table is built at most p times however many numerators there
- * are, and its entry in bp_list is stepped once per denominator.  Per word
+ * are, and its entry in bp_list is computed once per denominator.  Per word
  * of numerators sieved those fall like 1/U, where U is the number of such
  * words the run will sweep, so the marginal condition for one more prime
  * has the shape
@@ -119,12 +119,15 @@
  * further primes, computing (a * b^-1) mod p instead of reading a table.
  * It needs no table, so it can use primes that would never be worth
  * building one for; what it costs is a multiplication and a reduction per
- * survivor and prime, and one subtraction per denominator and prime to
- * carry b along.  How many primes it should use therefore depends on how
- * many survivors a denominator has, which is what the two constants below
- * express, both as fractions of what one exact check costs: the first is
- * the per-survivor cost of testing one prime, the second the per-denominator
- * cost of carrying it.  A prime is worth adding while
+ * survivor and prime, and a set-up for each denominator that brings a
+ * survivor to the stage at all (up to 2.3's item 24 it was set up for every
+ * denominator, and b carried along modulo each of its primes, which is what
+ * the second constant below was tuned for).  How many primes it should use
+ * therefore depends on how many survivors a denominator has, which is what
+ * the two constants below express, both as fractions of what one exact
+ * check costs: the first is the per-survivor cost of testing one prime, the
+ * second the per-denominator cost of carrying it.  A prime is worth adding
+ * while
  *   S * (1 - q_s - r) > q_d ,
  * where S is the expected number of survivors per denominator still in play
  * and r is the prime's density.  The second of the two decides whether the
@@ -139,7 +142,7 @@
 # define RATPOINTS_SP3_PER_SURVIVOR 0.055  /* one prime tested, per survivor */
 #endif
 #ifndef RATPOINTS_SP3_PER_DENOM
-# define RATPOINTS_SP3_PER_DENOM 0.013     /* one prime carried, per denom. */
+# define RATPOINTS_SP3_PER_DENOM 0.013     /* one prime, per denominator */
 #endif
 /* What fraction of the survivors of the first two phases the test for common
  * factors lets through.  It is about 6/pi^2 for the numerators that survive
@@ -172,11 +175,16 @@
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
 #ifndef RATPOINTS_COST_BP
-# define RATPOINTS_COST_BP 24.0      /* one step of bp_list, per denominator */
+# define RATPOINTS_COST_BP 8.0       /* one entry of bp_list, per denominator:
+     the denominator reduced modulo the prime by a multiplication.  Measured
+     at 5.5 to 11 on the four test suites in September 2026, when the entry
+     stopped being stepped from the previous denominator (24 before, measured
+     10 to 38); the runs do not react to the value within the noise. */
 #endif
 /* and, for a prime that has a sieving table, filling in its sieve_spec once
- * for every denominator.  Measured at about the same as the bp_list step,
- * and between them they are 13% of "make test1" -- a fixed cost per
+ * for every denominator.  Measured at 17 to 32 per prime on the four test
+ * suites in September 2026, three times the bp_list entry; between them the
+ * two are about 7% of "make test1" (13% before item 24) -- a fixed cost per
  * denominator and per prime, which is what makes a short run want fewer
  * primes than a long one. */
 #ifndef RATPOINTS_COST_SETUP
@@ -264,7 +272,12 @@
 #endif
 
 #ifndef RATPOINTS_DEFAULT_MAX_FORBIDDEN
-#define RATPOINTS_DEFAULT_MAX_FORBIDDEN 30 /* Default value for max_forbidden */
+#define RATPOINTS_DEFAULT_MAX_FORBIDDEN 64 /* Default value for max_forbidden:
+     how many primes the denominators are tested against with bit arrays
+     or by their valuation (option -F).  Since the denominators are taken a
+     word of 64 at a time, one such prime costs a few instructions per word,
+     so the cap is a generous one; it was 30 up to 2.2.4, which the primes
+     of the compiled table alone reach at a height bound of 200000. */
 #endif
 
 #ifndef RATPOINTS_ARRAY_SIZE
@@ -296,13 +309,14 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *sieve_list; void *stage3_list; void *magics;
                  void *den_info; void *divisors;
                  void *forb_ba; void *forbidden;
+                 void *forb_words; long forb_words_len;
                  void *ba_buffer_na; long ba_buffer_primes;
                  double run_words; double run_denoms;
                  unsigned long n_words; unsigned long n_arrays;
                  unsigned long n_bits; unsigned long n_coprime;
                  unsigned long n_checks; unsigned long n_sifts;
                  unsigned long n_words_2;
-                 unsigned long adapt_at; long sp3_max; long sp3_valid;
+                 unsigned long adapt_at; long sp3_max; int stage3_filled;
                  double check_rel;
                }
         ratpoints_args;

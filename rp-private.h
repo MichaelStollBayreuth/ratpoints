@@ -362,10 +362,76 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
  * and divides otherwise. */
 #define RP_ROW_BIAS 2147483648L
 
+/* Reducing modulo a prime by multiplying rather than dividing.  With
+ * m = 2^64/p rounded up (ULONG_MAX/p + 1; the sieve entry keeps it as
+ * magic), the remainder of u modulo p is the top half of (m*u mod 2^64) * p,
+ * and the quotient floor(u/p) is the top half of m*u; both are exact for
+ * every u below 2^32, which every caller checks for in its own way.  The
+ * callers are the third stage and its set-up, the start of the first phase
+ * and the row look-up of the second (sift.c), and the reduction of the
+ * denominator modulo each sieving prime and the Jacobi symbol test on the
+ * denominators (find_points.c).
+ *
+ * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead,
+ * which is what those callers cost without this. */
+#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
+# define RP_MULMOD(u, p, m) \
+    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
+                             * (unsigned long)(p)) >> 64))
+# define RP_MULDIV(u, p, m) \
+    ((long)(unsigned long)(((__uint128_t)(unsigned long)(u)*(m)) >> 64))
+#else
+/* the reciprocal is named so that the variables holding it stay used */
+# define RP_MULMOD(u, p, m) \
+    ((void)(m), (long)((unsigned long)(u) % (unsigned long)(p)))
+# define RP_MULDIV(u, p, m) \
+    ((void)(m), (long)((unsigned long)(u) / (unsigned long)(p)))
+#endif
+
+/* The largest value that is reduced that way; above it the callers fall
+ * back on the division.  See mod_mul() and stage3() in sift.c. */
+#define RP_MULMOD_LIMIT 4294967295L
+/* The second phase keeps the value it reduces, a word number plus an offset
+ * that carries RP_ROW_BIAS, below 2*RP_ROW_BIAS by the test at the head of
+ * _ratpoints_sift0; that is only exact if the two limits agree.  An array
+ * of negative size does not compile. */
+typedef char rp_row_bias_within_mulmod_limit[
+  (2*RP_ROW_BIAS - 1 <= RP_MULMOD_LIMIT) ? 1 : -1];
+
+/* The position of the lowest set bit of a word: sift.c walks the set bits
+ * of the survivors with it, find_points.c takes the odd part of a
+ * denominator. */
+#if defined(__GNUC__) || defined(__clang__)
+# define RP_CTZL(w) ((long)__builtin_ctzl(w))
+#else
+/* Only reached on a compiler without the builtin; the rest of the program
+ * needs gcc anyway once bit-arrays are used, but the plain unsigned long
+ * build does not, so keep it buildable. */
+static inline long RP_CTZL(unsigned long w)
+{ long t = 0;
+
+  while(!(w & 1UL)) { w >>= 1; t++; }
+  return(t);
+}
+#endif
+
+/* The inlining attributes sift.c relies on: accepted() and what it calls
+ * must be inlined into the extraction sites, and the on-demand fill of the
+ * third stage's data must not be, or gcc stops inlining accepted() (measured
+ * at a per cent).  Empty on a compiler without them, for the reason above. */
+#if defined(__GNUC__) || defined(__clang__)
+# define RP_ALWAYS_INLINE __attribute__((always_inline))
+# define RP_NOINLINE __attribute__((noinline))
+#else
+# define RP_ALWAYS_INLINE
+# define RP_NOINLINE
+#endif
+
 /* What the third stage needs to test one numerator against one prime: the
  * prime, the inverse of the denominator modulo it, and the table saying
  * which residues admit points.  There is no sieve table, which is the point
- * of that stage: a prime costs it nothing per denominator but the inverse.
+ * of that stage: a prime costs it nothing per denominator, and the inverse
+ * is looked up only for a denominator that brings a numerator this far.
  * binv == 0 means the prime divides the denominator, in which case it says
  * the same thing about every numerator and is skipped. */
 typedef struct { long p; long binv; long bias; unsigned long magic;
