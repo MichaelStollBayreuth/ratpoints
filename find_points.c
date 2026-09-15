@@ -2247,6 +2247,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
   /* Note that b is new */
   args->flags |= RATPOINTS_COMPUTE_BC;
+  args->stage3_filled = 0; /* see fill_checks() in sift.c */
 
   { long k;
     long height = args->height;
@@ -2340,29 +2341,10 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
         }
 
-        /* and the primes of the third stage, which need no table: only the
-         * inverse of b modulo each of them.  It is a table lookup, not a
-         * division, because the inverses modulo every prime that can be used
-         * are compiled in (see gen_find_points_h.c).  Note that bp is the
-         * denominator itself here, not halved as it is above: the third
-         * stage tests the numerator, not the bit that stands for it. */
-        for(n = args->sp2; n < args->sp3; n++)
-        { ratpoints_sieve_entry *se = sieve_list[n];
-          long bp = bp_list[n];
-          long m = n - args->sp2;
-
-          csp[m].p = se->p;
-          csp[m].is_f_square = se->is_f_square;
-          csp[m].binv = bp ? se->inverses[bp] : 0;
-          csp[m].magic = se->magic;
-          /* the numerator is shifted by this multiple of p to make it
-           * non-negative, so that the reduction can be the cheap one; a zero
-           * says the shifted value would not fit and the slow path is to be
-           * taken (see stage3() in sift.c) */
-          csp[m].bias = ((double)se->p*(double)(2*args->height)
-                           < RP_STAGE3_LIMIT)
-                          ? se->p*args->height : 0;
-        }
+        /* the primes of the third stage need no table, only the inverse of
+         * b modulo each of them, and fill_checks() in sift.c looks that up
+         * on the first numerator that reaches the stage: most denominators
+         * bring none that far */
         RP_SETUP_TOC(t_setup);
       }
 
@@ -2427,31 +2409,33 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * Find points by looping over the denominators and sieving numerators    *
  **************************************************************************/
 
-/* The denominator modulo each prime the sieve uses, in bp_list, computed
- * afresh for every denominator by the multiply-high reduction (RP_MULMOD; a
- * division for a denominator beyond 2^32).  It used to be stepped from the
- * previous denominator, bp += d followed by while(bp >= p) bp -= p: one to
- * three data-dependent branches per prime and denominator, mispredicted a
- * quarter of the time, an eighth of all the branch misses of make test1.
- * Computing it afresh also does away with the bookkeeping of which entries
- * were up to date when adapt_primes had just brought another prime into
- * play, which is why that correction is made here first: it is due once
- * the sieve has swept as many words as adapt_at says. */
+/* The denominator modulo each prime of the first two phases, in bp_list,
+ * computed afresh for every denominator by the multiply-high reduction
+ * (RP_MULMOD; a division for a denominator beyond 2^32).  It used to be
+ * stepped from the previous denominator, bp += d followed by while(bp >= p)
+ * bp -= p: one to three data-dependent branches per prime and denominator,
+ * mispredicted a quarter of the time, an eighth of all the branch misses of
+ * make test1.  Computing it afresh also does away with the bookkeeping of
+ * which entries were up to date when adapt_primes had just brought another
+ * prime into play, which is why that correction is made here first: it is
+ * due once the sieve has swept as many words as adapt_at says.  The primes
+ * of the third stage are not in the list any more: what that stage needs is
+ * looked up when a numerator reaches it, see fill_checks() in sift.c. */
 static inline void fill_bp_list(long b, long *bp_list, ratpoints_args *args,
                                 ratpoints_sieve_entry **sieve_list)
-{ long n, sp3;
+{ long n, sp2;
   const unsigned long *magics = (const unsigned long *)args->magics;
 
   if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-  sp3 = args->sp3;
+  sp2 = args->sp2;
   RP_BP_TIC(t_bp);
   if(b <= RP_MULMOD_LIMIT)
-  { for(n = 0; n < sp3; n++)
+  { for(n = 0; n < sp2; n++)
     { bp_list[n] = RP_MULMOD(b, sieve_list[n]->p, magics[n]); }
   }
   else
-  { for(n = 0; n < sp3; n++) { bp_list[n] = mod(b, sieve_list[n]->p); } }
-  RP_BP_TOC(t_bp, sp3);
+  { for(n = 0; n < sp2; n++) { bp_list[n] = mod(b, sieve_list[n]->p); } }
+  RP_BP_TOC(t_bp, sp2);
 }
 
 /*

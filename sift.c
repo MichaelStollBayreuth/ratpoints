@@ -289,7 +289,8 @@ static inline long mod_mul(long a, long p, unsigned long m)
  * removed by the gcd, and there is no point in testing them here first.
  * --------------------------------------------------------------------- */
 
-static inline int stage3(long a, const check_spec *csp, long n)
+static inline __attribute__((always_inline))
+int stage3(long a, const check_spec *csp, long n)
 { long i;
 
   for(i = 0; i < n; i++)
@@ -315,7 +316,7 @@ static inline int stage3(long a, const check_spec *csp, long n)
  * check if m and n are relatively prime                                  *
  **************************************************************************/
 
-static inline int relprime(long m, long n)
+static inline __attribute__((always_inline)) int relprime(long m, long n)
 {
   /* n (the denominator) is always positive here */
   if(m == 0) { return(n == 1); }
@@ -388,15 +389,57 @@ static inline long mod(long a, long b)
   return(a);
 }
 
+/* What the third stage needs for the denominator in hand, filled in on the
+ * first numerator that reaches the stage rather than by sift() for every
+ * denominator: on a random curve one denominator in seven brings a
+ * survivor that far at a height bound of 16383, one in forty at 200000, so
+ * most of that filling was for nothing (review item P11).  Nothing in it
+ * changes while the denominator does not; sift() clears the flag.  Per prime
+ * it is the inverse of the denominator modulo the prime, a table look-up
+ * (the inverses modulo every prime that can be used are compiled in, see
+ * gen_find_points_h.c) at the residue of b, which the multiply-high
+ * reduction gives, or a division for a denominator beyond 2^32.
+ *
+ * Out of line on purpose: accepted() is inlined into the five extraction
+ * sites of sift0, and a call inside it that gcc might inline was measured
+ * to stop that, at a cost of a per cent. */
+static void __attribute__((noinline))
+fill_checks(long b, check_spec *csp, ratpoints_args *args)
+{ ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
+  const unsigned long *magics = (const unsigned long *)args->magics;
+  long sp2 = args->sp2, sp3 = args->sp3, height = args->height, n;
+
+  for(n = sp2; n < sp3; n++)
+  { ratpoints_sieve_entry *se = sieve_list[n];
+    long p = se->p;
+    long bp = (b <= RP_MULMOD_LIMIT) ? RP_MULMOD(b, p, magics[n]) : b % p;
+    check_spec *cs = &csp[n - sp2];
+
+    cs->p = p;
+    cs->is_f_square = se->is_f_square;
+    cs->binv = bp ? se->inverses[bp] : 0;
+    cs->magic = se->magic;
+    /* the numerator is shifted by this multiple of p to make it
+     * non-negative, so that the reduction can be the cheap one; a zero
+     * says the shifted value would not fit and the slow path is to be
+     * taken (see stage3()) */
+    cs->bias = ((double)p*(double)(2*height) < RP_STAGE3_LIMIT)
+                 ? p*height : 0;
+  }
+  args->stage3_filled = 1;
+}
+
 /* What happens to one surviving numerator: the test for common factors,
  * then the third stage.  The two counters say how many numerators got that
  * far, which is what lets the number of primes be corrected during the run
  * instead of predicted before it; they cost one increment each on paths
  * taken a few times in a million. */
-static inline int accepted(long a, long b, const check_spec *csp, long n,
-                           ratpoints_args *args)
+static inline __attribute__((always_inline))
+int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 { if(!relprime(a, b)) { return(0); }
   args->n_coprime++;
+  if(n && !args->stage3_filled) { fill_checks(b, csp, args); }
   if(!stage3(a, csp, n)) { return(0); }
   args->n_checks++;
   return(1);

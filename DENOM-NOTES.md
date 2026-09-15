@@ -149,3 +149,61 @@ seventh pair given a common factor, and on every pair with `|a|, b <= 300`:
 no mismatch.  The `jacobi1` half of the review's item is not taken:
 `jacobi1` is now called only for a leading coefficient with a prime beyond
 1024, where the loop is not what costs.
+
+### P13: forbidden-divisor arrays up to the square root of the height bound
+
+For even degree, a prime `p` with `(lcf/p) = -1` may not divide the
+denominator, and the loop tests for the primes of that kind with the word
+patterns of `sieves0` -- which exist only for the compiled sieving primes,
+up to 251 with `PRIME_SIZE` 8.  The Jacobi symbol supplies the product
+form of the same condition, and the two agree exactly when every bad prime
+up to `sqrt(b_high)` is in the arrays: what remains of a denominator after
+those is at most one bad prime, which the symbol sees.  At 16383 that
+holds already (127 < 251), so nothing changes there; at 200000 the arrays
+stopped at 251 < 447, and the review counted 1.2 per cent of the sifted
+denominators as `q1*q2` or `2*q1*q2` with both primes beyond the table.
+
+So the search for bad primes in `sieving_info` goes on past the compiled
+table, up to `sqrt(b_high)` or to the end of `prime[]` (1021, so up to a
+height bound of a million), and builds the patterns for the primes it
+takes there: `p` words for the prime `p`, word `r` for the word numbers
+congruent to `r`, bit `j` clear iff `p | 64r + j`, exactly what
+`gen_find_points_h.c` puts into `sieves0`; 64 stores per prime.  They live
+in a buffer that stays with `args` and grows when a curve needs more (45 KB
+for the 16 primes between 251 and 447).  The arrays and the `forbidden`
+list are sized for `prime[]` now, and the default of `max_forbidden` goes
+from 30 to 64: with the word walk a prime in the arrays costs four
+instructions per 64 denominators, and 30 was what the compiled primes alone
+already reached at 200000 (the review measured `-F 53` to change nothing
+there, because the cap was not what limited the arrays; the table was).
+Nothing changes below a height bound of 63001, and no reference output
+pins the list of excluded denominators.
+
+Not done: the review's remark that with the arrays complete the Jacobi
+factor in `run_shape` is 0.65 rather than 0.5.  That is a model constant,
+to be tried as a `-D` pair in a tuning session, not in a step whose output
+must not change.
+
+### P11, first half: the third stage's set-up on demand
+
+`sift()` filled `check_spec` -- the prime, its square table, the inverse of
+the denominator modulo it, the reciprocal and the bias -- for every prime
+of the third stage on every denominator, though only a denominator with a
+coprime survivor of the second phase ever reaches that stage: one in seven
+at 16383 on a random curve, one in forty at 200000 (the review's counts).
+Now `accepted()` in `sift.c` calls `fill_checks()` on the first coprime
+survivor of a denominator, and `sift()` only clears the flag
+(`stage3_filled` in `ratpoints_args`).  The residue of `b` modulo each of
+those primes is recomputed there by the multiply-high reduction, which lets
+`fill_bp_list()` stop at `sp2`; the list still has `sp3_max` entries,
+because `adapt_primes` can raise `sp2` that far.  `accepted`, `relprime`
+and `stage3` carry `always_inline` and `fill_checks` is `noinline`: the
+review found that any call gcc might inline into `accepted` stopped it from
+inlining `accepted` into the five extraction sites of `sift0`, at a cost of
+a per cent, and that the attribute alone was worth 0.16 per cent.
+
+Two model constants are now overstatements: `RATPOINTS_COST_BP` is charged
+for every prime including those of the third stage, whose per-denominator
+step is gone, and `RATPOINTS_SP3_PER_DENOM` stood for a fill that no longer
+happens per denominator.  Both are compiled-in constants of the parameter
+model, for a tuning session.
