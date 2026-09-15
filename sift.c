@@ -76,11 +76,12 @@ unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
  * phases; the third stage's check_spec is filled on demand, outside this
  * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
-/* clearing the two boundary words and the bit arrays that only exist to
- * make the count a multiple of RATPOINTS_CHUNK.  Until 2.3 this was a pass
- * over the whole array, writing the 2-adic pattern into every bit array
- * before the first phase ANDed anything into it; the first phase's first
- * prime does that now, and this is what is left.  So little is left that the
+/* clearing the two boundary words.  Until 2.3 this was a pass over the
+ * whole array, writing the 2-adic pattern into every bit array before the
+ * first phase ANDed anything into it, and for a while after that it also
+ * zeroed the bit arrays that padded the range to a multiple of
+ * RATPOINTS_CHUNK; the first phase's first prime writes the pattern now and
+ * nothing is padded, so this is what is left.  So little is left that the
  * two rdtsc reads around it are a good part of what it reports: take the
  * figure as an upper bound on the cost, not as a measurement of it. */
 unsigned long long _rp_fill_cycles = 0, _rp_fill_arrays = 0;
@@ -451,6 +452,52 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
  * The inner loop of the sieving procedure                                *
  **************************************************************************/
 
+#if (defined(RATPOINTS_CHUNK) && (RATPOINTS_CHUNK > 1) && (RATPOINTS_CHUNK <= 16))
+/* One leg of the first phase over the tail of a range: the w bit arrays
+ * that begin off bit arrays past the last whole chunk, w a power of two
+ * below RATPOINTS_CHUNK.  Every call passes w as a constant and the
+ * function is inlined, so the array of registers becomes w vector
+ * registers and the loops over it unroll; what is left is the loop over
+ * the primes, w ANDs and a pointer load per prime.  Unlike the chunk loop
+ * in _ratpoints_sift0, a leg does not move the sieve pointers on: the legs
+ * of a tail together cover fewer than RATPOINTS_CHUNK bit arrays past the
+ * pointers the chunk loop left, which the RATPOINTS_CHUNK-1 wrap-around
+ * copies at the end of every table are there for (see init.c and
+ * gen_find_points_h.c), so a leg reads its rows off bit arrays past those
+ * pointers and leaves them as they are.  (They are recomputed at the next
+ * call anyway; nothing reads them after the first phase.) */
+#ifndef RP_UNROLL_REGS  /* -DRP_UNROLL_REGS= builds without the pragma */
+# if (defined(__GNUC__) && __GNUC__ >= 8) || defined(__clang__)
+#  define RP_UNROLL_REGS _Pragma("GCC unroll 8")  /* gcc 8 and later, clang */
+# else
+#  define RP_UNROLL_REGS
+# endif
+#endif
+static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
+           ratpoints_bit_array *surv, ratpoints_bit_array bits16,
+           const sieve_spec *sieves, long sp1)
+{ ratpoints_bit_array reg[8]; /* the widest leg */
+  const ratpoints_bit_array *siv = sieves[0].start + off;
+  long i, n;
+
+  /* The pragmas make gcc unroll the loops over the registers before it
+   * decides what to keep in registers: at -O2 it would otherwise unroll
+   * them too late, and reg[] would be an array on the stack.  The loop
+   * over the primes is left to -funroll-loops, which unrolls it by four;
+   * kept rolled it saves about 1.5 KB of sift0's 8 KB and costs 0.3 to 1.3
+   * per cent of instructions, and the cycles do not tell the two apart. */
+  RP_UNROLL_REGS
+  for(i = 0; i < w; i++) { reg[i] = bits16 & siv[i]; }
+  for(n = 1; n < sp1; n++)
+  { siv = sieves[n].start + off;
+    RP_UNROLL_REGS
+    for(i = 0; i < w; i++) { AND(reg[i], siv[i]); }
+  }
+  RP_UNROLL_REGS
+  for(i = 0; i < w; i++) { surv[off + i] = reg[i]; }
+}
+#endif
+
 /* b is the denominator;
  * the bit-arrays to be dealt with are indexed w_low..w_high-1,
  * where index 0 is the array whose zeroth bit corresponds to 0
@@ -464,7 +511,7 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
            ratpoints_bit_array *survivors, ratpoints_bit_array bits16,
-           long mask_low, long mask_high, long n_pad, sieve_spec *sieves,
+           long mask_low, long mask_high, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info)
 {
@@ -490,8 +537,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   { printf("\nsift0(b = %ld) @ start: %ld bit arrays from ",
            b, w_high - w_low);
     PRINT_RBA(bits16);
-    printf("\n  mask_low = %ld, mask_high = %ld, padding = %ld\n",
-           mask_low, mask_high, n_pad);
+    printf("\n  mask_low = %ld, mask_high = %ld\n", mask_low, mask_high);
     fflush(NULL);
   }
 #endif
@@ -517,8 +563,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * negligible over a short one, which is the case at a small height bound
    * -- so read bits_in as an upper bound, and compare it with bits_1 rather
    * than trusting it absolutely. */
-  _rp_bits_in += (unsigned long long)(w_high - w_low - n_pad)
-                   *_rp_popcnt(&bits16);
+  _rp_bits_in += (unsigned long long)(w_high - w_low)*_rp_popcnt(&bits16);
   _rp_and1 += (unsigned long long)(w_high - w_low)*sp1;
 #endif
   RP_TIC(_rp_t1);
@@ -572,18 +617,20 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   else
   { ratpoints_bit_array *surv = survivors;
     long w_low_new;
+    /* where the whole chunks end and the tail begins */
+    long w_high_full = w_high - (w_high - w_low)%RATPOINTS_CHUNK;
 
     /* Take RATPOINTS_CHUNK bit-arrays and apply phase 1 to them,
      * then repeat with the next RATPOINTS_CHUNK bit-arrays. */
-    for(w_low_new = w_low; w_low_new < w_high; surv += RATPOINTS_CHUNK, w_low_new += RATPOINTS_CHUNK)
+    for(w_low_new = w_low; w_low_new < w_high_full; surv += RATPOINTS_CHUNK, w_low_new += RATPOINTS_CHUNK)
     { long n;
       /* The first prime writes the registers instead of reading them back
        * from memory, ANDing in the 2-adic pattern every bit array starts
        * from as it goes.  That is what makes the pass that used to fill the
        * array before any of this unnecessary: one store and one load per bit
-       * array, on 1.7e10 of them in "make testhigh".  The boundary words and
-       * the padding are dealt with after the phase instead, which comes to
-       * the same thing because AND is commutative. */
+       * array, on 1.7e10 of them in "make testhigh".  The boundary words
+       * are dealt with after the phase instead, which comes to the same
+       * thing because AND is commutative. */
       ratpoints_bit_array *siv0 = sieves[0].start;
 #if (RATPOINTS_CHUNK >= 1)
       ratpoints_bit_array reg0 = bits16 & *siv0++;
@@ -753,7 +800,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 
         /* update the pointer for the next round
-         * (RATPOINTS_CHUNK-1 bit-arrays after sieves[n].end) */
+         * (RATPOINTS_CHUNK-1 bit-arrays after sieves[n].end -- the same
+         * spare rows that let the tail legs read past the pointer this
+         * leaves, see tail_leg) */
         while(siv1 >= sieves[n].end) { siv1 -= sieves[n].p; }
         sieves[n].start = siv1;
 
@@ -863,6 +912,33 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       surv[15] = reg15;
 #endif
     }
+
+    /* The tail: the bit arrays past the last whole chunk, fewer than
+     * RATPOINTS_CHUNK of them, in legs of 8, 4, 2 and 1 registers, one leg
+     * for each set bit of the length, the widest first.  Each leg starts
+     * where the wider ones stopped, which is the part of the length above
+     * its own bit; for the widest leg that is a constant zero, and writing
+     * it as one matters: with a variable offset gcc keeps eight index
+     * registers for that leg and spills them.  (Until 2.3 the range was
+     * padded up to a whole chunk instead, and the padding sieved with every
+     * prime, walked by the scan below and zeroed: a seventh of all bit
+     * arrays swept at height 16383, four fifths at height 1000.) */
+    { long t = w_high - w_high_full;
+
+#if (RATPOINTS_CHUNK > 16)
+# error "the tail legs cover lengths up to 15: widen them with the ladder"
+#endif
+#if (RATPOINTS_CHUNK > 8)
+      if(t & 8) { tail_leg(8, 0, surv, bits16, sieves, sp1); }
+#endif
+#if (RATPOINTS_CHUNK > 4)
+      if(t & 4) { tail_leg(4, t & 8, surv, bits16, sieves, sp1); }
+#endif
+#if (RATPOINTS_CHUNK > 2)
+      if(t & 2) { tail_leg(2, t & 12, surv, bits16, sieves, sp1); }
+#endif
+      if(t & 1) { tail_leg(1, t & 14, surv, bits16, sieves, sp1); }
+    }
   }
 
 #else /* RATPOINTS_CHUNK not between 2 and 16 */
@@ -946,29 +1022,22 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   RP_TOC(_rp_t1, _rp_phase1_cycles);
 
-  /* The two ends of the numerator interval, and the bit arrays that only
-   * exist to make the count a multiple of RATPOINTS_CHUNK.  This used to be
-   * done before the first phase, on the same pass that wrote the 2-adic
-   * pattern into every bit array; since AND is commutative, clearing the
-   * bits afterwards clears the same bits, and doing it here is two bit
-   * arrays per call rather than all of them. */
+  /* The two ends of the numerator interval.  This used to be done before
+   * the first phase, on the same pass that wrote the 2-adic pattern into
+   * every bit array; since AND is commutative, clearing the bits afterwards
+   * clears the same bits, and doing it here is two bit arrays per call
+   * rather than all of them. */
   { RP_TIC(t_fill);
 
     if(mask_low) { MASKL(survivors, mask_low); }
-    if(mask_high) { MASKU(&survivors[w_high - w_low - n_pad - 1], mask_high); }
-    if(n_pad)
-    { long i;
-
-      for(i = w_high - w_low - n_pad; i < w_high - w_low; i++)
-      { survivors[i] = zero; }
-    }
+    if(mask_high) { MASKU(&survivors[w_high - w_low - 1], mask_high); }
     RP_TOC(t_fill, _rp_fill_cycles);
 #ifdef RP_PHASE_TIMING
     /* what this region writes, which since 2.3 is at most the two boundary
-     * words and the padding -- not the whole range, which is what
-     * _rp_arrays_swept already counts */
+     * words -- not the whole range, which is what _rp_arrays_swept already
+     * counts */
     _rp_fill_arrays += (unsigned long long)((mask_low ? 1 : 0)
-                                             + (mask_high ? 1 : 0) + n_pad);
+                                             + (mask_high ? 1 : 0));
 #endif
   }
 

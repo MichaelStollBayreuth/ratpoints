@@ -467,14 +467,16 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
 /* bits16 is the 2-adic pattern every bit array starts from; the first phase
  * ANDs it in as it sieves rather than having it written into the array
  * beforehand.  mask_low and mask_high say how many bits to clear at the two
- * ends of the numerator interval (zero for an end that is not a boundary),
- * and n_pad how many bit arrays at the top are padding to be zeroed; all
- * three are applied after the first phase, which gives the same result
- * because AND is commutative. */
+ * ends of the numerator interval (zero for an end that is not a boundary);
+ * both are applied after the first phase, which gives the same result
+ * because AND is commutative.  The range w_high - w_low can be any length:
+ * the first phase takes it in chunks of RATPOINTS_CHUNK bit arrays and
+ * sieves what is left over in narrower legs (the arm for RATPOINTS_CHUNK 1
+ * takes any length as it always did). */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
            ratpoints_bit_array *survivors, ratpoints_bit_array bits16,
-           long mask_low, long mask_high, long n_pad, sieve_spec *sieves,
+           long mask_low, long mask_high, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info);
 
