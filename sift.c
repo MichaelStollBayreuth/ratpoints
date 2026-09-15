@@ -466,10 +466,12 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
  * gen_find_points_h.c), so a leg reads its rows off bit arrays past those
  * pointers and leaves them as they are.  (They are recomputed at the next
  * call anyway; nothing reads them after the first phase.) */
-#if defined(__GNUC__) || defined(__clang__)
-# define RP_UNROLL_REGS _Pragma("GCC unroll 8")
-#else
-# define RP_UNROLL_REGS
+#ifndef RP_UNROLL_REGS  /* -DRP_UNROLL_REGS= builds without the pragma */
+# if defined(__GNUC__) || defined(__clang__)
+#  define RP_UNROLL_REGS _Pragma("GCC unroll 8")
+# else
+#  define RP_UNROLL_REGS
+# endif
 #endif
 static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
            ratpoints_bit_array *surv, ratpoints_bit_array bits16,
@@ -482,8 +484,8 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
    * decides what to keep in registers: at -O2 it would otherwise unroll
    * them too late, and reg[] would be an array on the stack.  The loop
    * over the primes is left to -funroll-loops, which unrolls it by four;
-   * kept rolled it saves 1.5 KB of code and costs a quarter to one per
-   * cent of instructions, and the cycles do not tell the two apart. */
+   * kept rolled it saves about 1.5 KB of sift0's 8 KB and costs 0.3 to 1.3
+   * per cent of instructions, and the cycles do not tell the two apart. */
   RP_UNROLL_REGS
   for(i = 0; i < w; i++) { reg[i] = bits16 & siv[i]; }
   for(n = 1; n < sp1; n++)
@@ -798,7 +800,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 
         /* update the pointer for the next round
-         * (RATPOINTS_CHUNK-1 bit-arrays after sieves[n].end) */
+         * (RATPOINTS_CHUNK-1 bit-arrays after sieves[n].end -- the same
+         * spare rows that let the tail legs read past the pointer this
+         * leaves, see tail_leg) */
         while(siv1 >= sieves[n].end) { siv1 -= sieves[n].p; }
         sieves[n].start = siv1;
 

@@ -471,7 +471,8 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
  * both are applied after the first phase, which gives the same result
  * because AND is commutative.  The range w_high - w_low can be any length:
  * the first phase takes it in chunks of RATPOINTS_CHUNK bit arrays and
- * sieves what is left over in narrower legs. */
+ * sieves what is left over in narrower legs (the arm for RATPOINTS_CHUNK 1
+ * takes any length as it always did). */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
            ratpoints_bit_array *survivors, ratpoints_bit_array bits16,

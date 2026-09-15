@@ -17,10 +17,10 @@ padding with every prime of the first phase, the scan of the second phase
 walked it, and a loop after the first phase zeroed it.  The verdicts
 counted the padding at 14.2 per cent of all bit arrays swept in `make
 test1` (height 16383; 11.2 in test1many, 13.3 in testdegrees), 80 per cent
-at height 1000, 90 at height 200, 1.4 at 200000: a block at 16383 is 41
-bit arrays long on average, so the last chunk is mostly padding, and at
-height 1000 the whole interval of a denominator is 3 bit arrays in a chunk
-of 16.
+at height 1000, 90 at height 200, 1.4 at 200000: a block at 16383 is 41.5
+bit arrays long on average, so the last chunk is nearly half padding (6.9
+arrays of 16), and at height 1000 the whole interval of a denominator is 3
+bit arrays in a chunk of 16.
 
 ## What was done (655e10b)
 
@@ -37,7 +37,8 @@ around: the legs of a tail together advance by at most fifteen rows past
 the pointers the chunk loop left, and every table carries
 `RATPOINTS_CHUNK-1` wrap-around copies of its first rows at the end for
 exactly this reason (init.c, gen_find_points_h.c), so a leg indexes the
-pointers with its offset and reads within the table.  And it does not
+pointers with its offset, reads at most fourteen rows past them and stays
+within the table.  And it does not
 store the pointers back: nothing reads `sieves[n].start` after the first
 phase (the second phase has computed its own rows since the trio, 4bfc676),
 and the next call recomputes them all on entry.  That makes a leg cheaper
@@ -64,9 +65,11 @@ a tail -- is not worth one.
 `n_pad` left `sift0`'s interface, the zeroing loop after the first phase
 went with it, and `args->n_words` now counts the bit arrays that were
 sieved: it counted the padded range, so the survival rate `adapt_primes`
-works from was low by the padding share (14 per cent at 16383; the rule
-fires from a million words on, so on `make test1` it did not fire at all,
-and at 200000 the bias was 1.4 per cent).
+works from was low by the padding share (14 per cent at 16383).  The rule
+fires once a curve has swept a million words, which the heavier curves of
+`make test1` do -- the sweep review counted 93 adaptations in that suite
+and 229 in `make test1many` -- which is why the exact-check counts below
+move by a few dozen with the rule on and not at all with it off.
 
 What gcc made of it.  The helper's array of `w` registers must become `w`
 vector registers, which is scalar replacement after the loops over it are
@@ -82,7 +85,8 @@ registers makes the early pass unroll them, and the compiled legs then
 touch the stack only to reload the 2-adic pattern once per leg.
 `_ratpoints_sift0` grows from 6097 to 8411 bytes, the loop over the primes
 of each leg unrolled by four as `-funroll-loops` asks; with that loop kept
-rolled (`RP_TAIL_NOUNROLL`, a switch for the measurement) it is 6852 bytes.
+rolled (`RP_TAIL_NOUNROLL`, a switch for the measurement that existed only
+in 655e10b) it is 6852 bytes.
 All the suites and `test3` byte-identical.
 
 ## Measurements
@@ -140,7 +144,8 @@ three placements of the code.
 ### The loop over the primes of a leg: rolled or unrolled
 
 `-funroll-loops` unrolls it by four (sift0 8411 bytes); with
-`_Pragma("GCC unroll 1")` (`RP_TAIL_NOUNROLL`) it stays a loop (6852 bytes):
+`_Pragma("GCC unroll 1")` (`RP_TAIL_NOUNROLL`, in 655e10b only) it stays a
+loop (6852 bytes):
 
 | suite | rolled against unrolled (3 rounds) |
 |---|---|
@@ -150,7 +155,7 @@ three placements of the code.
 | test4000 | **0.9987** [0.9981, 1.0168] (3); instr. 1.0046; misses 1.0176 |
 | testmany1000 | **0.9996** [0.9940, 1.0062] (3); instr. 1.0131; misses 1.0109 |
 
-Nothing in cycles, a quarter to one per cent more instructions; the verdict
+Nothing in cycles, 0.3 to 1.3 per cent more instructions; the verdict
 had expected the rolled loop to give back a fifth of the gain.  The
 decision is taken on the final form of the leg (next section).
 

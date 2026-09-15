@@ -1792,14 +1792,14 @@ on \texttt{RATPOINTS\_CHUNK} $= 16$ bit arrays at a time, one per vector
 register, and the range of every denominator and interval used to be padded
 up to a multiple of that: the padding was sieved with every prime of the
 phase, walked by the scan of the second phase and then zeroed, and it came to
-a seventh of all the bit arrays swept in \texttt{make test1}, a quarter of
+a seventh of all the bit arrays swept in \texttt{make test1}, two fifths of
 them at a height bound of 4000 and four fifths at 1000, where the whole
 interval of a denominator is three bit arrays long. Now the chunk loop stops
 at the last whole chunk, and the bit arrays left over --- fewer than
 sixteen --- are sieved in legs of 8, 4, 2 and 1 registers, one leg for each
 set bit of their number. A leg is cheaper than a chunk per prime, and not
 only for being narrower: it reads its rows from the pointers the chunk loop
-left, up to fifteen rows past them, which is what the wrap-around copies at
+left, up to fourteen rows past them, which is what the wrap-around copies at
 the end of every table are there for, so it neither wraps the pointers
 around nor stores them back --- nothing reads them after the phase, and the
 next call recomputes them. Worth $10\%$ of \texttt{make test1} ($9.5$ to
