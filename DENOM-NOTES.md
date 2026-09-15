@@ -109,3 +109,43 @@ program over 16 denominator ranges that start and end inside a word (`-dl 1
 -du 1`, `63 65`, `64 64`, `127 128`, `3999 4000`, ...) on seven curves of
 degrees 5 to 8, with and without the Jacobi test and the forbidden divisors
 (`-j`, `-F 0`, `-F 1`): 560 runs, identical output.
+
+### P5: `bp_list` computed, not stepped
+
+`bp_list[n]` is the denominator modulo the n-th sieving prime, which the
+per-denominator set-up in `sift()` needs for every prime of all three
+stages.  All four denominator loops stepped it from the previous
+denominator, `bp += d` and then `while(bp >= p) bp -= p` (the two loops
+over squares through `mod()`), which is one to three data-dependent
+branches per prime and denominator, taken about a quarter of the time and
+mispredicted accordingly: an eighth of all the branch misses of `make
+test1` by the review's count, 6.6 per cent of its cycles by the program's
+own `RP_BP` region.  Now `fill_bp_list()` computes every entry afresh from
+the denominator by the multiply-high reduction, `RP_MULMOD(b, p, magics[n])`
+with the reciprocals the sieve already keeps per curve, and divides when
+the denominator is beyond 2^32.  No branch, no `last_b`, no `d`; and the
+bookkeeping of which entries were still valid after `adapt_primes()` had
+brought another prime into play (`sp3_valid`, a field of `ratpoints_args`
+and a dozen lines in each loop) goes with it, since nothing is stepped any
+more.  The four copies of the fill are one function, which also makes the
+call to `adapt_primes` that precedes it.  In the loop over squares times
+divisors of the leading coefficient the fill now follows the valuation test
+instead of preceding it, so that a denominator that test rejects does not
+get one.
+
+### P10, the `relprime` half: no branches in the gcd
+
+`relprime(a, b)` in `sift.c` decides whether a surviving numerator is in
+lowest terms, once per survivor of the second phase.  Its binary gcd
+replaced numbers by their odd parts with `while(!(x & 1)) x >>= 1` -- one
+data-dependent branch per bit -- and chose which of the two to subtract with
+another; the review measured the two at a tenth of all the branch misses of
+`make test1` (27 per cent together with the same idiom in `jacobi1`, which
+P1 has made rare).  Now the odd part is one `RP_CTZL` and a shift, and the
+subtraction step is branchless: `d = m - n`, its sign mask, `n = min(m, n)`
+and `m = |d|` by mask arithmetic, then the odd part of `m`.  Checked against
+a plain Euclidean gcd on fifty million random pairs at three heights, every
+seventh pair given a common factor, and on every pair with `|a|, b <= 300`:
+no mismatch.  The `jacobi1` half of the review's item is not taken:
+`jacobi1` is now called only for a leading coefficient with a prime beyond
+1024, where the loop is not what costs.

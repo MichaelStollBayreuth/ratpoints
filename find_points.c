@@ -1166,8 +1166,9 @@ static double check_cost(const ratpoints_args *args)
  * Changing the number of primes part-way through a run is safe by
  * construction: sieving only ever removes numerators that cannot be points,
  * so using more or fewer of them for later denominators changes the running
- * time and nothing else.  What it must not do is get ahead of bp_list, which
- * is why sp3_valid says how many of its entries are up to date.
+ * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
+ * makes this correction first and then computes every entry the current
+ * number of primes asks for.
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -1790,7 +1791,6 @@ static long sieving_info(ratpoints_args *args,
    * they stay fixed. */
   args->adapt_at = (args->adapt != 0 && args->sp1 < 0 && args->sp2 < 0)
                      ? RP_ADAPT_WORDS : ULONG_MAX;
-  args->sp3_valid = 0;
 
   /* What one exact check costs on this curve, relative to the curves the
    * third-stage constants were tuned on.  It is what those constants are
@@ -2381,6 +2381,33 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 /**************************************************************************
  * Find points by looping over the denominators and sieving numerators    *
  **************************************************************************/
+
+/* The denominator modulo each prime the sieve uses, in bp_list, computed
+ * afresh for every denominator by the multiply-high reduction (RP_MULMOD; a
+ * division for a denominator beyond 2^32).  It used to be stepped from the
+ * previous denominator, bp += d followed by while(bp >= p) bp -= p: one to
+ * three data-dependent branches per prime and denominator, mispredicted a
+ * quarter of the time, an eighth of all the branch misses of make test1.
+ * Computing it afresh also does away with the bookkeeping of which entries
+ * were up to date when adapt_primes had just brought another prime into
+ * play, which is why that correction is made here first: it is due once
+ * the sieve has swept as many words as adapt_at says. */
+static inline void fill_bp_list(long b, long *bp_list, ratpoints_args *args,
+                                ratpoints_sieve_entry **sieve_list)
+{ long n, sp3;
+  const unsigned long *magics = (const unsigned long *)args->magics;
+
+  if(args->n_words >= args->adapt_at) { adapt_primes(args); }
+  sp3 = args->sp3;
+  RP_BP_TIC(t_bp);
+  if(b <= RP_MULMOD_LIMIT)
+  { for(n = 0; n < sp3; n++)
+    { bp_list[n] = RP_MULMOD(b, sieve_list[n]->p, magics[n]); }
+  }
+  else
+  { for(n = 0; n < sp3; n++) { bp_list[n] = mod(b, sieve_list[n]->p); } }
+  RP_BP_TOC(t_bp, sp3);
+}
 
 /*
 typedef struct {mpz_t *cof; long degree; long height;
@@ -3017,45 +3044,18 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
 
 #ifdef DEBUG
         printf("\n  using squares\n");
         fflush(NULL);
 #endif
 
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
-        }
-
         for(b = 1; bb = b*b, bb <= args->b_high; b++)
         { if(bb >= args->b_low)
           { ratpoints_bit_array bits = num_bits[bb & 0xf];
 
             if(TEST(bits))
-            { long n;
-              long d = bb - last_b;
-
-              /* fill bp_list, after any correction to how many primes
-               * the sieve is using (see adapt_primes): one just brought into
-               * play has no entry yet and is set from the denominator. */
-              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-              RP_BP_TIC(t_bp);
-              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                        : args->sp3;
-
-                for(n = 0; n < nv; n++)
-                { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-                for(n = nv; n < args->sp3; n++)
-                { bp_list[n] = mod(bb, sieve_list[n]->p); }
-                args->sp3_valid = args->sp3;
-              }
-              RP_BP_TOC(t_bp, args->sp3);
-              last_b = bb;
-
+            { fill_bp_list(bb, bp_list, args, sieve_list);
               total += sift(bb, survivors, args, which_bits, bits,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
@@ -3084,19 +3084,11 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
         for( ; *div; div++)
-        { long last_b = *div;
-
+        {
 #ifdef DEBUG
           printf("\n  divisor = %ld\n", *div);
           fflush(NULL);
 #endif
-
-          { long n;
-
-            for(n = 0; n < args->sp3; n++)
-            { bp_list[n] = mod(*div, sieve_list[n]->p); }
-            args->sp3_valid = args->sp3;
-          }
 
           for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
           { if(bb >= args->b_low)
@@ -3105,23 +3097,6 @@ static long find_points_work_1(ratpoints_args *args,
 
               if(EXT0(bits))
               { long i;
-                long n;
-                long d = bb - last_b;
-
-                /* fill bp_list; see the note at the same place above */
-                if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-                RP_BP_TIC(t_bp);
-                { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                          : args->sp3;
-
-                  for(n = 0; n < nv; n++)
-                  { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-                  for(n = nv; n < args->sp3; n++)
-                  { bp_list[n] = mod(bb, sieve_list[n]->p); }
-                  args->sp3_valid = args->sp3;
-                }
-                RP_BP_TOC(t_bp, args->sp3);
-                last_b = bb;
 
                 for(i = 0; den_info[i].p; i++)
                 { int v = valuation1(bb, den_info[i].p);
@@ -3130,7 +3105,7 @@ static long find_points_work_1(ratpoints_args *args,
                   { flag = 0; break; }
                 }
                 if(flag)
-                {
+                { fill_bp_list(bb, bp_list, args, sieve_list);
                   total += sift(bb, survivors, args, which_bits, bits,
                                 sieve_list, &bp_list[0],
                                 &quit, process, info);
@@ -3156,7 +3131,6 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
         unsigned long keep_bits; /* the tests on b mod 64, as one word */
         long w, w_low = args->b_low >> LONG_SHIFT;
         long w_high = args->b_high >> LONG_SHIFT;
@@ -3174,18 +3148,6 @@ static long find_points_work_1(ratpoints_args *args,
         { printf("  Jacobi symbol test %s\n",
                  fast_jacobi ? "by Legendre symbols" : "by jacobi1/jacobi");
         }
-        fflush(NULL);
-#endif
-
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
-        }
-
-#ifdef DEBUG
-        printf("\n  bp_list initialized\n");
         fflush(NULL);
 #endif
 
@@ -3278,29 +3240,7 @@ static long find_points_work_1(ratpoints_args *args,
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
-            { long n;
-              long d = b - last_b;
-
-              /* fill bp_list; see the note at the same place above */
-              if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-              RP_BP_TIC(t_bp);
-              { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                        : args->sp3;
-
-                for(n = 0; n < nv; n++)
-                { long bp = bp_list[n] + d;
-                  long p = sieve_list[n]->p;
-
-                  while(bp >= p) { bp -= p; }
-                  bp_list[n] = bp;
-                }
-                for(n = nv; n < args->sp3; n++)
-                { bp_list[n] = mod(b, sieve_list[n]->p); }
-                args->sp3_valid = args->sp3;
-              }
-              RP_BP_TOC(t_bp, args->sp3);
-              last_b = b;
-
+            { fill_bp_list(b, bp_list, args, sieve_list);
               total += sift(b, survivors, args, which_bits, bits,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
@@ -3324,42 +3264,12 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        long last_b = args->b_low;
-
-        { long n;
-
-          for(n = 0; n < args->sp3; n++)
-          { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
-          args->sp3_valid = args->sp3;
-        }
 
         for(b = args->b_low; b <= args->b_high; b++)
         { ratpoints_bit_array bits = num_bits[b & 0xf];
 
           if(EXT0(bits))
-          { long n;
-            long d = b - last_b;
-
-            /* fill bp_list; see the note at the same place above */
-            if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-            RP_BP_TIC(t_bp);
-            { long nv = (args->sp3_valid < args->sp3) ? args->sp3_valid
-                                                      : args->sp3;
-
-              for(n = 0; n < nv; n++)
-              { long bp = bp_list[n] + d;
-                long p = sieve_list[n]->p;
-
-                while(bp >= p) { bp -= p; }
-                bp_list[n] = bp;
-              }
-              for(n = nv; n < args->sp3; n++)
-              { bp_list[n] = mod(b, sieve_list[n]->p); }
-              args->sp3_valid = args->sp3;
-            }
-            RP_BP_TOC(t_bp, args->sp3);
-            last_b = b;
-
+          { fill_bp_list(b, bp_list, args, sieve_list);
             total += sift(b, survivors, args, which_bits, bits,
                           sieve_list, &bp_list[0],
                           &quit, process, info);

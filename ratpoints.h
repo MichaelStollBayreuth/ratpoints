@@ -302,7 +302,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  unsigned long n_bits; unsigned long n_coprime;
                  unsigned long n_checks; unsigned long n_sifts;
                  unsigned long n_words_2;
-                 unsigned long adapt_at; long sp3_max; long sp3_valid;
+                 unsigned long adapt_at; long sp3_max;
                  double check_rel;
                }
         ratpoints_args;
