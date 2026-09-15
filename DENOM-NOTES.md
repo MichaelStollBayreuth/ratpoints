@@ -177,8 +177,10 @@ from 30 to 64: with the word walk a prime in the arrays costs four
 instructions per 64 denominators, and 30 was what the compiled primes alone
 already reached at 200000 (the review measured `-F 53` to change nothing
 there, because the cap was not what limited the arrays; the table was).
-Nothing changes below a height bound of 63001, and no reference output
-pins the list of excluded denominators.
+Nothing changes below a height bound of 66049 = 257^2, the first prime
+past the compiled table squared (17161 with `PRIME_SIZE` 7; never with 10,
+where the table is all of `prime[]`), and no reference output pins the
+list of excluded denominators.
 
 Not done, and not to be done: the review's remark that with the arrays
 complete the Jacobi factor in `run_shape` would be 0.65 rather than 0.5.
@@ -477,4 +479,34 @@ that matters, 6057 bytes, holds), and the count "10^5 to 10^10 on 16 of
 21" (13 of 21, the other three between 500 and 10^4).  Its last finding is
 the one worth the most: the review's "0.65" for `run_shape`'s Jacobi
 factor is 0.53 by exact count, so that parked remark is withdrawn above.
-All applied.
+All applied (1c3775e).
+
+**The skeptic** set out to prove the branch wrong and reported that it
+could not.  It ran its own differential test of `jacobi_test` against
+both old symbol routines (578.8 million comparisons over 5788 leading
+coefficients and every `b` to 10^5, plus 3.6 million just below 2^32; no
+mismatch; the refusals exactly the documented ones), checked the exactness
+of `RP_MULDIV`/`RP_MULMOD` on 34 million values including the ends of the
+range, matched the branchless gcd against Euclid on 48 million pairs,
+transcribed the old and the new denominator loop side by side and ran them
+on 200000 randomized configurations -- 117 million denominators visited in
+the identical sequence, every boundary the brief names included --,
+compared the run-time forbidden-divisor patterns bit for bit with the
+definition and word for word with `sieves0`, ran about 2000 paired
+old-against-new invocations (degrees 4 to 8, heights 1 to 5e9, `-F` 0 to
+1000, `-A` 0 to 2, degenerate and reversed denominator ranges, windows
+beyond 2^32 that take every fallback), showed with the `RP_PRIME_STATS`
+build that the two trees do the same work counter for counter (852 runs,
+also where `-A 2` demonstrably moves `sp2`), ran everything under ASan and
+UBSan including a harness that drives 48 curves of alternating height
+bounds through one `args` so that the P13 buffer grows, is reused smaller
+and grows again, and confirmed with `objdump` that `accepted`, `relprime`
+and `stage3` are inlined and `fill_checks` is not.  Its findings: a failed
+`malloc` for the P13 patterns recorded a capacity the buffer did not have
+(fixed: the length is set on success only, and without memory the primes
+beyond the table are dropped for that curve); the `run_shape` comment
+still explaining the bit convention by a shift the loop no longer does
+(fixed); the P13 threshold in these notes, 63001, which is 66049 = 257^2
+at the default `PRIME_SIZE` and moves with it (fixed above); the manual's
+fallback sentence, now naming all four conditions; and the same comment
+findings as the sweep, already applied.  Nothing else.

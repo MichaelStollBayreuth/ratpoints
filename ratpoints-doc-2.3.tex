@@ -1451,9 +1451,9 @@ each factor is the Legendre symbol of $b' \bmod q_i$ modulo~$q_i$ times a
 sign that depends on $b' \bmod 4$, and the first two factors depend on $b'
 \bmod 8$. The program tabulates the non-squares modulo each~$q_i$ once per
 curve, so that the test costs one multiplication and one table look-up per
-prime factor of~$l$; when $l$ has a prime factor above $1021$ or more than
-sixteen odd prime factors, or the denominators exceed $2^{32}$, it falls back
-on the binary algorithm.
+prime factor of~$l$; when $l$ has a prime factor above $1021$, or more odd
+prime factors than the tables allow for (sixteen, or 8~KB), or the
+denominators exceed $2^{32}$, it falls back on the binary algorithm.
 
 When $p$ divides~$l$, the congruence says nothing, since $F(a,b)$ is then
 $0$ mod~$p$; the valuation does. Write $v_p(b) = m \ge 1$ and let $w_j$ be

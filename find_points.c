@@ -1652,8 +1652,8 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       nums *= count/RUN_SHAPE_SAMPLES;
     }
     /* b congruent to j modulo 64 is tested against bit j of den_bits (the
-     * loop shifts before it tests, which is what puts b and the bit index
-     * in step) and against num_bits[b mod 16] */
+     * word for the denominators 64w..64w+63 has b at bit b mod 64) and
+     * against num_bits[b mod 16] */
     for(j = 0; j < 64; j++)
     { if(((den_bits >> j) & 1UL) && EXT0(num_bits[j & 0xf])) { good++; } }
     keep = (double)good/64.0;
@@ -1964,7 +1964,12 @@ static long sieving_info(ratpoints_args *args,
     if(words > args->forb_words_len)
     { free(args->forb_words);
       args->forb_words = malloc(words*sizeof(unsigned long));
-      args->forb_words_len = words;
+      args->forb_words_len = (args->forb_words == NULL) ? 0 : words;
+    }
+    if(words > args->forb_words_len)
+    { /* no memory for the patterns: do without the primes beyond the table,
+       * which are the last entries added */
+      while(fba > first && forb_ba[fba-1].start == NULL) { fba--; }
     }
     { unsigned long *row = (unsigned long *)args->forb_words;
 
