@@ -2383,9 +2383,15 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
           /* The bit arrays are not written here.  The first phase's
            * first prime ANDs the 2-adic pattern in as it sieves, which
            * saves a store and a load on every one of them; what is left
-           * for sift0 to do afterwards is the two boundary words and the
-           * padding, and it is told about them like this. */
-          { long mask_low = 0, mask_high = 0, n_pad = 0;
+           * for sift0 to do afterwards is the two boundary words, and it
+           * is told about them like this.  The range is not padded to a
+           * multiple of RATPOINTS_CHUNK either, since 2.3: sift0 sieves
+           * the bit arrays past the last whole chunk in narrower legs.
+           * (Until then the padding was sieved with every prime of the
+           * first phase, walked by the scan of the second and zeroed --
+           * a seventh of all bit arrays swept at height 16383, and four
+           * fifths of them at height 1000.) */
+          { long mask_low = 0, mask_high = 0;
 
             if(w_low0 == w_low)
             /* lower bits of the first bit array are to be set to zero */
@@ -2394,17 +2400,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             /* upper bits of the last bit array are to be set to zero */
             { mask_high = RBA_LENGTH * w_high - high; }
 
-#if (RATPOINTS_CHUNK > 1)
-            /* if necessary, increase the range to a multiple of
-             * RATPOINTS_CHUNK; the extra bit arrays are zeroed there too */
-            while((range + n_pad)%RATPOINTS_CHUNK != 0) { n_pad++; }
-            range += n_pad; w_high0 += n_pad;
-#endif
-
             total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
                                       survivors, bits16, mask_low, mask_high,
-                                      n_pad, &ssp[0], &csp[0],
-                                      quit, process, info);
+                                      &ssp[0], &csp[0], quit, process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
   } }
@@ -2611,7 +2609,9 @@ static long find_points_work_1(ratpoints_args *args,
   { long s = 2*CEIL(height, LONG_LENGTH);
     if(args->array_size > s) { args->array_size = s; }
   }
-  /* make sure that array size is a multiple of RATPOINTS_CHUNK */
+  /* make sure that array size is a multiple of RATPOINTS_CHUNK, so that of
+   * the blocks a numerator interval is cut into only the last one can end
+   * in a partial chunk (see _ratpoints_sift0) */
   args->array_size = CEIL(args->array_size, RATPOINTS_CHUNK)*RATPOINTS_CHUNK;
   if(args->sturm > LONG_LENGTH - 2) { args->sturm = LONG_LENGTH - 2; }
 
