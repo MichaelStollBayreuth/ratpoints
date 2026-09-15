@@ -471,11 +471,6 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 #else
 # define RP_UNROLL_REGS
 #endif
-#ifdef RP_TAIL_NOUNROLL  /* experiment: keep the loop over the primes rolled */
-# define RP_TAIL_PRIMES _Pragma("GCC unroll 1")
-#else
-# define RP_TAIL_PRIMES
-#endif
 static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
            ratpoints_bit_array *surv, ratpoints_bit_array bits16,
            const sieve_spec *sieves, long sp1)
@@ -485,10 +480,12 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
 
   /* The pragmas make gcc unroll the loops over the registers before it
    * decides what to keep in registers: at -O2 it would otherwise unroll
-   * them too late, and reg[] would be an array on the stack. */
+   * them too late, and reg[] would be an array on the stack.  The loop
+   * over the primes is left to -funroll-loops, which unrolls it by four;
+   * kept rolled it saves 1.5 KB of code and costs a quarter to one per
+   * cent of instructions, and the cycles do not tell the two apart. */
   RP_UNROLL_REGS
   for(i = 0; i < w; i++) { reg[i] = bits16 & siv[i]; }
-  RP_TAIL_PRIMES
   for(n = 1; n < sp1; n++)
   { siv = sieves[n].start + off;
     RP_UNROLL_REGS
@@ -914,24 +911,26 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
     /* The tail: the bit arrays past the last whole chunk, fewer than
      * RATPOINTS_CHUNK of them, in legs of 8, 4, 2 and 1 registers, one leg
-     * for each set bit of the length.  Each leg starts where the wider ones
-     * stopped, which is the length with its own bit and the ones below it
-     * cleared.  (Until 2.3 the range was padded up to a whole chunk
-     * instead, and the padding sieved with every prime, walked by the scan
-     * below and zeroed: a seventh of all bit arrays swept at height 16383,
-     * four fifths at height 1000.) */
+     * for each set bit of the length, the widest first.  Each leg starts
+     * where the wider ones stopped, which is the part of the length above
+     * its own bit; for the widest leg that is a constant zero, and writing
+     * it as one matters: with a variable offset gcc keeps eight index
+     * registers for that leg and spills them.  (Until 2.3 the range was
+     * padded up to a whole chunk instead, and the padding sieved with every
+     * prime, walked by the scan below and zeroed: a seventh of all bit
+     * arrays swept at height 16383, four fifths at height 1000.) */
     { long t = w_high - w_high_full;
 
 #if (RATPOINTS_CHUNK > 8)
-      if(t & 8) { tail_leg(8, t & ~15L, surv, bits16, sieves, sp1); }
+      if(t & 8) { tail_leg(8, 0, surv, bits16, sieves, sp1); }
 #endif
 #if (RATPOINTS_CHUNK > 4)
-      if(t & 4) { tail_leg(4, t & ~7L, surv, bits16, sieves, sp1); }
+      if(t & 4) { tail_leg(4, t & 8, surv, bits16, sieves, sp1); }
 #endif
 #if (RATPOINTS_CHUNK > 2)
-      if(t & 2) { tail_leg(2, t & ~3L, surv, bits16, sieves, sp1); }
+      if(t & 2) { tail_leg(2, t & 12, surv, bits16, sieves, sp1); }
 #endif
-      if(t & 1) { tail_leg(1, t & ~1L, surv, bits16, sieves, sp1); }
+      if(t & 1) { tail_leg(1, t & 14, surv, bits16, sieves, sp1); }
     }
   }
 
