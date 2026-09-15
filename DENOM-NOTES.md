@@ -83,3 +83,29 @@ random products of primes below 1024 with random signs and powers of two,
 two beyond a long): 575 million comparisons, no mismatch; the set-up
 refuses a prime beyond the table and a height bound beyond 2^32 as
 designed.  All suites byte-identical.
+
+### P12: the denominators a word at a time
+
+The checked loop visited every `b` from `b_low` to `b_high`: load
+`num_bits[b & 0xf]`, shift the word of forbidden-divisor bits by one, test
+both, branch -- a dozen instructions for each of the 71 per cent of the
+denominators that those two tests reject (the review's count), and one
+reload of the word per 64.  Two of the three tests depend on `b mod 64`
+alone: bit `b mod 64` of `den_bits`, and whether `num_bits[b mod 16]` has
+any bit set at all (the value of that array only matters once `b` is
+sifted).  So they are folded into one word per curve (`keep_bits`), the
+forbidden-divisor arrays are ANDed into it once per word of 64 denominators
+as before, the first and the last word are masked at `b_low` and `b_high`,
+and the loop walks the set bits with `RP_CTZL`, as the extraction in
+`sift.c` does; a rejected denominator costs nothing, and the per-denominator
+work starts at the Jacobi test.  The convention is the one PARAM-NOTES
+recorded: `b` is bit `b mod 64` of word `b div 64` (the old loop shifted
+before it tested, which is what put the two in step), and `den_bits` is
+laid out the same way.
+
+The order of the denominators is unchanged, so the points come out in the
+same order.  Checked, besides the suites, by running the old and the new
+program over 16 denominator ranges that start and end inside a word (`-dl 1
+-du 1`, `63 65`, `64 64`, `127 128`, `3999 4000`, ...) on seven curves of
+degrees 5 to 8, with and without the Jacobi test and the forbidden divisors
+(`-j`, `-F 0`, `-F 1`): 560 runs, identical output.

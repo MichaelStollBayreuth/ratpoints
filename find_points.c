@@ -3157,7 +3157,9 @@ static long find_points_work_1(ratpoints_args *args,
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
         long last_b = args->b_low;
-        unsigned long b_bits;
+        unsigned long keep_bits; /* the tests on b mod 64, as one word */
+        long w, w_low = args->b_low >> LONG_SHIFT;
+        long w_high = args->b_high >> LONG_SHIFT;
         /* the Jacobi symbol test as a product of Legendre symbols, when the
          * leading coefficient allows it; see jacobi_setup */
         jacobi_info ji;
@@ -3187,49 +3189,65 @@ static long find_points_work_1(ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        { forbidden_entry *fba = &forb_ba[0];
-          long b_low = args->b_low;
-          long w_low = (b_low-1) >> LONG_SHIFT;
+        /* Two of the tests on a denominator depend on b mod 64 alone -- bit
+         * b mod 64 of den_bits, and whether num_bits[b mod 16] has any bit
+         * set -- and the forbidden-divisor arrays are words indexed by b mod
+         * 64 as well.  So the denominators are taken a word of 64 at a time:
+         * the word of those that pass all three tests is one AND per array,
+         * and the loop below visits only the bits that are set, which on a
+         * random curve are a third of the denominators.  Bit j of the word
+         * for w stands for b = 64*w + j. */
+        { long j;
+          unsigned long nm = 0;
 
-          b_bits = den_bits;
+          for(j = 0; j < LONG_LENGTH; j++)
+          { if(EXT0(num_bits[j & 0xf])) { nm |= 1UL << j; } }
+          keep_bits = den_bits & nm;
+        }
+        { forbidden_entry *fba = &forb_ba[0];
+
           while(fba->p)
           { fba->curr = fba->start + mod(w_low, fba->p);
-            b_bits &= *(fba->curr);
             fba++;
           }
-          b_bits >>= (b_low-1) & LONG_MASK;
         }
 
 #ifdef DEBUG
-          printf("\n  initial b_bits = %*.*lx\n", WIDTH, WIDTH, b_bits);
-          fflush(NULL);
+        printf("\n  keep_bits = %*.*lx\n", WIDTH, WIDTH, keep_bits);
+        fflush(NULL);
 #endif
 
-        for(b = args->b_low; b <= args->b_high; b++)
-        { ratpoints_bit_array bits = num_bits[b & 0xf];
+        for(w = w_low; w <= w_high; w++)
+        { unsigned long b_bits = keep_bits;
+          long base = w << LONG_SHIFT;
 
-          if((b & LONG_MASK) == 0)
-          { /* next b_bits */
-            forbidden_entry *fba = &forb_ba[0];
+          { forbidden_entry *fba = &forb_ba[0];
 
-            b_bits = den_bits;
             while(fba->p)
-            { fba->curr++;
+            { b_bits &= *(fba->curr);
+              fba->curr++;
               if(fba->curr == fba->end) { fba->curr = fba->start; }
-              b_bits &= *(fba->curr);
               fba++;
             }
           }
-          else
-          { b_bits >>= 1; }
+          /* the first and the last word may be entered part way */
+          if(w == w_low) { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
+          if(w == w_high)
+          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
 
 #ifdef DEBUG
-          printf("\n  b_bits = %*.*lx\n", WIDTH, WIDTH, b_bits);
+          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
           fflush(NULL);
 #endif
 
-          if((b_bits & 1) && EXT0(bits))
-          { /* the Jacobi symbol test comes first when it is the cheap one:
+          while(b_bits)
+          { ratpoints_bit_array bits;
+
+            b = base + RP_CTZL(b_bits);
+            b_bits &= b_bits - 1UL;
+            bits = num_bits[b & 0xf];
+
+            /* the Jacobi symbol test comes first when it is the cheap one:
              * a few multiplications against the divisions of the valuation
              * test, and it rejects half of what gets here */
             if(fast_jacobi && !jacobi_test(b, &ji))
@@ -3298,6 +3316,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
           }
+          if(quit) { break; }
         }
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
