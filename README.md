@@ -60,6 +60,20 @@ folded into the offset so that nothing is ever negative. Together they are worth
 `make test1` and `make test1many` and 7.5% of `make testhigh` and `make testhighmany` at the
 default code placement, between 4.5% and 7.5% at others.
 
+The loop over the denominators, and what is done once per denominator, have been reworked. The
+Jacobi symbol test on the denominators is evaluated as a product of Legendre symbols read from
+tables built once per curve, instead of by a binary algorithm run for each denominator, which was
+12% of `make test1` and a third of its branch mispredictions; the tests on `b mod 64` are applied
+to a word of 64 denominators at once and only the denominators that pass them are visited; the
+residues of `b` modulo the sieving primes are computed with a precomputed reciprocal instead of
+being stepped from the previous denominator by mispredicted conditional subtractions; the gcd that
+tests a candidate for lowest terms is branchless; the forbidden-divisor bit arrays cover every
+excluded prime up to the square root of the height bound, not only the compiled sieving primes
+(the default of `-F` is 64 now); and the third stage's per-denominator set-up happens only when a
+candidate reaches it. Together: 24% of `make test1`, 4% of `make test1many`, 6% of
+`make testhigh` and 2% of `make testhighmany` at the default code placement, and within a point of that at two others, with two thirds of the branch
+mispredictions of `make test1` gone.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single

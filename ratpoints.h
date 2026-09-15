@@ -89,7 +89,7 @@
 /* ...but only for a run long enough that the fixed costs of a prime no
  * longer matter.  A prime is set up once and then used for the whole run:
  * its sieve table is built at most p times however many numerators there
- * are, and its entry in bp_list is stepped once per denominator.  Per word
+ * are, and its entry in bp_list is computed once per denominator.  Per word
  * of numerators sieved those fall like 1/U, where U is the number of such
  * words the run will sweep, so the marginal condition for one more prime
  * has the shape
@@ -172,10 +172,14 @@
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
 #ifndef RATPOINTS_COST_BP
-# define RATPOINTS_COST_BP 24.0      /* one step of bp_list, per denominator */
+# define RATPOINTS_COST_BP 8.0       /* one entry of bp_list, per denominator:
+     the denominator reduced modulo the prime by a multiplication.  Measured
+     at 5.5 to 11 on the four test suites in September 2026, when the entry
+     stopped being stepped from the previous denominator (24 before, measured
+     10 to 38); the runs do not react to the value within the noise. */
 #endif
 /* and, for a prime that has a sieving table, filling in its sieve_spec once
- * for every denominator.  Measured at about the same as the bp_list step,
+ * for every denominator.  Measured at about the same as the bp_list entry,
  * and between them they are 13% of "make test1" -- a fixed cost per
  * denominator and per prime, which is what makes a short run want fewer
  * primes than a long one. */

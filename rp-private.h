@@ -380,8 +380,11 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
 # define RP_MULDIV(u, p, m) \
     ((long)(unsigned long)(((__uint128_t)(unsigned long)(u)*(m)) >> 64))
 #else
-# define RP_MULMOD(u, p, m) ((long)((unsigned long)(u) % (unsigned long)(p)))
-# define RP_MULDIV(u, p, m) ((long)((unsigned long)(u) / (unsigned long)(p)))
+/* the reciprocal is named so that the variables holding it stay used */
+# define RP_MULMOD(u, p, m) \
+    ((void)(m), (long)((unsigned long)(u) % (unsigned long)(p)))
+# define RP_MULDIV(u, p, m) \
+    ((void)(m), (long)((unsigned long)(u) / (unsigned long)(p)))
 #endif
 
 /* The largest value that is reduced that way; above it the callers fall
