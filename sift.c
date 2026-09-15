@@ -213,32 +213,9 @@ static void _rp_sink_report(void)
 { fprintf(stderr, "[stopafter] level=%d sink=%lu\n", RP_STOP_AFTER, _rp_sink); }
 #endif
 
-/* Reducing modulo one of the sieving primes, by multiplying rather than
- * dividing.  With m = 2^64/p rounded up, the remainder of u modulo p is the
- * top half of (m*u mod 2^64) * p; that is exact for every u below 2^32,
- * which every caller here checks for in its own way.  m is a property of the
- * prime, computed once per prime and curve and carried in the sieve entry.
- *
- * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead, which
- * is what the callers -- the third stage, the start of the first phase and
- * the row look-up of the second -- cost without this. */
-#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
-# define RP_MULMOD(u, p, m) \
-    ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
-                             * (unsigned long)(p)) >> 64))
-#else
-# define RP_MULMOD(u, p, m) ((long)((unsigned long)(u) % (unsigned long)(p)))
-#endif
-
-/* The largest value this file will reduce that way; above it the callers
- * fall back on the division.  See mod_mul() and stage3(). */
-#define RP_MULMOD_LIMIT 4294967295L
-/* The second phase keeps the value it reduces, a word number plus an offset
- * that carries RP_ROW_BIAS, below 2*RP_ROW_BIAS by the test at the head of
- * _ratpoints_sift0; that is only exact if the two limits agree.  An array
- * of negative size does not compile. */
-typedef char rp_row_bias_within_mulmod_limit[
-  (2*RP_ROW_BIAS - 1 <= RP_MULMOD_LIMIT) ? 1 : -1];
+/* The reductions modulo a prime by a multiplication, RP_MULMOD and
+ * RP_MULDIV, and the limit RP_MULMOD_LIMIT below which they are exact, are
+ * in rp-private.h; find_points.c uses them too. */
 
 /* Development switch: with -DRP_MOD_CHOICE the two ways of reducing a word
  * number modulo a prime live in the same binary, chosen by the environment
@@ -277,21 +254,9 @@ static inline long mod_mul(long a, long p, unsigned long m)
  * a0 + d*t.  Stepping through every bit position up to the highest one set
  * costs about thirty iterations for each bit that is actually there, at the
  * survival rate the parameters aim at, so go straight to the set bits
- * instead: the lowest is at __builtin_ctzl(w), and w &= w-1 clears it.
+ * instead: the lowest is at RP_CTZL(w) (rp-private.h), and w &= w-1 clears
+ * it.
  */
-#if defined(__GNUC__) || defined(__clang__)
-# define RP_CTZL(w) ((long)__builtin_ctzl(w))
-#else
-/* Only reached on a compiler without the builtin; the rest of this file
- * needs gcc anyway once bit-arrays are used, but the plain unsigned long
- * build does not, so keep it buildable. */
-static long RP_CTZL(unsigned long w)
-{ long t = 0;
-
-  while(!(w & 1UL)) { w >>= 1; t++; }
-  return(t);
-}
-#endif
 
 /* Body runs once per set bit of w, with a set to that bit's numerator and t
  * to its position.  w is consumed. */

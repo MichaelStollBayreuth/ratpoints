@@ -486,6 +486,123 @@ static inline int jacobi1(long b, const long lcf)
   }
 }
 
+/* The Jacobi symbol test on the denominators without the Jacobi symbol.
+ *
+ * What the test asks of a denominator b is that (lcf/b*) = 1, where b* is b
+ * with the prime factors of 2*lcf taken out; jacobi1 above computes exactly
+ * that, by a binary gcd-like loop of some two hundred instructions with half
+ * a dozen mispredicted branches, for about a quarter of all denominators.
+ * Written out with lcf = +-2^v * prod q_i^(e_i), the symbol is
+ *
+ *   (-1/b*)^neg * (2/b*)^v * prod_i (q_i/b*)^(e_i) ,
+ *
+ * where the first two factors depend on b* mod 8 alone, and quadratic
+ * reciprocity turns (q_i/b*) into the Legendre symbol (b* mod q_i / q_i)
+ * times a sign that depends on b* mod 4.  So the test needs a table of the
+ * non-squares modulo each odd prime factor of lcf with an odd exponent, and
+ * a table of eight signs; the primes with an even exponent contribute
+ * nothing, but still have to be taken out of b.  That makes the test one
+ * multiplication, one table look-up and one exclusive or per prime.
+ *
+ * jacobi_setup prepares this for one curve.  It applies when every odd prime
+ * factor of lcf is in prime[] (trial division finds them) and the
+ * denominators stay below 2^32 (the reductions multiply by a reciprocal, see
+ * RP_MULDIV); otherwise it says so, and the denominator loop calls jacobi1
+ * or jacobi as before.  A leading coefficient that fits a long always fits
+ * the tables: at most seven of its primes can have an odd exponent while
+ * their product stays below 2^63, and no seven take more than 6100 bytes. */
+#define RP_JACOBI_PRIMES 16   /* odd prime factors of lcf, at most */
+#define RP_JACOBI_TABLE 8192  /* bytes of non-square tables, at most */
+
+typedef struct { long nq;                   /* the odd primes of lcf */
+                 long q[RP_JACOBI_PRIMES];
+                 unsigned long magic[RP_JACOBI_PRIMES];
+                 const unsigned char *nonsq[RP_JACOBI_PRIMES];
+                   /* nonsq[i][r] = 1 iff r is a non-square modulo q[i];
+                      NULL when the exponent of q[i] is even */
+                 unsigned char sign[8];
+                   /* sign[b mod 8] = 1 iff the factors (-1/b), (2/b) and
+                      the reciprocity signs multiply to -1 */
+               } jacobi_info;
+
+static int jacobi_setup(jacobi_info *ji, unsigned char *tab, long tab_len,
+                        const mpz_t lcf, mpz_t tmp, long b_high)
+{ long i, v, n3 = 0, used = 0;
+  int neg = (mpz_sgn(lcf) < 0);
+
+  if(b_high > RP_MULMOD_LIMIT) { return(0); }
+  ji->nq = 0;
+  mpz_abs(tmp, lcf);
+  v = mpz_scan1(tmp, 0);
+  mpz_fdiv_q_2exp(tmp, tmp, v);
+  for(i = 0; i < PRIMES1000 && mpz_cmp_ui(tmp, 1) != 0; i++)
+  { long q = prime[i], e = 0; /* prime[] holds the odd primes */
+
+    if(!mpz_divisible_ui_p(tmp, q)) { continue; }
+    do { mpz_divexact_ui(tmp, tmp, q); e++; } while(mpz_divisible_ui_p(tmp, q));
+    if(ji->nq == RP_JACOBI_PRIMES) { return(0); }
+    ji->q[ji->nq] = q;
+    ji->magic[ji->nq] = ULONG_MAX/(unsigned long)q + 1;
+    if(e & 1)
+    { unsigned char *ns = tab + used;
+      long x, s;
+
+      if(used + q > tab_len) { return(0); }
+      used += q;
+      /* mark the squares x^2 mod q for 0 < x < q/2, which are all of them,
+       * stepping from x^2 to (x+1)^2 by 2x+1; entry 0 is never looked at */
+      for(x = 0; x < q; x++) { ns[x] = 1; }
+      for(x = 1, s = 1; x <= q/2; x++)
+      { ns[s] = 0;
+        s += 2*x + 1; if(s >= q) { s -= q; }
+      }
+      ji->nonsq[ji->nq] = ns;
+      if(q & 2) { n3++; } /* q = 3 mod 4: reciprocity brings a sign */
+    }
+    else { ji->nonsq[ji->nq] = NULL; }
+    ji->nq++;
+  }
+  if(mpz_cmp_ui(tmp, 1) != 0) { return(0); } /* a prime beyond the table */
+  for(i = 0; i < 8; i++)
+  { int s = 0;
+
+    /* (-1/b) = -1 and (q/b) = -(b/q) for q = 3 mod 4, both iff b = 3 mod 4 */
+    if((i & 3) == 3) { s ^= (n3 + neg) & 1; }
+    /* (2/b) = -1 iff b = 3 or 5 mod 8 */
+    if(i == 3 || i == 5) { s ^= v & 1; }
+    ji->sign[i] = s;
+  }
+  return(1);
+}
+
+/* Is (lcf/b*) = 1 ?  b > 0 is a denominator below 2^32. */
+static inline int jacobi_test(long b, const jacobi_info *ji)
+{ long i;
+  unsigned char s;
+
+  b >>= RP_CTZL((unsigned long)b); /* the odd part */
+  for(i = 0; i < ji->nq; i++)      /* take the primes of lcf out */
+  { long q = ji->q[i];
+    unsigned long m = ji->magic[i];
+
+    for(;;)
+    { long k = RP_MULDIV(b, q, m); /* b/q rounded down */
+
+      if(b - k*q) { break; }
+      b = k;
+    }
+  }
+  s = ji->sign[b & 7];
+  for(i = 0; i < ji->nq; i++)
+  { if(ji->nonsq[i])
+    { long q = ji->q[i];
+
+      s ^= ji->nonsq[i][b - RP_MULDIV(b, q, ji->magic[i])*q];
+    }
+  }
+  return(s == 0);
+}
+
 /************************************************************************
  * Set up information on possible denominators                          *
  * when polynomial is of odd degree with leading coefficient != +-1     *
@@ -3041,9 +3158,20 @@ static long find_points_work_1(ratpoints_args *args,
            * further prime as the run goes on */
         long last_b = args->b_low;
         unsigned long b_bits;
+        /* the Jacobi symbol test as a product of Legendre symbols, when the
+         * leading coefficient allows it; see jacobi_setup */
+        jacobi_info ji;
+        unsigned char jtab[RP_JACOBI_TABLE];
+        int fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
+                            && jacobi_setup(&ji, jtab, RP_JACOBI_TABLE,
+                                            c[degree], work[0], args->b_high);
 
 #ifdef DEBUG
         printf("\n  taking account of forbidden divisors of the denominator\n");
+        if(args->flags & RATPOINTS_USE_JACOBI)
+        { printf("  Jacobi symbol test %s\n",
+                 fast_jacobi ? "by Legendre symbols" : "by jacobi1/jacobi");
+        }
         fflush(NULL);
 #endif
 
@@ -3101,7 +3229,19 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
           if((b_bits & 1) && EXT0(bits))
-          { /* check if denominator is excluded: is v_p(b) one of the
+          { /* the Jacobi symbol test comes first when it is the cheap one:
+             * a few multiplications against the divisions of the valuation
+             * test, and it rejects half of what gets here */
+            if(fast_jacobi && !jacobi_test(b, &ji))
+            {
+#ifdef DEBUG
+              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+              fflush(NULL);
+#endif
+              continue;
+            }
+
+            /* check if denominator is excluded: is v_p(b) one of the
              * valuations the entry for p forbids? */
             for(forb = &forbidden[0];
                 forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
@@ -3116,7 +3256,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
             if(forb->p == 0
-                && (!(args->flags & RATPOINTS_USE_JACOBI)
+                && (fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
