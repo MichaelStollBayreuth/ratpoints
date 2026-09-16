@@ -130,9 +130,6 @@ typedef struct { long p; unsigned long mask; } forbidden_val;
      bit m of mask is set <==> v_p(b) = m is excluded.  Tested by division.
      See forbidden_valuations() for where these come from. */
 
-static const int squares16[16] = {1,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0};
- /* Says if a is a square mod 16, for a = 0..15 */
-
 /**************************************************************************
  * Initialization and cleanup of ratpoints_args structure                 *
  **************************************************************************/
@@ -790,246 +787,141 @@ static void setup_us1(ratpoints_args *args)
  * Consider 2-adic information                                          *
  ************************************************************************/
 
+/* Which numerators a denominator can have is decided modulo 64.  With D
+ * the degree of f rounded up to an even number, F(a,b) = b^D f(a/b) is a
+ * form of even degree D with integer coefficients, so F(a,b) mod 64 depends
+ * on a and b mod 64 only, and a point needs F(a,b) to be a square: one of
+ * the twelve residues
+ *   0, 1, 4, 9, 16, 17, 25, 33, 36, 41, 49, 57
+ * mod 64 -- bit s of RP_SQUARES64 is set for these s.  Modulo 16 the
+ * squares are four residues of sixteen, modulo 64 twelve of sixty-four; the
+ * finer modulus halves what is accepted when F = 0 mod 4 (an odd F is a
+ * square mod 64 exactly when it is one mod 8, so nothing changes there).
+ * The information costs nothing in the sieve -- a pattern of period 64 is
+ * one repeated word in every packing, just as one of period 16 was -- and
+ * 64 is where it stops paying: modulo 256 the squares are 44 of 256, which
+ * would remove one admissible class in twelve more -- a quarter of what
+ * going from 16 to 64 removes -- for sixteen times the set-up.
+ *
+ * For an odd denominator, b^D is the square of a unit, so F(a,b) is a
+ * square mod 64 exactly when f(a b^-1 mod 64) is.  For an even one the
+ * numerator is odd, a^D is the square of a unit, and F(a,b) = a^D frev(b/a)
+ * with frev(t) = t^D f(1/t) = c_0 t^D + c_1 t^(D-1) + ... + c_D (c_D = 0
+ * when the degree is odd), so F(a,b) is a square exactly when
+ * frev(b a^-1 mod 64) is.  Two words thus decide everything: bit k of fsq
+ * says that f(k) is a square mod 64, bit t of gsq that frev(t) is.  The
+ * rule is exact for every class of the denominator; the hand-derived
+ * congruences for f(odd/2), f(odd/4), ... of the mod-16 code are not
+ * needed. */
+#define RP_SQUARES64 0x0202021202030213UL
+
 static bit_selection get_2adic_info(ratpoints_args *args,
                                     unsigned long *den_bits,
                                     ratpoints_bit_array *num_bits)
 {
   mpz_t *c = args->cof;
   long degree = args->degree;
-  int is_f_square16[24];
-  long cmp[degree+1]; /* The coefficients of f reduced modulo 16 */
-  long npe = 0, npo = 0;
+  long D = degree + (degree & 1); /* the degree of the form F(a,b) */
+  unsigned long cm[D + 1];        /* the coefficients of f mod 64, cm[D] = 0
+                                   * for odd degree */
+  unsigned long fsq = 0UL;        /* bit k set: f(k) is a square mod 64 */
+  unsigned long gsq = 0UL;        /* bit t set, t even: frev(t) is one */
+  unsigned long nb[64];           /* the numerator patterns, one word each,
+                                   * before replication */
+  unsigned long db = 0UL;         /* the denominator classes with a pattern */
+  long npe, npo;                  /* admissible even and odd numerators of
+                                   * the odd denominators */
+  long b, k;
   bit_selection result;
 
 #ifdef DEBUG
   printf("\nget_2adic_info: start...\n"); fflush(NULL);
 #endif
 
-  /* compute coefficients mod 16 */
-  { long n;
+  /* the coefficients mod 64, as non-negative residues */
+  for(k = 0; k <= degree; k++) { cm[k] = mpz_fdiv_ui(c[k], 64); }
+  if(degree & 1) { cm[D] = 0UL; }
 
-    for(n = 0; n <= degree; n++) { cmp[n] = mpz_get_si(c[n]) & 0xf; }
+  /* the two tables by Horner's rule; the arithmetic of unsigned long is
+   * exact modulo 2^64, so the residue mod 64 is taken at the end */
+  for(k = 0; k < 64; k++)
+  { unsigned long s = cm[D];
+    long n;
+
+    for(n = D - 1; n >= 0; n--) { s = s*(unsigned long)k + cm[n]; }
+    if((RP_SQUARES64 >> (s & 0x3f)) & 1UL) { fsq |= 1UL << k; }
+  }
+  for(k = 0; k < 64; k += 2)
+  { unsigned long s = cm[0];
+    long n;
+
+    for(n = 1; n <= D; n++) { s = s*(unsigned long)k + cm[n]; }
+    if((RP_SQUARES64 >> (s & 0x3f)) & 1UL) { gsq |= 1UL << k; }
   }
 
-  /* determine if f(a) is a square mod 16, for a = 0..15 */
-  { long a;
+  /* The packing.  For an odd b, bit a of its pattern is bit a b^-1 of fsq,
+   * so the parities of numerator present in fsq are those present in the
+   * pattern of every odd denominator. */
+  npo = __builtin_popcountl(fsq & 0xaaaaaaaaaaaaaaaaUL);
+  npe = __builtin_popcountl(fsq & 0x5555555555555555UL);
+  result = (npe == 0) ? ((npo == 0) ? num_none : num_odd)
+                      : ((npo == 0) ? num_even : num_all);
 
-    for(a = 0 ; a < 16; a++)
-    { unsigned long s = cmp[degree];
-      long n;
+  for(b = 0; b < 64; b++) { nb[b] = 0UL; }
 
-      for(n = degree - 1 ; n >= 0 ; n--)
-      { s *= a;
-        s += cmp[n];
-      }
-      s &= 0xf;
-      if((is_f_square16[a] = squares16[s]))
-      { if(a & 1) { npo++; } else { npe++; } }
-  } }
+  /* Odd denominators: the numerator a is admissible for b when f(a b^-1)
+   * is a square, that is, when a = k b for a k with bit k of fsq set -- so
+   * every such k is scattered to a = k b in the pattern of every odd b.  In
+   * the num_odd and num_even packings bit j of a pattern stands for the
+   * numerator 2j+1 or 2j, so the position is a >> 1 and the pattern has
+   * period 32; fsq holds bits of one parity only then. */
+  { unsigned long w = fsq;
+    long shift = (result == num_all) ? 0 : 1;
 
-  /* even denominators:
-     is_f_square16[16+k] says if f((2k+1)/2) is a square, k = 0..3
-     is_f_square16[20+k] says if f((2k+1)/4) is a square, k = 0,1
-     is_f_square16[22]   says if f(odd/8) is a square
-     is_f_square16[23]   says if f(odd/2^n), n >= 4, can be a square */
-  { long np1 = 0, np2 = 0, np3 = 0, np4 = 0;
-
-    if(degree & 1)
-    { long cf = 4*cmp[degree-1];
-      long a;
-
-      if(degree >= 2) { cf += 8*cmp[degree-2]; }
-      for(a = 0; a < 4; a++)
-      { /* Compute  2 c[d] k^d + 4 c[d-1] k^(d-1) + 8 c[d-2] k^(d-2), k = 2a+1.
-           Note that k^d = k mod 8, k^(d-1) = 1 mod 8. */
-        long k = 2*a+1;
-        long s = (2*k*cmp[degree] + cf) & 0xf;
-
-        if((is_f_square16[16+a] = squares16[s])) { np1++; }
-      }
-      if((is_f_square16[20] = squares16[(4*cmp[degree]) & 0xf])) { np2++; }
-      if((is_f_square16[21] = squares16[(12*cmp[degree]) & 0xf])) { np2++; }
-      if((is_f_square16[22] = squares16[(8*cmp[degree]) & 0xf])) { np3++; }
-      is_f_square16[23] = 1; np4++;
+    while(w)
+    { k = RP_CTZL(w); w &= w - 1UL;
+      for(b = 1; b < 64; b += 2)
+      { nb[b] |= 1UL << (((k*b) & 0x3f) >> shift); }
     }
-    else
-    { long cf = (degree >= 2) ? 4*cmp[degree-2] : 0;
-      long a;
-
-      if(degree >= 3) { cf += 8*cmp[degree-3]; }
-      for(a = 0; a < 4; a++)
-      { /* compute c[d] k^d + 2 c[d-1] k^(d-1) + ... + 8 c[d-3] k^(d-3),
-           k = 2a+1.
-           Note that k^d = k^2 mod 16, k^(d-1) = k mod 8. */
-        long k = 2*a+1;
-        long s = ((cmp[degree]*k + 2*cmp[degree-1])*k + cf) & 0xf;
-
-        if((is_f_square16[16+a] = squares16[s])) { np1++; }
-      }
-      if((is_f_square16[20] = squares16[(cmp[degree]+4*cmp[degree-1]) & 0xf]))
-      { np2++; }
-      if((is_f_square16[21] = squares16[(cmp[degree]+12*cmp[degree-1]) & 0xf]))
-      {np2++; }
-      if((is_f_square16[22] = squares16[(cmp[degree]+8*cmp[degree-1]) & 0xf]))
-      {np3++; }
-      if((is_f_square16[23] = squares16[cmp[degree]]))
-      { np4++; }
-    }
-
-#ifdef DEBUG
-    printf("\nis_f_square16 :\n[");
-    { long a;
-
-      for(a = 0; a < 23; a++) { printf("%d,", is_f_square16[a]); }
-      printf("%d]\n", is_f_square16[23]);
-    }
-    fflush(NULL);
-#endif
-
-    /* set den_bits */
-    { unsigned long db = 0;
-      long i;
-
-      if(npe + npo > 0) { db |= 0xaaaaUL; }
-         /* odd denominators */
-      if(np1 > 0)       { db |= 0x4444UL; }
-         /* v_2(den) = 1 */
-      if(np2 > 0)       { db |= 0x1010UL; }
-         /* v_2(den) = 2 */
-      if(np3 > 0)       { db |= 0x0100UL; }
-         /* v_2(den) = 3 */
-      if(np4 > 0)       { db |= 0x0001UL; }
-         /* v_2(den) >= 4 */
-
-      if(db == 0)
-      { /* No residue class of the denominator admits any numerator.  Return
-         * early -- but fill num_bits[] first: the caller reads all sixteen
-         * entries (bits_per_word, run_shape, the test on every denominator),
-         * and the denominator loop that runs when RATPOINTS_CHECK_DENOM is
-         * off looks at nothing else. */
-        long i;
-
-        for(i = 0; i < 16; i++) { num_bits[i] = zero; }
-        *den_bits = 0UL;
-        return(num_none);
-      }
-
-      for(i = 16; i < LONG_LENGTH; i <<= 1) { db |= db << i; }
-
-#ifdef DEBUG
-      printf("\nden_bits: %*.*lx\n", WIDTH, WIDTH, db);
-      fflush(NULL);
-#endif
-
-      *den_bits = db;
-    }
-
-    /* determine result */
-    result = (npe == 0) ? ((npo == 0) ? num_none : num_odd)
-                        : ((npo == 0) ? num_even : num_all);
   }
 
-  { /* set up num_bits[16] */
-    long b;
+  /* Even denominators: the numerator is odd and sift() forces the num_odd
+   * packing, bit j for the numerator 2j+1.  The numerator a is admissible
+   * for b when frev(b a^-1) is a square, that is, when b = t a for a t with
+   * bit t of gsq set -- so for every such t and every odd a, bit a >> 1 of
+   * the pattern of b = t a is set.  For t = 0 this is the class b = 0 mod
+   * 64, which admits every odd numerator when frev(0) = c_D is a square
+   * (always when the degree is odd). */
+  { unsigned long w = gsq;
 
-    /* odd denominators */
-    switch(result)
-    { case num_all:
-        for(b = 1; b < 16; b += 2)
-        { unsigned long work = 0;
-          unsigned long bit = 1;
-          long i;
-          long invb = b; /* inverse of b mod 16 */
+    while(w)
+    { long a, t = RP_CTZL(w);
 
-          if(b & 2) invb ^= 8;
-          if(b & 4) invb ^= 8;
-          for(i = 0; i < 16; i++)
-          { if(is_f_square16[(invb*i) & 0xf]) { work |= bit; }
-            bit <<= 1;
-          }
-          /* now repeat the 16 bits */
-          for(i = 16; i < LONG_LENGTH; i <<= 1) { work |= work << i; }
-          num_bits[b] = RBA(work);
-        }
-        break;
-
-      case num_odd:
-        for(b = 1; b < 16; b += 2)
-        { unsigned long work = 0;
-          unsigned long bit = 1;
-          long i;
-          long invb = b; /* inverse of b mod 16 */
-
-          if(b & 2) invb ^= 8;
-          if(b & 4) invb ^= 8;
-          for(i = 1; i < 16; i += 2)
-          { if(is_f_square16[(invb*i) & 0xf]) { work |= bit; }
-            bit <<= 1;
-          }
-          /* now repeat the 8 bits */
-          for(i = 8; i < LONG_LENGTH; i <<= 1) { work |= work << i; }
-          num_bits[b] = RBA(work);
-        }
-        break;
-
-      case num_even:
-        for(b = 1; b < 16; b += 2)
-        { unsigned long work = 0;
-          unsigned long bit = 1;
-          long i;
-          long invb = b; /* inverse of b mod 16 */
-
-          if(b & 2) invb ^= 8;
-          if(b & 4) invb ^= 8;
-          for(i = 0; i < 16; i += 2)
-          { if(is_f_square16[(invb*i) & 0xf]) { work |= bit; }
-            bit <<= 1;
-          }
-          /* now repeat the 8 bits */
-          for(i = 8; i < LONG_LENGTH; i <<= 1) { work |= work << i; }
-          num_bits[b] = RBA(work);
-        }
-        break;
-
-      case num_none:
-        for(b = 1; b < 16; b += 2) { num_bits[b] = zero; }
+      w &= w - 1UL;
+      for(a = 1; a < 64; a += 2) { nb[(t*a) & 0x3f] |= 1UL << (a >> 1); }
     }
+  }
 
-    /* v_2(den) = 1 : only odd numerators */
-    for(b = 1; b < 8; b += 2)
-    { unsigned long work;
-      unsigned long bit;
-      long i;
+  /* bit b of den_bits: the denominators b mod 64 have a pattern at all */
+  for(b = 0; b < 64; b++) { if(nb[b]) { db |= 1UL << b; } }
+  *den_bits = db;
 
-      work = 0; bit = 1;
-      for(i = 1; i < 16; i += 2)
-      { if(is_f_square16[16 + (((b*i)>>1) & 0x3)]) { work |= bit; }
-        bit <<= 1;
-      }
-      /* now repeat the 8 bits */
-      for(i = 8; i < LONG_LENGTH; i <<= 1) { work |= work << i; }
-      num_bits[2*b] = RBA(work);
-    }
+#ifdef DEBUG
+  printf("\nfsq = %016lx, gsq = %016lx, den_bits = %016lx\n", fsq, gsq, db);
+  fflush(NULL);
+#endif
 
-    /* v_2(den) = 2 : only odd numerators */
-    for(b = 1; b < 4; b += 2)
-    { unsigned long work = 0;
-      unsigned long bit = 1;
-      long i;
+  /* The patterns, replicated to the word.  When no class of the denominator
+   * admits a numerator they are all zero, and the caller reads them all
+   * (bits_per_word, run_shape, the test on every denominator). */
+  for(b = 0; b < 64; b++)
+  { unsigned long w = nb[b];
+    long i;
 
-      work = 0; bit = 1;
-      for(i = 1; i < 8; i += 2)
-      { if(is_f_square16[20 + (((b*i)>>1) & 0x1)]) { work |= bit; }
-        bit <<= 1;
-      }
-      /* now repeat the 4 bits */
-      for(i = 4; i < LONG_LENGTH; i <<= 1) { work |= work << i; }
-      num_bits[4*b] = RBA(work);
-    }
-
-    /* v_2(den) = 3, >= 4 : only odd numerators */
-    num_bits[8] = (is_f_square16[22]) ? RBA(~(0UL)) : zero;
-    num_bits[0] = (is_f_square16[23]) ? RBA(~(0UL)) : zero;
+    /* a pattern over the odd or the even numerators alone has period 32 */
+    if((b & 1) == 0 || result != num_all)
+    { for(i = 32; i < LONG_LENGTH; i <<= 1) { w |= w << i; } }
+    num_bits[b] = RBA(w);
   }
 
 #ifdef DEBUG
@@ -1551,10 +1443,10 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * 16383.
  *
  * Nothing here needs any sieving.  The denominators that get sifted are
- * those that pass the 2-adic mask on b, have an admissible numerator at all,
- * are not divisible by a forbidden divisor and pass the Jacobi symbol test
- * where it applies; the first three are periodic and are counted exactly,
- * and the fourth lets through half of what is left.  The numerators of one
+ * those whose class mod 64 admits a numerator, that are not divisible by a
+ * forbidden divisor and that pass the Jacobi symbol test where it applies;
+ * the first two are periodic and are counted exactly, and the third lets
+ * through half of what is left.  The numerators of one
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
  * cent.
@@ -1607,10 +1499,11 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       }
       nums *= count/RUN_SHAPE_SAMPLES;
     }
-    /* only the mask on b mod 16 applies, and b = k^2 mod 16 has period 8 */
-    for(j = 0; j < 8; j++)
-    { if(EXT0(num_bits[(j*j) & 0xf])) { good++; } }
-    keep = (double)good/8.0;
+    /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
+     * in k */
+    for(j = 0; j < 32; j++)
+    { if(EXT0(num_bits[(j*j) & 0x3f])) { good++; } }
+    keep = (double)good/32.0;
   }
   else if(args->flags & RATPOINTS_USE_SQUARES1)
   { /* squares times the divisors of the leading coefficient */
@@ -1633,8 +1526,9 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
         }
         count += c;
       }
-      for(j = 0; j < 8; j++, tried++)
-      { if(EXT0(num_bits[(divisors[n]*j*j) & 0xf])) { good++; } }
+      for(j = 0; j < 32; j++, tried++)
+      { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
+        { good++; } }
     }
     if(tried) { keep = (double)good/(double)tried; }
   }
@@ -1651,11 +1545,10 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       }
       nums *= count/RUN_SHAPE_SAMPLES;
     }
-    /* b congruent to j modulo 64 is tested against bit j of den_bits (the
-     * word for the denominators 64w..64w+63 has b at bit b mod 64) and
-     * against num_bits[b mod 16] */
-    for(j = 0; j < 64; j++)
-    { if(((den_bits >> j) & 1UL) && EXT0(num_bits[j & 0xf])) { good++; } }
+    /* bit j of den_bits is set exactly when the denominators congruent to j
+     * modulo 64 have a numerator pattern (the word for the denominators
+     * 64w..64w+63 has b at bit b mod 64) */
+    good = __builtin_popcountl(den_bits);
     keep = (double)good/64.0;
 
     if(args->flags & RATPOINTS_CHECK_DENOM)
@@ -2085,7 +1978,7 @@ static long sieving_info(ratpoints_args *args,
    *
    * S is the expected number of survivors a denominator still has when the
    * stage begins.  It is the number of numerators the denominator considers,
-   * thinned by the sixteen-fold pre-sieve and by the primes of the first two
+   * thinned by the 2-adic pre-sieve and by the primes of the first two
    * phases, and thinned again by the test for common factors, which runs
    * before this stage and which no prime can help with: a numerator sharing
    * a factor with the denominator stands for a fraction that has already
@@ -2230,7 +2123,7 @@ static long sieving_info(ratpoints_args *args,
 
 static
 long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
-          bit_selection which_bits, ratpoints_bit_array bits16,
+          bit_selection which_bits, ratpoints_bit_array bits64,
           ratpoints_sieve_entry **sieve_list, long *bp_list, int *quit,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
@@ -2401,7 +2294,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             { mask_high = RBA_LENGTH * w_high - high; }
 
             total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
-                                      survivors, bits16, mask_low, mask_high,
+                                      survivors, bits64, mask_low, mask_high,
                                       &ssp[0], &csp[0], quit, process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
@@ -2494,7 +2387,7 @@ long find_points_work(ratpoints_args *args,
 
   /* sp3 is a working field the caller never sets, and the three _used
    * fields are outputs: they stay 0 when the search ends before it has
-   * chosen its primes (no real points, nothing admissible mod 16, ...). */
+   * chosen its primes (no real points, nothing admissible mod 64, ...). */
   args->sp3 = 0;
   args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
   result = find_points_work_1(args, process, info);
@@ -2539,7 +2432,7 @@ static long find_points_work_1(ratpoints_args *args,
   ratpoints_sieve_entry **sieve_list = (ratpoints_sieve_entry **)args->sieve_list;
   bit_selection which_bits = num_all;
   unsigned long den_bits;
-  ratpoints_bit_array num_bits[16];
+  ratpoints_bit_array num_bits[64];
 
   args->flags &= RATPOINTS_FLAGS_INPUT_MASK;
   args->flags |= RATPOINTS_CHECK_DENOM;
@@ -2857,7 +2750,7 @@ static long find_points_work_1(ratpoints_args *args,
 
   /* deal with f mod powers of 2 */
   if(args->flags & RATPOINTS_VERBOSE)
-  { printf("Obtain information from the polynomial mod 16:\n"); }
+  { printf("Obtain information from the polynomial mod 64:\n"); }
   which_bits = get_2adic_info(args, &den_bits, &num_bits[0]);
   /* which_bits says whether to consider even and/or odd numerators
      when the denominator is odd.
@@ -2868,17 +2761,17 @@ static long find_points_work_1(ratpoints_args *args,
      Bit k in num_bits[b] is 0 is numerators congruent to
      k (which_bits = den_all) / 2k (which_bits = den_even) /
      2k+1 (which_bits = den_odd)
-     need not be considered for denominators congruent to b mod 16.
+     need not be considered for denominators congruent to b mod 64.
    */
 
   if(den_bits == 0 && !point_at_infty)
-  { /* No residue class of the denominator mod 16 admits any numerator, so
+  { /* No residue class of the denominator mod 64 admits any numerator, so
      * there is no affine point.  There is none at infinity either: an odd
-     * degree always leaves the class v_2(b) >= 4 admissible, so the degree
-     * is even, and the leading coefficient then is not a square mod 16,
+     * degree always leaves the class b = 0 mod 64 admissible, so the degree
+     * is even, and the leading coefficient then is not a square mod 64,
      * hence not a square (the test on point_at_infty only says so). */
     if(args->flags & RATPOINTS_VERBOSE)
-    { printf("  no denominator admits a numerator mod 16 ==> no points\n\n"); }
+    { printf("  no denominator admits a numerator mod 64 ==> no points\n\n"); }
     return(total);
   }
 
@@ -2891,9 +2784,9 @@ static long find_points_work_1(ratpoints_args *args,
             : (which_bits == num_odd) ? "odd"
             : "all");
     printf("\nden_bits: %*.*lx\n", WIDTH, WIDTH, den_bits);
-    printf("\nnum_bits for b = 15, 14, ..., 0 mod 16 "
+    printf("\nnum_bits for b = 63, 62, ..., 0 mod 64 "
            "[high numerators to the left]:");
-    for(i = 15; i >= 0; i--, c++)
+    for(i = 63; i >= 0; i--, c++)
     { if((c & (0xff >> LONG_SHIFT)) == 0) { printf("\n"); }
       printf(" %*.*lx", WIDTH, WIDTH, EXT0(num_bits[i]));
     }
@@ -2917,7 +2810,7 @@ static long find_points_work_1(ratpoints_args *args,
   }
   { /* The mean number of bits set in one word of a bit-array on entry to
      * the sieve.  num_bits[b] holds the admissible numerators for
-     * denominators b mod 16, as one word repeated through the bit-array, so
+     * denominators b mod 64, as one word repeated through the bit-array, so
      * the population count of that word is what is wanted; the denominators
      * with no admissible numerator at all are skipped, so the mean is taken
      * over the non-zero entries only.
@@ -2928,7 +2821,7 @@ static long find_points_work_1(ratpoints_args *args,
     double bits_per_word = 0.0;
     { long i, nz = 0, tot = 0;
 
-      for(i = 0; i < 16; i++)
+      for(i = 0; i < 64; i++)
       { long c = __builtin_popcountl(EXT0(num_bits[i]));
 
         if(c) { tot += c; nz++; }
@@ -3089,7 +2982,7 @@ static long find_points_work_1(ratpoints_args *args,
 
         for(b = 1; bb = b*b, bb <= args->b_high; b++)
         { if(bb >= args->b_low)
-          { ratpoints_bit_array bits = num_bits[bb & 0xf];
+          { ratpoints_bit_array bits = num_bits[bb & 0x3f];
 
             if(TEST(bits))
             { fill_bp_list(bb, bp_list, args, sieve_list);
@@ -3101,7 +2994,7 @@ static long find_points_work_1(ratpoints_args *args,
 
 #ifdef DEBUG
             else
-            { printf("\nb = %ld: excluded mod 16\n", b);
+            { printf("\nb = %ld: excluded mod 64\n", b);
               fflush(NULL);
             }
 #endif
@@ -3130,7 +3023,7 @@ static long find_points_work_1(ratpoints_args *args,
           for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
           { if(bb >= args->b_low)
             { int flag = 1;
-              ratpoints_bit_array bits = num_bits[bb & 0xf];
+              ratpoints_bit_array bits = num_bits[bb & 0x3f];
 
               if(EXT0(bits))
               { long i;
@@ -3152,7 +3045,7 @@ static long find_points_work_1(ratpoints_args *args,
 
 #ifdef DEBUG
               else
-              { printf("\nb = %ld: excluded mod 16\n", b);
+              { printf("\nb = %ld: excluded mod 64\n", b);
                 fflush(NULL);
               }
 #endif
@@ -3168,7 +3061,6 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        unsigned long keep_bits; /* the tests on b mod 64, as one word */
         long w, w_low = args->b_low >> LONG_SHIFT;
         long w_high = args->b_high >> LONG_SHIFT;
         /* the Jacobi symbol test as a product of Legendre symbols, when the
@@ -3188,21 +3080,14 @@ static long find_points_work_1(ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        /* Two of the tests on a denominator depend on b mod 64 alone -- bit
-         * b mod 64 of den_bits, and whether num_bits[b mod 16] has any bit
-         * set -- and the forbidden-divisor arrays are words indexed by b mod
-         * 64 as well.  So the denominators are taken a word of 64 at a time:
-         * the word of those that pass all three tests is one AND per array,
+        /* The 2-adic test on a denominator depends on b mod 64 alone -- bit
+         * b mod 64 of den_bits says whether its class has a numerator
+         * pattern -- and the forbidden-divisor arrays are words indexed by b
+         * mod 64 as well.  So the denominators are taken a word of 64 at a
+         * time: the word of those that pass both tests is one AND per array,
          * and the loop below visits only the bits that are set, which on a
          * random curve are a third of the denominators.  Bit j of the word
          * for w stands for b = 64*w + j. */
-        { long j;
-          unsigned long nm = 0;
-
-          for(j = 0; j < LONG_LENGTH; j++)
-          { if(EXT0(num_bits[j & 0xf])) { nm |= 1UL << j; } }
-          keep_bits = den_bits & nm;
-        }
         { forbidden_entry *fba = &forb_ba[0];
 
           while(fba->p)
@@ -3212,12 +3097,12 @@ static long find_points_work_1(ratpoints_args *args,
         }
 
 #ifdef DEBUG
-        printf("\n  keep_bits = %*.*lx\n", WIDTH, WIDTH, keep_bits);
+        printf("\n  den_bits = %*.*lx\n", WIDTH, WIDTH, den_bits);
         fflush(NULL);
 #endif
 
         for(w = w_low; w <= w_high; w++)
-        { unsigned long b_bits = keep_bits;
+        { unsigned long b_bits = den_bits;
           long base = w << LONG_SHIFT;
 
           { forbidden_entry *fba = &forb_ba[0];
@@ -3244,7 +3129,7 @@ static long find_points_work_1(ratpoints_args *args,
 
             b = base + RP_CTZL(b_bits);
             b_bits &= b_bits - 1UL;
-            bits = num_bits[b & 0xf];
+            bits = num_bits[b & 0x3f];
 
             /* the Jacobi symbol test comes first when it is the cheap one:
              * a few multiplications against the divisions of the valuation
@@ -3303,7 +3188,7 @@ static long find_points_work_1(ratpoints_args *args,
            * further prime as the run goes on */
 
         for(b = args->b_low; b <= args->b_high; b++)
-        { ratpoints_bit_array bits = num_bits[b & 0xf];
+        { ratpoints_bit_array bits = num_bits[b & 0x3f];
 
           if(EXT0(bits))
           { fill_bp_list(b, bp_list, args, sieve_list);
@@ -3315,7 +3200,7 @@ static long find_points_work_1(ratpoints_args *args,
 
 #ifdef DEBUG
           else
-          { printf("\nb = %ld: excluded mod 16\n", b);
+          { printf("\nb = %ld: excluded mod 64\n", b);
             fflush(NULL);
           }
 #endif

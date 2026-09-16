@@ -1152,7 +1152,7 @@ take the further limb.
 
 $S$ is estimated from the number of numerators a denominator has to consider
 --- which follows from the positivity intervals, the height bound and the
-range of denominators --- thinned by the sixteen-fold pre-sieve, by the
+range of denominators --- thinned by the 2-adic pre-sieve, by the
 primes of the first two stages, and by the proportion of numerators that are
 coprime to the denominator. That last factor is there because the test for
 common factors runs before this stage and not after it. It has to: a
@@ -1405,10 +1405,11 @@ the projections of the connected components of the curve over~$\R$.
 \textbf{John Cremona} suggested that in some cases, one can determine beforehand
 that all points will have odd `numerators'~$a$, and so we can pack the
 bits more tightly by only representing odd numbers. This approach can be
-extended. We first find all solutions mod~$16$ (higher powers of~$2$ would
-be possible, but not very likely to give a significant improvement). Then for every
-residue class mod~$16$ of the denominator~$b$, we can find the residue
-classes mod~$16$ of potential numerators~$a$. If there are none, then we
+extended. We first find all solutions mod~$64$ (mod~$16$ before
+version~2.3; the modulus is discussed with the other changes of that
+version below). Then for every
+residue class mod~$64$ of the denominator~$b$, we can find the residue
+classes mod~$64$ of potential numerators~$a$. If there are none, then we
 can eliminate $b$ as a denominator altogether. If all potential $a$'s are
 even or odd (this will always be the case for even denominators), we can
 restrict the sieving to such numerators.
@@ -1777,7 +1778,7 @@ are documented to mean for curves outside the ones they were tuned on.
 
 The first sieving phase no longer reads the bit arrays it is about to
 overwrite. Every bit array starts from the same pattern of admissible
-numerators modulo~16, and that pattern used to be written into all of them on
+numerators modulo~64, and that pattern used to be written into all of them on
 a pass of its own before the phase began; the first prime now ANDs it in as
 it sieves, so the pass is gone and with it one store and one load for every
 bit array --- 1.7\,$\cdot\,10^{10}$ of them in \texttt{make testhigh}. The
@@ -1807,6 +1808,26 @@ $11.4\%$ at three placements of the code), $6.5\%$ of \texttt{make
 test1many}, $2\%$ of \texttt{make testhigh}, between nothing and $2.5\%$
 of \texttt{make testhighmany}, and a fifth of the run at the height bounds
 1000 and 4000.
+
+The information from the polynomial modulo a power of~$2$ is taken
+modulo~$64$ instead of modulo~$16$. The pattern of admissible numerators
+that the first prime \texttt{AND}s into every bit array is one repeated
+$64$-bit word whatever its period, so the finer modulus costs the sieve
+nothing, and the squares are $12$ of the $64$ residues modulo~$64$ against
+$4$ of~$16$: where $b^D f(a/b) \equiv 0 \bmod 4$ the coarser modulus let
+twice as much through. The even denominators are decided exactly as well:
+with $a$ odd, $F(a,b) = a^D\, \tilde f(b/a)$, where $\tilde f(t) = t^D
+f(1/t)$ is the reversed polynomial, an integer polynomial in~$t$, and $a^D$
+is the square of a unit, so one table of $\tilde f$ modulo~$64$ replaces
+the hand-derived congruences. On random curves the first phase needs half
+a prime less and performs $4.5\%$ fewer \texttt{AND}s; the set-up costs
+$2260$ instructions more per curve, so a run at height~$100$ is $0.7\%$
+longer and the gain begins at height~$200$. It is worth $3\%$ of
+\texttt{make test1} and of \texttt{make testhigh}, $1.5\%$ of \texttt{make
+test1many}, about $1\%$ of \texttt{make testhighmany}, and between $2$
+and $3\%$ at height bounds from $200$ to~$4000$. Modulo~$256$ would remove
+one admissible class in twelve more, a quarter of what the step from $16$
+to~$64$ removes, for sixteen times the set-up, and is not done.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
@@ -1841,7 +1862,7 @@ program returned before it had looked at the points at infinity, so that
 \texttt{ratpoints '-1000000000 0 0 1' 45} printed nothing where
 \verb+-s+ printed $(1:0:0)$, and after a reversal the lost point is an
 affine point of the given curve. When no residue class of the denominator
-modulo~16 admitted any numerator, the array of numerator patterns was read
+modulo~16 (the modulus of the time) admitted any numerator, the array of numerator patterns was read
 before it had been filled; by default the answer was still right, but the
 choice of parameters was not reproducible, and with \verb+-j -F 0+ the
 program printed nondeterministic points outside the height bound after a

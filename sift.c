@@ -474,7 +474,7 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
 # endif
 #endif
 static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
-           ratpoints_bit_array *surv, ratpoints_bit_array bits16,
+           ratpoints_bit_array *surv, ratpoints_bit_array bits64,
            const sieve_spec *sieves, long sp1)
 { ratpoints_bit_array reg[8]; /* the widest leg */
   const ratpoints_bit_array *siv = sieves[0].start + off;
@@ -487,7 +487,7 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
    * kept rolled it saves about 1.5 KB of sift0's 8 KB and costs 0.3 to 1.3
    * per cent of instructions, and the cycles do not tell the two apart. */
   RP_UNROLL_REGS
-  for(i = 0; i < w; i++) { reg[i] = bits16 & siv[i]; }
+  for(i = 0; i < w; i++) { reg[i] = bits64 & siv[i]; }
   for(n = 1; n < sp1; n++)
   { siv = sieves[n].start + off;
     RP_UNROLL_REGS
@@ -510,7 +510,7 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
  * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, ratpoints_bit_array bits16,
+           ratpoints_bit_array *survivors, ratpoints_bit_array bits64,
            long mask_low, long mask_high, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info)
@@ -536,7 +536,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * into it is this pattern, with the two ends cleared after the phase. */
   { printf("\nsift0(b = %ld) @ start: %ld bit arrays from ",
            b, w_high - w_low);
-    PRINT_RBA(bits16);
+    PRINT_RBA(bits64);
     printf("\n  mask_low = %ld, mask_high = %ld\n", mask_low, mask_high);
     fflush(NULL);
   }
@@ -563,7 +563,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * negligible over a short one, which is the case at a small height bound
    * -- so read bits_in as an upper bound, and compare it with bits_1 rather
    * than trusting it absolutely. */
-  _rp_bits_in += (unsigned long long)(w_high - w_low)*_rp_popcnt(&bits16);
+  _rp_bits_in += (unsigned long long)(w_high - w_low)*_rp_popcnt(&bits64);
   _rp_and1 += (unsigned long long)(w_high - w_low)*sp1;
 #endif
   RP_TIC(_rp_t1);
@@ -612,7 +612,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * and there is no first prime; write the pattern here instead. */
     long i;
 
-    for(i = w_high - w_low; i; i--) { survivors[i-1] = bits16; }
+    for(i = w_high - w_low; i; i--) { survivors[i-1] = bits64; }
   }
   else
   { ratpoints_bit_array *surv = survivors;
@@ -633,52 +633,52 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
        * thing because AND is commutative. */
       ratpoints_bit_array *siv0 = sieves[0].start;
 #if (RATPOINTS_CHUNK >= 1)
-      ratpoints_bit_array reg0 = bits16 & *siv0++;
+      ratpoints_bit_array reg0 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 2)
-      ratpoints_bit_array reg1 = bits16 & *siv0++;
+      ratpoints_bit_array reg1 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 3)
-      ratpoints_bit_array reg2 = bits16 & *siv0++;
+      ratpoints_bit_array reg2 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 4)
-      ratpoints_bit_array reg3 = bits16 & *siv0++;
+      ratpoints_bit_array reg3 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 5)
-      ratpoints_bit_array reg4 = bits16 & *siv0++;
+      ratpoints_bit_array reg4 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 6)
-      ratpoints_bit_array reg5 = bits16 & *siv0++;
+      ratpoints_bit_array reg5 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 7)
-      ratpoints_bit_array reg6 = bits16 & *siv0++;
+      ratpoints_bit_array reg6 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 8)
-      ratpoints_bit_array reg7 = bits16 & *siv0++;
+      ratpoints_bit_array reg7 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 9)
-      ratpoints_bit_array reg8 = bits16 & *siv0++;
+      ratpoints_bit_array reg8 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 10)
-      ratpoints_bit_array reg9 = bits16 & *siv0++;
+      ratpoints_bit_array reg9 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 11)
-      ratpoints_bit_array reg10 = bits16 & *siv0++;
+      ratpoints_bit_array reg10 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 12)
-      ratpoints_bit_array reg11 = bits16 & *siv0++;
+      ratpoints_bit_array reg11 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 13)
-      ratpoints_bit_array reg12 = bits16 & *siv0++;
+      ratpoints_bit_array reg12 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 14)
-      ratpoints_bit_array reg13 = bits16 & *siv0++;
+      ratpoints_bit_array reg13 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 15)
-      ratpoints_bit_array reg14 = bits16 & *siv0++;
+      ratpoints_bit_array reg14 = bits64 & *siv0++;
 #endif
 #if (RATPOINTS_CHUNK >= 16)
-      ratpoints_bit_array reg15 = bits16 & *siv0++;
+      ratpoints_bit_array reg15 = bits64 & *siv0++;
 #endif
 
       while(siv0 >= sieves[0].end) { siv0 -= sieves[0].p; }
@@ -929,15 +929,15 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 # error "the tail legs cover lengths up to 15: widen them with the ladder"
 #endif
 #if (RATPOINTS_CHUNK > 8)
-      if(t & 8) { tail_leg(8, 0, surv, bits16, sieves, sp1); }
+      if(t & 8) { tail_leg(8, 0, surv, bits64, sieves, sp1); }
 #endif
 #if (RATPOINTS_CHUNK > 4)
-      if(t & 4) { tail_leg(4, t & 8, surv, bits16, sieves, sp1); }
+      if(t & 4) { tail_leg(4, t & 8, surv, bits64, sieves, sp1); }
 #endif
 #if (RATPOINTS_CHUNK > 2)
-      if(t & 2) { tail_leg(2, t & 12, surv, bits16, sieves, sp1); }
+      if(t & 2) { tail_leg(2, t & 12, surv, bits64, sieves, sp1); }
 #endif
-      if(t & 1) { tail_leg(1, t & 14, surv, bits16, sieves, sp1); }
+      if(t & 1) { tail_leg(1, t & 14, surv, bits64, sieves, sp1); }
     }
   }
 
@@ -952,7 +952,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * the arm anything is built with, so it pays for the pass instead. */
     { long i;
 
-      for(i = range; i; i--) { survivors[i-1] = bits16; }
+      for(i = range; i; i--) { survivors[i-1] = bits64; }
     }
 
     for(n = 0; n < sp1; n++)

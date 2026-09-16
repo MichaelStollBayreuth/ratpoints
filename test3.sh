@@ -10,7 +10,7 @@
 #  8-12 the positivity region misses the search domain: the points at
 #       infinity used to be dropped (8-10 in general, 11-12 for even degree
 #       with a square leading coefficient when reversal is suppressed)
-# 13-15 no denominator class admits a numerator mod 16: num_bits[] used to be
+# 13-15 no denominator class admits a numerator mod 64: num_bits[] used to be
 #       read uninitialised, which with -j -F 0 printed points outside the
 #       height bound after a 5000-fold blow-up.  13 and 15 print nothing
 #       either way; 14 shows the message of the early return, which the
@@ -40,7 +40,7 @@ $RP '-10000000 0 0 1' 100 -q
 $RP '-1000000 0 0 0 1' 10 -q -k
 $RP '-1000000 0 0 0 1' 10 -q -l -5 -u 5
 $RP '2 0 3' 200 -q -j -F 0 -x
-$RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 16'
+$RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 64'
 $RP '2 0 3' 300000 -q -j -F 0
 $RP '10 10 5 -7 0 3 -2' 16383 -q
 $RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 primes for second stage\|use 0 primes for third stage'
