@@ -136,8 +136,13 @@
  * Since S falls by a factor of r with every prime added, this stops of its
  * own accord; with survivors thin on the ground it stops at once, which is
  * what should happen, because then the per-denominator cost is all there is.
- * The number of primes can also be fixed outright, through the sp3_extra
- * field of ratpoints_args or with -P on the command line. */
+ * When no prime in hand pays but a prime of the mean density seen so far on
+ * the curve would, the stage looks at a further prime beyond num_primes
+ * (item 27), so the table buffer may grow past what the first two stages
+ * needed.  The number of primes can also be fixed outright, through the
+ * sp3_extra field of ratpoints_args or with -P on the command line; then
+ * the stage takes that many without the test above, and looks further only
+ * when the primes in hand run out. */
 #ifndef RATPOINTS_SP3_PER_SURVIVOR
 # define RATPOINTS_SP3_PER_SURVIVOR 0.055  /* one prime tested, per survivor */
 #endif
@@ -265,7 +270,9 @@
 #define RATPOINTS_DEFAULT_NUM_PRIMES 30    /* Default value for num_primes.
      Unless num_primes is set explicitly, this is where the search starts:
      sieving_info() looks at further primes when a curve does not leave
-     enough of them informative for sp2 to be sp1 + RATPOINTS_SP2_EXTRA. */
+     enough of them informative for sp2 to be sp1 + RATPOINTS_SP2_EXTRA, and
+     again when the third stage finds none in hand worth taking while a
+     prime of the density the curve has been offering would be. */
 #endif
 #ifndef RATPOINTS_DEFAULT_STURM
 #define RATPOINTS_DEFAULT_STURM 10         /* Default value for sturm_iter */

@@ -103,7 +103,7 @@ model, not an optimization, and its worth is in the counters.
 The counters (`prelim-extend.txt`; `runshape.py` pairs the per-curve
 lines of the statistics builds):
 
-| suite | exact checks base -> new | primes looked at (mean) | third-stage primes (mean) |
+| suite | exact checks base -> new | primes looked at (mean) | sieving primes in all, sp3 (mean) |
 |---|---|---|---|
 | test1 | 48819 -> 51836 | 30.0 -> 30.0 | 16.0 -> 15.9 (74 curves lose one, 10 gain one) |
 | test1many | 95953 -> 45029 | 33.0 -> 33.3 | 26.4 -> 26.8 (38 lose one or two, 34 gain one to six) |
@@ -116,7 +116,8 @@ lines of the statistics builds):
 Two effects are mixed here.  The extension looks further where the stage
 was starved: the two curves of testhighmany that gain six and seven
 third-stage primes are the one that started this (35 -> 41 primes looked
-at, 0 -> 6 taken; 254116 -> 5000-odd checks) and its neighbour, and they
+at, 0 -> 6 taken; 254116 -> 7867 checks, against 5573 before the mask) and
+its neighbour, and they
 are the whole of the suite's fall in checks -- 4.6 times fewer than
 before, and well below the 250903 of before item 26.  The corrected `U`
 is smaller on curves with even denominators, so `S`, the survivors per
@@ -144,12 +145,12 @@ The spread halves on the random curves (0.146 -> 0.077 in the log, at
 both heights), and the `num_all` curves, which the base over-predicted by
 6% at 16383 while the other packings ran 8% above their prediction, now
 sit where the others do: the base's mean near zero was two biases
-cancelling.  On the point-rich suites, all `num_all`, the over-prediction
-of 20% becomes an under-prediction of 1 to 8%.  What remains is common to
+cancelling.  On the point-rich suites, nearly all `num_all`, the
+over-prediction of 20 to 24% becomes an under-prediction of 1 to 8%.  What remains is common to
 every packing: `U` is under-predicted by 5 to 8% on random curves at
 both heights, which is the Jacobi factor -- run_shape says the symbol
 lets half the denominators through, the exact count (item 24's review)
-is 0.53 -- and at height 1000 by 60%, where each denominator's few
+is 0.53 -- and at height 1000 by 70%, where each denominator's few
 arrays are rounded up to whole ones and the estimate counts words.  Both
 are older than this branch and are noted in TODO.md's left-overs.
 

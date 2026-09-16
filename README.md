@@ -101,7 +101,7 @@ The choice of primes for the third sieving stage no longer starves. The stage us
 from those already looked at while each paid for itself and stop at the first that did not, asking
 for more only when none were left; on a curve with very many rational points the small primes say
 nothing and the informative ones come late, so one such curve of `make testhighmany` was left with
-no third stage at all and 250000 exact checks instead of 5000. Now the stage looks at a further
+no third stage at all and 250000 exact checks instead of 7900. Now the stage looks at a further
 prime whenever none in hand pays but a prime of the density the curve has been offering would. And
 the estimate of the run's length counts the numerators of even denominators at half width, which is
 what the sieve sweeps for them: it was too large by up to a third on such curves, and its spread

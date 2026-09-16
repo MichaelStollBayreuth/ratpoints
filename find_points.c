@@ -1529,6 +1529,8 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
         }
         count += c;
       }
+      /* every divisor's 32 classes weigh the same here, whatever its share
+       * of the denominators -- a bias keep has always had */
       for(j = 0; j < 32; j++, tried++)
       { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
         { good++; if(((divisors[n]*j) & 1) == 0) { good_even++; } }
@@ -2039,7 +2041,7 @@ static long sieving_info(ratpoints_args *args,
        * far, stands for the one about to be looked at.  On a curve with
        * very many rational points the small primes are useless and the
        * informative ones come late, and the stage used to stop at the first
-       * poor prime in hand although the next ones would have paid (TODO 27).
+       * poor prime in hand although the next ones would have paid (item 27).
        * When the caller fixed sp3 the stage takes what it is told to, and
        * looks further only when the pool is empty. */
       if(best < 0
@@ -2051,11 +2053,14 @@ static long sieving_info(ratpoints_args *args,
 
         if(!may_extend || pn_lim >= RATPOINTS_NUM_PRIMES) { break; }
         if(args->sp3_extra < 0)
-        { double r_typ = 0.0;
+        { double r_typ = 1.0; /* no informative prime seen: assume none */
           long n;
 
-          for(n = 0; n < pnp; n++) { r_typ += prec[n].r; }
-          if(pnp > 0) { r_typ /= (double)pnp; }
+          if(pnp > 0)
+          { r_typ = 0.0;
+            for(n = 0; n < pnp; n++) { r_typ += prec[n].r; }
+            r_typ /= (double)pnp;
+          }
           if(S*(1.0 - per_surv - r_typ) <= per_denom) { break; }
         }
         info = examine_prime(args, pn_lim, use_c_long, c_long,
