@@ -171,11 +171,24 @@ same, 252252 -> 497970).  Four of the thirty curves get fewer primes for
 their third stage: `bits_per_word` feeds the `may_extend` rule of
 `sieving_info`, which stops looking for further primes sooner when the mask
 is sharper; three of them lose one prime and the first curve of the suite
-(`456976 -448032 -255200 208380 61033 -12834 81`) has 29 instead of 37.  The suite still
+(`456976 -448032 -255200 208380 61033 -12834 81`) has 29 instead of 37 --
+and, the skeptic's review found, no third stage at all: the primes looked
+at fall from 43 to 35, the stage finds none worth taking among them, and
+that curve does 254116 exact checks instead of 5573 and needs 1.85% more
+instructions than before (both builds find its 346 points).  The other
+five curves whose prime choice changed all moved the favourable way.  The suite still
 comes out 1 to 1.5% faster because exact checks are cheap relative to
 sieving there, but it is the existing extension rule responding to a
-smaller `bits_per_word`, not a fault of the pattern -- a matter for the
-tuning of the rule, noted in TODO.md.
+smaller `bits_per_word`, not a fault of the pattern: the rule has no notion
+that the third stage needs primes too, and this change makes that bite.
+TODO.md item 27 is about the rule.
+
+A visible change for anyone scripting against `-x`: that option prints the
+sieve's survivors, and those legitimately differ -- the sharper pattern
+removes some, and the changed `bits_per_word` changes which primes are
+chosen, so the two lists are not even nested.  Every rational point is
+among the new survivors (the skeptic checked 490 cases); the points printed
+without `-x` are byte-identical throughout.
 
 `alt.sh` (`alt-mask64.log`): the plain 64-bit build, AVX-128, SSE, the
 emulated AVX-512, AVX without AVX2, `RATPOINTS_CHUNK=1`, `USE_LONG_IN_PHASE_2`,

@@ -2387,7 +2387,7 @@ long find_points_work(ratpoints_args *args,
 
   /* sp3 is a working field the caller never sets, and the three _used
    * fields are outputs: they stay 0 when the search ends before it has
-   * chosen its primes (no real points, nothing admissible mod 16, ...). */
+   * chosen its primes (no real points, nothing admissible mod 64, ...). */
   args->sp3 = 0;
   args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
   result = find_points_work_1(args, process, info);
@@ -3061,7 +3061,6 @@ static long find_points_work_1(ratpoints_args *args,
         long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
           /* sp3_max, not sp3: adapt_primes may reach for a
            * further prime as the run goes on */
-        unsigned long keep_bits; /* the tests on b mod 64, as one word */
         long w, w_low = args->b_low >> LONG_SHIFT;
         long w_high = args->b_high >> LONG_SHIFT;
         /* the Jacobi symbol test as a product of Legendre symbols, when the
@@ -3089,7 +3088,6 @@ static long find_points_work_1(ratpoints_args *args,
          * and the loop below visits only the bits that are set, which on a
          * random curve are a third of the denominators.  Bit j of the word
          * for w stands for b = 64*w + j. */
-        keep_bits = den_bits;
         { forbidden_entry *fba = &forb_ba[0];
 
           while(fba->p)
@@ -3099,12 +3097,12 @@ static long find_points_work_1(ratpoints_args *args,
         }
 
 #ifdef DEBUG
-        printf("\n  keep_bits = %*.*lx\n", WIDTH, WIDTH, keep_bits);
+        printf("\n  den_bits = %*.*lx\n", WIDTH, WIDTH, den_bits);
         fflush(NULL);
 #endif
 
         for(w = w_low; w <= w_high; w++)
-        { unsigned long b_bits = keep_bits;
+        { unsigned long b_bits = den_bits;
           long base = w << LONG_SHIFT;
 
           { forbidden_entry *fba = &forb_ba[0];
