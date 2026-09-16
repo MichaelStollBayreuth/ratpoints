@@ -130,7 +130,6 @@ typedef struct { long p; unsigned long mask; } forbidden_val;
      bit m of mask is set <==> v_p(b) = m is excluded.  Tested by division.
      See forbidden_valuations() for where these come from. */
 
-
 /**************************************************************************
  * Initialization and cleanup of ratpoints_args structure                 *
  **************************************************************************/
@@ -800,8 +799,9 @@ static void setup_us1(ratpoints_args *args)
  * square mod 64 exactly when it is one mod 8, so nothing changes there).
  * The information costs nothing in the sieve -- a pattern of period 64 is
  * one repeated word in every packing, just as one of period 16 was -- and
- * 64 is where it stops paying: modulo 256 the squares are 44 of 256, a
- * fifth more information for sixteen times the set-up.
+ * 64 is where it stops paying: modulo 256 the squares are 44 of 256, which
+ * would remove one admissible class in twelve more -- a quarter of what
+ * going from 16 to 64 removes -- for sixteen times the set-up.
  *
  * For an odd denominator, b^D is the square of a unit, so F(a,b) is a
  * square mod 64 exactly when f(a b^-1 mod 64) is.  For an even one the
@@ -838,10 +838,8 @@ static bit_selection get_2adic_info(ratpoints_args *args,
   printf("\nget_2adic_info: start...\n"); fflush(NULL);
 #endif
 
-  /* the coefficients mod 64 (mpz_get_si keeps the low bits and the sign of
-   * a coefficient that does not fit a long, which is all that is needed) */
-  for(k = 0; k <= degree; k++)
-  { cm[k] = (unsigned long)mpz_get_si(c[k]) & 0x3fUL; }
+  /* the coefficients mod 64, as non-negative residues */
+  for(k = 0; k <= degree; k++) { cm[k] = mpz_fdiv_ui(c[k], 64); }
   if(degree & 1) { cm[D] = 0UL; }
 
   /* the two tables by Horner's rule; the arithmetic of unsigned long is
@@ -1445,10 +1443,10 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * 16383.
  *
  * Nothing here needs any sieving.  The denominators that get sifted are
- * those that pass the 2-adic mask on b, have an admissible numerator at all,
- * are not divisible by a forbidden divisor and pass the Jacobi symbol test
- * where it applies; the first three are periodic and are counted exactly,
- * and the fourth lets through half of what is left.  The numerators of one
+ * those whose class mod 64 admits a numerator, that are not divisible by a
+ * forbidden divisor and that pass the Jacobi symbol test where it applies;
+ * the first two are periodic and are counted exactly, and the third lets
+ * through half of what is left.  The numerators of one
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
  * cent.
@@ -1529,7 +1527,8 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
         count += c;
       }
       for(j = 0; j < 32; j++, tried++)
-      { if(EXT0(num_bits[(divisors[n]*j*j) & 0x3f])) { good++; } }
+      { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
+        { good++; } }
     }
     if(tried) { keep = (double)good/(double)tried; }
   }
@@ -1979,7 +1978,7 @@ static long sieving_info(ratpoints_args *args,
    *
    * S is the expected number of survivors a denominator still has when the
    * stage begins.  It is the number of numerators the denominator considers,
-   * thinned by the sixteen-fold pre-sieve and by the primes of the first two
+   * thinned by the 2-adic pre-sieve and by the primes of the first two
    * phases, and thinned again by the test for common factors, which runs
    * before this stage and which no prime can help with: a numerator sharing
    * a factor with the denominator stands for a fraction that has already

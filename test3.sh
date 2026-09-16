@@ -10,7 +10,7 @@
 #  8-12 the positivity region misses the search domain: the points at
 #       infinity used to be dropped (8-10 in general, 11-12 for even degree
 #       with a square leading coefficient when reversal is suppressed)
-# 13-15 no denominator class admits a numerator mod 16: num_bits[] used to be
+# 13-15 no denominator class admits a numerator mod 64: num_bits[] used to be
 #       read uninitialised, which with -j -F 0 printed points outside the
 #       height bound after a 5000-fold blow-up.  13 and 15 print nothing
 #       either way; 14 shows the message of the early return, which the

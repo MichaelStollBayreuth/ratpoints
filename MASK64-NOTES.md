@@ -32,9 +32,10 @@ The squares mod 64 are the twelve residues 0, 1, 4, 9, 16, 17, 25, 33, 36,
 41, 49, 57; mod 16 they are four of sixteen.  The finer modulus changes
 nothing for odd F (an odd number is a square mod 64 exactly when it is one
 mod 8) and halves what is accepted where F = 0 mod 4: mod 16 the classes 0
-and 4 pass wholesale, mod 64 only 0, 4, 16 and 36 of the sixteen residues
-they contain.  Modulo 256 the squares are 44 of 256 -- a further fifth of
-the information for sixteen times the set-up; 64 is where it stops paying.
+and 4 pass wholesale, mod 64 only 0, 4, 16 and 36 of the eight residues mod 64
+they contain.  Modulo 256 the squares are 44 of 256, which would remove one
+admissible class in twelve more -- a quarter of what the step from 16 to 64
+removes -- for sixteen times the set-up; 64 is where it stops paying.
 
 Two words decide every class of the denominator exactly, with no lifting
 and no hand-derived congruences:
@@ -88,9 +89,10 @@ same thing since a b^-1 runs through all residues), so the word walk's
 second mask over `num_bits` and run_shape's AND of the two are redundant
 and went; run_shape counts the bits of `den_bits`.
 
-Elsewhere: `num_bits[16]` -> `[64]`, the eight index sites `b & 0xf` ->
-`b & 0x3f` (the review counted seven; the denominator walk of item 24
-added one), run_shape's square-denominator loops to period 32 (k^2 mod 64
+Elsewhere: `num_bits[16]` -> `[64]`; of the eight index sites `b & 0xf`
+(the review counted seven; the denominator walk of item 24 added one) six
+became `b & 0x3f` and two -- run_shape's AND and the walk's second mask --
+went, run_shape's square-denominator loops to period 32 (k^2 mod 64
 has period 32 in k), `bits_per_word` averaged over the 64 classes, the
 messages and comments, the DEBUG dump of the patterns.  The squares-mod-16
 table is gone.  sift.c does not change: `sift.o` is byte-identical to the
@@ -165,10 +167,11 @@ because no class of the denominator admits a numerator mod 64; they had
 no points before either, the output being byte-identical.
 The one thing to watch is the last column's last row: on the point-rich
 height-200000 suite the exact checks double (the verdict's skeptic saw the
-same, 252252 -> 497970).  One of the thirty curves loses a prime for its
-third stage: `bits_per_word` feeds the `may_extend` rule of `sieving_info`,
-which stops looking for further primes sooner when the mask is sharper, and
-that curve now has 29 instead of 37 third-stage primes.  The suite still
+same, 252252 -> 497970).  Four of the thirty curves get fewer primes for
+their third stage: `bits_per_word` feeds the `may_extend` rule of
+`sieving_info`, which stops looking for further primes sooner when the mask
+is sharper; three of them lose one prime and the first curve of the suite
+(`456976 -448032 -255200 208380 61033 -12834 81`) has 29 instead of 37.  The suite still
 comes out 1 to 1.5% faster because exact checks are cheap relative to
 sieving there, but it is the existing extension rule responding to a
 smaller `bits_per_word`, not a fault of the pattern -- a matter for the
@@ -180,3 +183,7 @@ emulated AVX-512, AVX without AVX2, `RATPOINTS_CHUNK=1`, `USE_LONG_IN_PHASE_2`,
 the references (the timing build's test3 differs by its report, as
 always), test2, testhigh and testhighmany reproduce theirs, valgrind is
 silent on the debug build and on two optimised runs.
+
+`make tune` runs on the merged tree, as it did for the trio and the tail
+leg; `sp1` falls by half a prime here, so the constants deserve the check.
+The result is recorded in TODO.md item 26.

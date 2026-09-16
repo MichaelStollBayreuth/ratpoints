@@ -43,7 +43,7 @@ thing no prediction can, namely that the non-reduced forms `(ka, kb)` of a ratio
 every prime test, so a floor of survivors outlives any amount of sieving.
 
 The first sieving phase no longer reads the bit arrays it is about to overwrite. Every bit array
-starts from the same pattern of admissible numerators modulo 16, and that pattern used to be
+starts from the same pattern of admissible numerators modulo 64, and that pattern used to be
 written into all of them on a pass of its own; the first prime now ANDs it in as it sieves, so the
 pass is gone and with it one store and one load per bit array. That is worth 5.6% of
 `make testhigh`, 5.3% of the degree suite at a height bound of 200000, 3.4% of
@@ -89,11 +89,13 @@ The information from the polynomial modulo a power of 2 is taken modulo 64 inste
 pattern of admissible numerators that the first prime ANDs into every bit array is one repeated
 64-bit word whatever its period, so the finer modulus costs the sieve nothing, and the squares are
 12 of the 64 residues modulo 64 against 4 of 16: where `b^D f(a/b)` is 0 mod 4 the coarser modulus
-let twice as much through. The even denominators are decided exactly as well, from
-`F(a,b) = a^D t^D f(1/t)` with `t = b/a`, in place of hand-derived congruences. The first phase
-needs half a prime less on average and does 4.5% fewer ANDs; worth 3% of `make test1` and of
-`make testhigh`, 1.5% of `make test1many`, about 1% of `make testhighmany`, and 2 to 3% at height
-bounds from 200 to 4000.
+let twice as much through. The even denominators are decided exactly as well: with `a` odd,
+`F(a,b) = a^D frev(b/a)`, where `frev(t) = t^D f(1/t)` is the reversed polynomial, an integer
+polynomial in `t`, and `a^D` is a unit square, so one table of `frev` modulo 64 replaces the
+hand-derived congruences. On random curves the first phase needs half a prime less and does 4.5%
+fewer ANDs; the set-up costs 2260 instructions more per curve, so a run at height 100 is 0.7%
+longer and the gain begins at height 200. Worth 3% of `make test1` and of `make testhigh`, 1.5% of
+`make test1many`, about 1% of `make testhighmany`, and 2 to 3% at height bounds from 200 to 4000.
 
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
@@ -146,7 +148,7 @@ advisable to run `make test` and compare the timings on your own machine.
 A review of the code in September 2026 found five bugs, fixed here and (the older ones) in 2.2.4:
 degree 1 crashed the Sturm sequence code; the points at infinity were lost when the positivity
 region of `f` missed the search domain; an array of numerator patterns was read before it was
-filled when no denominator class survived mod 16; the run-length estimate collapsed when only
+filled when no denominator class survived mod 16 (as the modulus then was); the run-length estimate collapsed when only
 even denominators survived, switching two sieving stages off; and the library wrote into input
 fields of `ratpoints_args`, so a program that fills the structure once and loops over curves ran
 every curve after the first with the first one's forbidden divisors, primes and search region. The
