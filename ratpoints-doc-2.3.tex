@@ -1405,10 +1405,11 @@ the projections of the connected components of the curve over~$\R$.
 \textbf{John Cremona} suggested that in some cases, one can determine beforehand
 that all points will have odd `numerators'~$a$, and so we can pack the
 bits more tightly by only representing odd numbers. This approach can be
-extended. We first find all solutions mod~$16$ (higher powers of~$2$ would
-be possible, but not very likely to give a significant improvement). Then for every
-residue class mod~$16$ of the denominator~$b$, we can find the residue
-classes mod~$16$ of potential numerators~$a$. If there are none, then we
+extended. We first find all solutions mod~$64$ (mod~$16$ before
+version~2.3; the modulus is discussed with the other changes of that
+version below). Then for every
+residue class mod~$64$ of the denominator~$b$, we can find the residue
+classes mod~$64$ of potential numerators~$a$. If there are none, then we
 can eliminate $b$ as a denominator altogether. If all potential $a$'s are
 even or odd (this will always be the case for even denominators), we can
 restrict the sieving to such numerators.
@@ -1807,6 +1808,21 @@ $11.4\%$ at three placements of the code), $6.5\%$ of \texttt{make
 test1many}, $2\%$ of \texttt{make testhigh}, between nothing and $2.5\%$
 of \texttt{make testhighmany}, and a fifth of the run at the height bounds
 1000 and 4000.
+
+The information from the polynomial modulo a power of~$2$ is taken
+modulo~$64$ instead of modulo~$16$. The pattern of admissible numerators
+that the first prime \texttt{AND}s into every bit array is one repeated
+$64$-bit word whatever its period, so the finer modulus costs the sieve
+nothing, and the squares are $12$ of the $64$ residues modulo~$64$ against
+$4$ of~$16$: where $b^D f(a/b) \equiv 0 \bmod 4$ the coarser modulus let
+twice as much through. The even denominators are decided exactly as well,
+from $F(a,b) = a^D\, t^D f(1/t)$ with $t = b/a$ and $a$ odd, in place of
+hand-derived congruences. The first phase needs half a prime less on
+average and performs $4.5\%$ fewer \texttt{AND}s; it is worth $3\%$ of
+\texttt{make test1} and of \texttt{make testhigh}, $1.5\%$ of \texttt{make
+test1many}, about $1\%$ of \texttt{make testhighmany}, and between $2$
+and $3\%$ at height bounds from $200$ to~$4000$. Modulo~$256$ would add a
+fifth of the information for sixteen times the set-up and is not done.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind

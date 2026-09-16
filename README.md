@@ -85,6 +85,16 @@ their number, which neither wrap the table pointers around nor store them back. 
 `make testhigh`, between nothing and 2.5% of `make testhighmany`, and a fifth of the run at height
 bounds of 1000 and 4000.
 
+The information from the polynomial modulo a power of 2 is taken modulo 64 instead of 16. The
+pattern of admissible numerators that the first prime ANDs into every bit array is one repeated
+64-bit word whatever its period, so the finer modulus costs the sieve nothing, and the squares are
+12 of the 64 residues modulo 64 against 4 of 16: where `b^D f(a/b)` is 0 mod 4 the coarser modulus
+let twice as much through. The even denominators are decided exactly as well, from
+`F(a,b) = a^D t^D f(1/t)` with `t = b/a`, in place of hand-derived congruences. The first phase
+needs half a prime less on average and does 4.5% fewer ANDs; worth 3% of `make test1` and of
+`make testhigh`, 1.5% of `make test1many`, about 1% of `make testhighmany`, and 2 to 3% at height
+bounds from 200 to 4000.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single
