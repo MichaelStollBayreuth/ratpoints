@@ -40,7 +40,7 @@ $RP '-10000000 0 0 1' 100 -q
 $RP '-1000000 0 0 0 1' 10 -q -k
 $RP '-1000000 0 0 0 1' 10 -q -l -5 -u 5
 $RP '2 0 3' 200 -q -j -F 0 -x
-$RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 16'
+$RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 64'
 $RP '2 0 3' 300000 -q -j -F 0
 $RP '10 10 5 -7 0 3 -2' 16383 -q
 $RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 primes for second stage\|use 0 primes for third stage'

@@ -307,8 +307,8 @@
 (1 : -1 : 0)
 (1 : 1 : 0)
 (1 : -1 : 0)
-Obtain information from the polynomial mod 16:
-  no denominator admits a numerator mod 16 ==> no points
+Obtain information from the polynomial mod 64:
+  no denominator admits a numerator mod 64 ==> no points
 0
 
 Polynomial is not square-free.
