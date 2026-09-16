@@ -1832,6 +1832,21 @@ and $3\%$ at height bounds from $200$ to~$4000$. Modulo~$256$ would remove
 one admissible class in twelve more, a quarter of what the step from $16$
 to~$64$ removes, for sixteen times the set-up, and is not done.
 
+The choice of primes for the third sieving stage no longer starves. The
+stage used to take primes from those already looked at while each paid for
+itself and stop at the first that did not, asking for more only when none
+were left; on a curve with very many rational points the small primes say
+nothing and the informative ones come late, so one curve of \texttt{make
+testhighmany} was left with no third stage at all and $250\,000$ exact
+checks in place of $5000$. Now the stage looks at a further prime whenever
+none in hand pays but a prime of the density the curve has been offering
+would. And the estimate of the run's length counts the numerators of even
+denominators at half width, which is what the sieve sweeps for them: it was
+too large by up to a third on such curves, and its spread over the random
+curves halves. Worth $1\%$ of \texttt{make test1many}, half a per cent of
+\texttt{make testhighmany} and nothing measurable elsewhere; the exact
+checks of \texttt{make testhighmany} fall by a factor of~$4.6$.
+
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
 a guard that asked for the leading coefficient to be a non-square modulo~$p$
