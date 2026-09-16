@@ -1483,13 +1483,14 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
   double keep = 1.0;    /* fraction of the candidates that reach sift() */
   double count = 0.0;   /* candidate denominators */
   double nums = 0.0;    /* numerators they sweep, before that fraction */
+  long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
+  long good_even = 0;   /* ... of which even */
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
   { /* the denominators are the squares in [b_low, b_high] */
     double klo = ceil(sqrt((double)args->b_low));
     double khi = floor(sqrt((double)args->b_high));
-    long good = 0;
 
     if(khi >= klo)
     { count = khi - klo + 1.0;
@@ -1502,14 +1503,16 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
      * in k */
     for(j = 0; j < 32; j++)
-    { if(EXT0(num_bits[(j*j) & 0x3f])) { good++; } }
+    { if(EXT0(num_bits[(j*j) & 0x3f]))
+      { good++; if((j & 1) == 0) { good_even++; } }
+    }
     keep = (double)good/32.0;
   }
   else if(args->flags & RATPOINTS_USE_SQUARES1)
   { /* squares times the divisors of the leading coefficient */
     long *divisors = (long *)args->divisors;
     long n;
-    long good = 0, tried = 0;
+    long tried = 0;
 
     for(n = 0; divisors[n]; n++)
     { double d = (double)divisors[n];
@@ -1528,14 +1531,14 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       }
       for(j = 0; j < 32; j++, tried++)
       { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
-        { good++; } }
+        { good++; if(((divisors[n]*j) & 1) == 0) { good_even++; } }
+      }
     }
     if(tried) { keep = (double)good/(double)tried; }
   }
   else
   { /* every denominator in the range is a candidate */
     double blo = (double)args->b_low, bhi = (double)args->b_high;
-    long good = 0;
 
     if(bhi >= blo)
     { count = bhi - blo + 1.0;
@@ -1549,6 +1552,7 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
      * modulo 64 have a numerator pattern (the word for the denominators
      * 64w..64w+63 has b at bit b mod 64) */
     good = __builtin_popcountl(den_bits);
+    good_even = __builtin_popcountl(den_bits & 0x5555555555555555UL);
     keep = (double)good/64.0;
 
     if(args->flags & RATPOINTS_CHECK_DENOM)
@@ -1563,15 +1567,22 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     }
   }
 
-  /* Only every other numerator is looked at unless both parities are in
-   * play.  That includes num_none, which says only that no odd denominator
-   * has an admissible numerator: the even denominators are still sieved,
-   * with num_odd forced in sift(), so exactly half the numerators are looked
-   * at for them.  (Setting nums to zero here put U on its floor of 1, which
-   * switched the second and third stages off for those curves.)  Not
-   * modelled: with num_all the even denominators also sweep only half, so U
-   * is over-estimated by up to a third there; see TODO item 18. */
-  if(which_bits != num_all) { nums *= 0.5; }
+  /* Only every other numerator is looked at for an even denominator (sift()
+   * forces the num_odd packing for those), and for an odd one too unless
+   * both parities are in play.  The classes counted above are equally
+   * frequent among the denominators, so the even ones are good_even of good
+   * of those kept.  This covers num_none, which says only that no odd
+   * denominator has an admissible numerator: the even denominators are still
+   * sieved, at half width.  (Setting nums to zero there put U on its floor
+   * of 1, which switched the second and third stages off for those curves;
+   * and counting the even denominators of a num_all curve at full width
+   * over-estimated U by up to a third.) */
+  if(good > 0)
+  { double odd = (which_bits == num_all) ? 1.0 : 0.5;
+
+    nums *= (odd*(double)(good - good_even) + 0.5*(double)good_even)
+            /(double)good;
+  }
 
   *n_denom = keep*count;
   *u_words = keep*nums/(double)LONG_LENGTH;
@@ -2008,15 +2019,45 @@ static long sieving_info(ratpoints_args *args,
     }
 
     while(sp3 < sp3_want)
-    { double r;
+    { long best = -1;
 
-      if(sp3 >= pnp)
-      { /* the primes looked at so far are used up: look at one more */
-        long coeffs_mod_p[degree+1];
+      /* the best of the primes not yet spoken for; only the ones this stage
+       * takes need to be in order, so this is a selection sort that stops
+       * as soon as the rule below does */
+      if(sp3 < pnp)
+      { long m;
+
+        best = sp3;
+        for(m = sp3 + 1; m < pnp; m++)
+        { if(prec[m].r < prec[best].r) { best = m; } }
+      }
+
+      /* When the pool holds no prime that pays for itself -- none at all, or
+       * none good enough -- look at a further prime, as long as the stage
+       * still has appetite for a prime of the quality this curve has been
+       * offering: r_typ, the mean density of the informative primes seen so
+       * far, stands for the one about to be looked at.  On a curve with
+       * very many rational points the small primes are useless and the
+       * informative ones come late, and the stage used to stop at the first
+       * poor prime in hand although the next ones would have paid (TODO 27).
+       * When the caller fixed sp3 the stage takes what it is told to, and
+       * looks further only when the pool is empty. */
+      if(best < 0
+         || (args->sp3_extra < 0
+             && S*(1.0 - per_surv - prec[best].r) <= per_denom))
+      { long coeffs_mod_p[degree+1];
         int *is_f_square;
         int info;
 
         if(!may_extend || pn_lim >= RATPOINTS_NUM_PRIMES) { break; }
+        if(args->sp3_extra < 0)
+        { double r_typ = 0.0;
+          long n;
+
+          for(n = 0; n < pnp; n++) { r_typ += prec[n].r; }
+          if(pnp > 0) { r_typ /= (double)pnp; }
+          if(S*(1.0 - per_surv - r_typ) <= per_denom) { break; }
+        }
         info = examine_prime(args, pn_lim, use_c_long, c_long,
                              &coeffs_mod_p[0], &is_f_square, &prec[pnp]);
         pn_lim++;
@@ -2024,26 +2065,15 @@ static long sieving_info(ratpoints_args *args,
         { return(prime[pn_lim-1]); /* no points mod p */ }
         if(info == 0) { continue; } /* it says nothing; try the next one */
         /* the third stage builds no table, so its primes are ranked by what
-         * they say alone, which is what the selection below does */
+         * they say alone, which is what the selection above does */
         prec[pnp].key = prec[pnp].r;
         pnp++;
+        continue; /* choose again with the new prime in the pool */
       }
 
-      /* the best of the primes not yet spoken for; only the ones this stage
-       * takes need to be in order, so this is a selection sort that stops
-       * as soon as the rule below does */
-      { long m, best = sp3;
-
-        for(m = sp3 + 1; m < pnp; m++)
-        { if(prec[m].r < prec[best].r) { best = m; } }
-        if(best != sp3)
-        { entry t = prec[sp3]; prec[sp3] = prec[best]; prec[best] = t; }
-      }
-
-      r = prec[sp3].r;
-      if(args->sp3_extra < 0 && S*(1.0 - per_surv - r) <= per_denom)
-      { break; }
-      S *= r;
+      if(best != sp3)
+      { entry t = prec[sp3]; prec[sp3] = prec[best]; prec[best] = t; }
+      S *= prec[sp3].r;
       sieve_list[sp3] = prec[sp3].ssp;
       sp3++;
     }
@@ -3218,12 +3248,12 @@ static long find_points_work_1(ratpoints_args *args,
   { static unsigned long long last_arrays = 0, last_dens = 0;
 
     fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
-            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu\n",
+            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu wb=%d\n",
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
             args->n_words, args->n_arrays, args->n_bits,
-            args->n_coprime, args->n_checks);
+            args->n_coprime, args->n_checks, (int)which_bits);
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif
