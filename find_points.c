@@ -2124,7 +2124,7 @@ static long sieving_info(ratpoints_args *args,
 
 static
 long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
-          bit_selection which_bits, ratpoints_bit_array bits16,
+          bit_selection which_bits, ratpoints_bit_array bits64,
           ratpoints_sieve_entry **sieve_list, long *bp_list, int *quit,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
@@ -2295,7 +2295,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             { mask_high = RBA_LENGTH * w_high - high; }
 
             total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
-                                      survivors, bits16, mask_low, mask_high,
+                                      survivors, bits64, mask_low, mask_high,
                                       &ssp[0], &csp[0], quit, process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
