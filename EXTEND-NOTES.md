@@ -58,8 +58,16 @@ pay.  The appetite test is what keeps the cost in check: `S`, the
 survivors per denominator when the stage begins, is small at small height
 bounds, so nothing extra is looked at there; at height 200000 on a
 point-rich curve it can look at every prime up to the bound (53 with
-`PRIME_SIZE` 8; `examine_prime` costs some thousand instructions each,
-nothing against such a run).  When the caller fixes `sp3` the stage takes
+`PRIME_SIZE` 8; `examine_prime` costs 8000 to 11000 instructions for the
+primes between 127 and 251 at degree 6, so the worst case -- all 23 primes
+beyond the default 30 examined and none taken -- is 223000 instructions per
+curve, half a run at height 100; the skeptic's review measured zero
+examinations by this rule on the 879 curves of test1 at heights 100, 1000
+and 16383, and at most one wasted examination on any curve it could find,
+with the observed maximum of primes looked at on testhighmany at 46, down
+from 48).  A wart goes with it: the sort of the untaken primes after the
+loop could hand the stage a prime the loop had never priced, which
+happened on 27 of the 98 point-rich curves at 16383 and on none now.  When the caller fixes `sp3` the stage takes
 what it is told and looks further only when the pool is empty, as before.
 On the curve that started this, `456976 -448032 -255200 208380 61033
 -12834 81` at height 200000, the base looks at 35 primes and the third
@@ -124,8 +132,20 @@ is smaller on curves with even denominators, so `S`, the survivors per
 denominator the third stage reckons with, is smaller too, and the stage
 takes one prime less on a twelfth of the random curves: test1's checks
 rise by 6% (3000 checks over 879 curves), which the cycles do not see.
-Whether the third-stage constants, fitted with the inflated `U`, want
-moving is for the tuning session after the sieve group.
+The skeptic's review separated the two parts: the corrected `U` alone
+raises the exact checks on every suite -- by 20% on test1many at 16383,
++0.32% of its instructions, and +0.26% of the instructions of the
+point-rich set at 1000, where the branch as a whole is a wash -- and on
+seven of those curves the smaller `U` also feeds back through
+`phase_2_offset` into the main loop's rule and drops five to seven primes
+from `pn_lim`; the extension alone is what pays.  Together they are a net
+gain everywhere but there.  Whether the third-stage constants, fitted with
+the inflated `U`, want moving is for the tuning session after the sieve
+group, and the left-overs in TODO.md say so.  The extension rule's appetite
+test also gates the case that used to extend unconditionally, the empty
+pool: on the point-rich set at 1000 the stage looks at fewer primes on 32
+curves and at more on none, +3% exact checks there, invisible in
+instructions.
 
 **The prediction of `U`.**  `log(Uact/Upred)` over the curves, mean and
 standard deviation, from the `[runshape]` lines (the base binary does not

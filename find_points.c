@@ -1533,7 +1533,10 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
        * of the denominators -- a bias keep has always had */
       for(j = 0; j < 32; j++, tried++)
       { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
-        { good++; if(((divisors[n]*j) & 1) == 0) { good_even++; } }
+        { good++;
+          if((((unsigned long)divisors[n]*(unsigned long)j) & 1) == 0)
+          { good_even++; }
+        }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -2024,8 +2027,8 @@ static long sieving_info(ratpoints_args *args,
     { long best = -1;
 
       /* the best of the primes not yet spoken for; only the ones this stage
-       * takes need to be in order, so this is a selection sort that stops
-       * as soon as the rule below does */
+       * takes need to be in order, so each round picks one, and the scan is
+       * repeated when a prime has been added to the pool */
       if(sp3 < pnp)
       { long m;
 
