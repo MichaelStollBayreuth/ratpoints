@@ -1169,9 +1169,12 @@ thirty the program looks at by default, but a curve with many rational points
 may have none at all --- these are the curves of the previous section, whose
 small primes say nothing. Since the stage builds no sieving table, a prime
 costs it nothing per curve beyond the table of admissible residues, so it
-looks at further primes when the ones in hand run out, exactly as the choice
-of \texttt{sp2} does. On the curves of \texttt{testdata-high-many.h} that
-turns one available prime into more than twenty.
+looks at further primes whenever none in hand pays for itself and a prime
+of the density this curve has been offering still would, not only when the
+ones in hand run out (until version~2.3 it stopped at the first prime that
+did not pay, which on one curve of \texttt{testdata-high-many.h} left it
+with none). On those curves that turns one available prime into more than
+twenty.
 
 \subsection{Correcting the choice while the program runs}\label{sec:adapt}
 
