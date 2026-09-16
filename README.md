@@ -97,6 +97,19 @@ fewer ANDs; the set-up costs 2260 instructions more per curve, so a run at heigh
 longer and the gain begins at height 200. Worth 3% of `make test1` and of `make testhigh`, 1.5% of
 `make test1many`, about 1% of `make testhighmany`, and 2 to 3% at height bounds from 200 to 4000.
 
+The choice of primes for the third sieving stage no longer starves. The stage used to take primes
+from those already looked at while each paid for itself and stop at the first that did not, asking
+for more only when none were left; on a curve with very many rational points the small primes say
+nothing and the informative ones come late, so one such curve of `make testhighmany` was left with
+no third stage at all and 250000 exact checks instead of 7900. Now the stage looks at a further
+prime whenever none in hand pays but a prime of the density the curve has been offering would (the
+same test now also decides whether an empty pool is refilled at all; a fixed number of primes is
+taken as before). And
+the estimate of the run's length counts the numerators of even denominators at half width, which is
+what the sieve sweeps for them: it was too large by up to a third on such curves, and its spread
+over the random curves halves. Worth 1% of `make test1many`, half a per cent of `make testhighmany`
+and nothing measurable elsewhere; the exact checks of `make testhighmany` fall 4.6 times.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single

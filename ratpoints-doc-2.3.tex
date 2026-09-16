@@ -1169,9 +1169,13 @@ thirty the program looks at by default, but a curve with many rational points
 may have none at all --- these are the curves of the previous section, whose
 small primes say nothing. Since the stage builds no sieving table, a prime
 costs it nothing per curve beyond the table of admissible residues, so it
-looks at further primes when the ones in hand run out, exactly as the choice
-of \texttt{sp2} does. On the curves of \texttt{testdata-high-many.h} that
-turns one available prime into more than twenty.
+looks at further primes whenever none in hand pays for itself and a prime
+of the density this curve has been offering still would, not only when the
+ones in hand run out (in its first form it stopped at the first prime that
+did not pay, which on one curve of \texttt{testdata-high-many.h} left it
+with none). When \verb+-P+ fixes the number of primes, the stage takes that
+many without the test and looks further only when the ones in hand run out.
+On those curves that turns one available prime into more than twenty.
 
 \subsection{Correcting the choice while the program runs}\label{sec:adapt}
 
@@ -1626,7 +1630,8 @@ for your machine and write them to \texttt{tuning.mk}
 A curve with very many rational points makes $f$ a square modulo every residue
 for the smallest primes, so those primes say nothing and are discarded, and
 there can be too few left for that choice to have the primes it wants. The
-program now looks at further primes when, and only when, that happens; the
+program now looks at further primes when that happens (and when the third
+stage asks for them, see below); the
 default prime bound has been raised from $127$ to~$251$ to give it something to
 reach for. On the curves this applies to it is worth between $1.3$ and $2$
 times at a height bound of~$2\cdot10^5$, and no curve that does not need it
@@ -1828,6 +1833,22 @@ test1many}, about $1\%$ of \texttt{make testhighmany}, and between $2$
 and $3\%$ at height bounds from $200$ to~$4000$. Modulo~$256$ would remove
 one admissible class in twelve more, a quarter of what the step from $16$
 to~$64$ removes, for sixteen times the set-up, and is not done.
+
+The choice of primes for the third sieving stage no longer starves. The
+stage used to take primes from those already looked at while each paid for
+itself and stop at the first that did not, asking for more only when none
+were left; on a curve with very many rational points the small primes say
+nothing and the informative ones come late, so one curve of \texttt{make
+testhighmany} was left with no third stage at all and $250\,000$ exact
+checks in place of $7900$. Now the stage looks at a further prime whenever
+none in hand pays but a prime of the density the curve has been offering
+would; the same test decides whether an empty pool is refilled at all, and
+a number of primes fixed with \verb+-P+ is taken as before. And the estimate of the run's length counts the numerators of even
+denominators at half width, which is what the sieve sweeps for them: it was
+too large by up to a third on such curves, and its spread over the random
+curves halves. Worth $1\%$ of \texttt{make test1many}, half a per cent of
+\texttt{make testhighmany} and nothing measurable elsewhere; the exact
+checks of \texttt{make testhighmany} fall by a factor of~$4.6$.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
