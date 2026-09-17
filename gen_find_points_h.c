@@ -87,14 +87,6 @@ int main(int argc, char *argv[])
     }
   }
 
-  printf("static const long offsets[RATPOINTS_NUM_PRIMES] =\n{");
-  for(n = 0; n < RATPOINTS_NUM_PRIMES; n++)
-  { long p = prime[n];
-
-    { printf("%ld", inv_mod_p(p, (2*RBA_LENGTH)%p)); }
-    printf((n < RATPOINTS_NUM_PRIMES - 1) ? "," : "};\n\n");
-  }
-
   printf("static const long "
          "inverses[RATPOINTS_NUM_PRIMES][RATPOINTS_MAX_PRIME] =\n{");
   for(n = 0; n < RATPOINTS_NUM_PRIMES; n++)

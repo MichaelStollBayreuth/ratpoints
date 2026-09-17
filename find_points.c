@@ -41,9 +41,6 @@
    static const int squares[RATPOINTS_NUM_PRIMES+1][RATPOINTS_MAX_PRIME];
      squares[n][x] = 1 if x is a square mod prime[n], 0 if not
 
-   static const long offsets[RATPOINTS_NUM_PRIMES];
-     offset[n] = (2*RBA_LENGTH)^(-1) mod prime[n]
-
    static const long inverses[RATPOINTS_NUM_PRIMES][RATPOINTS_MAX_PRIME];
      inverses[n][x] = x^(-1) mod prime[n] for x != 0 mod prime[n]
 
@@ -812,12 +809,25 @@ static void setup_us1(ratpoints_args *args)
  * says that f(k) is a square mod 64, bit t of gsq that frev(t) is.  The
  * rule is exact for every class of the denominator; the hand-derived
  * congruences for f(odd/2), f(odd/4), ... of the mod-16 code are not
- * needed. */
+ * needed.
+ *
+ * What the two words say is then put in the form the sieve uses, per class
+ * of the denominator mod 64 (rp_num_class in rp-private.h).  The admissible
+ * numerators of a class are a union of residue classes mod 64, and where
+ * they lie in a single class a0 mod 2^k the bit arrays hold only the
+ * numerators a0 + 2^k t: the odd denominators of a random curve take their
+ * numerators from one class mod 4 on a fifth of the curves and from one
+ * class mod 8 on a sixth, and the two-fold packing that "only odd
+ * numerators" used to be is the case k = 1.  k and a0 are read off the
+ * pattern.  The theory says that k is the same for every odd class, and for
+ * every class of the same 2-adic valuation of b -- the pattern of b = u b'
+ * with u a unit mod 64 is u times that of b', and multiplication by a unit
+ * keeps a set of residues within one class mod 2^k -- which the verbose
+ * report relies on; the sieve does not. */
 #define RP_SQUARES64 0x0202021202030213UL
 
-static bit_selection get_2adic_info(ratpoints_args *args,
-                                    unsigned long *den_bits,
-                                    ratpoints_bit_array *num_bits)
+static void get_2adic_info(ratpoints_args *args, unsigned long *den_bits,
+                           rp_num_class *cls)
 {
   mpz_t *c = args->cof;
   long degree = args->degree;
@@ -826,13 +836,10 @@ static bit_selection get_2adic_info(ratpoints_args *args,
                                    * for odd degree */
   unsigned long fsq = 0UL;        /* bit k set: f(k) is a square mod 64 */
   unsigned long gsq = 0UL;        /* bit t set, t even: frev(t) is one */
-  unsigned long nb[64];           /* the numerator patterns, one word each,
-                                   * before replication */
+  unsigned long nb[64];           /* bit a of nb[b]: the numerator a is
+                                   * admissible for the denominators b mod 64 */
   unsigned long db = 0UL;         /* the denominator classes with a pattern */
-  long npe, npo;                  /* admissible even and odd numerators of
-                                   * the odd denominators */
   long b, k;
-  bit_selection result;
 
 #ifdef DEBUG
   printf("\nget_2adic_info: start...\n"); fflush(NULL);
@@ -859,76 +866,130 @@ static bit_selection get_2adic_info(ratpoints_args *args,
     if((RP_SQUARES64 >> (s & 0x3f)) & 1UL) { gsq |= 1UL << k; }
   }
 
-  /* The packing.  For an odd b, bit a of its pattern is bit a b^-1 of fsq,
-   * so the parities of numerator present in fsq are those present in the
-   * pattern of every odd denominator. */
-  npo = __builtin_popcountl(fsq & 0xaaaaaaaaaaaaaaaaUL);
-  npe = __builtin_popcountl(fsq & 0x5555555555555555UL);
-  result = (npe == 0) ? ((npo == 0) ? num_none : num_odd)
-                      : ((npo == 0) ? num_even : num_all);
-
   for(b = 0; b < 64; b++) { nb[b] = 0UL; }
 
   /* Odd denominators: the numerator a is admissible for b when f(a b^-1)
    * is a square, that is, when a = k b for a k with bit k of fsq set -- so
-   * every such k is scattered to a = k b in the pattern of every odd b.  In
-   * the num_odd and num_even packings bit j of a pattern stands for the
-   * numerator 2j+1 or 2j, so the position is a >> 1 and the pattern has
-   * period 32; fsq holds bits of one parity only then. */
+   * every such k is scattered to a = k b in the pattern of every odd b. */
   { unsigned long w = fsq;
-    long shift = (result == num_all) ? 0 : 1;
 
     while(w)
     { k = RP_CTZL(w); w &= w - 1UL;
-      for(b = 1; b < 64; b += 2)
-      { nb[b] |= 1UL << (((k*b) & 0x3f) >> shift); }
+      for(b = 1; b < 64; b += 2) { nb[b] |= 1UL << ((k*b) & 0x3f); }
     }
   }
 
-  /* Even denominators: the numerator is odd and sift() forces the num_odd
-   * packing, bit j for the numerator 2j+1.  The numerator a is admissible
-   * for b when frev(b a^-1) is a square, that is, when b = t a for a t with
-   * bit t of gsq set -- so for every such t and every odd a, bit a >> 1 of
-   * the pattern of b = t a is set.  For t = 0 this is the class b = 0 mod
-   * 64, which admits every odd numerator when frev(0) = c_D is a square
-   * (always when the degree is odd). */
+  /* Even denominators: the numerator is odd, and a is admissible for b when
+   * frev(b a^-1) is a square, that is, when b = t a for a t with bit t of
+   * gsq set -- so for every such t and every odd a, bit a of the pattern of
+   * b = t a is set.  For t = 0 this is the class b = 0 mod 64, which admits
+   * every odd numerator when frev(0) = c_D is a square (always when the
+   * degree is odd). */
   { unsigned long w = gsq;
 
     while(w)
     { long a, t = RP_CTZL(w);
 
       w &= w - 1UL;
-      for(a = 1; a < 64; a += 2) { nb[(t*a) & 0x3f] |= 1UL << (a >> 1); }
+      for(a = 1; a < 64; a += 2) { nb[(t*a) & 0x3f] |= 1UL << a; }
     }
   }
 
-  /* bit b of den_bits: the denominators b mod 64 have a pattern at all */
-  for(b = 0; b < 64; b++) { if(nb[b]) { db |= 1UL << b; } }
+  /* The packing of each class: the largest k with every admissible
+   * numerator in one class a0 mod 2^k, and the pattern in that packing --
+   * bit t for the numerator a0 + 2^k t, of period 64/2^k in t and so one
+   * word repeated.  A class without a pattern gets k = 0, a0 = 0 and an
+   * empty pattern; it is never sieved, but its entry is read (bits_per_word,
+   * run_shape, the test on every denominator). */
+  { /* bit a set for a = 0 mod 2^k, a = 0..63 */
+    static const unsigned long class_mask[RP_NUM_STRIDES]
+      = {~0UL, 0x5555555555555555UL, 0x1111111111111111UL,
+         0x0101010101010101UL, 0x0001000100010001UL,
+         0x0000000100000001UL, 0x0000000000000001UL};
+
+    for(b = 0; b < 64; b++)
+    { unsigned long w = nb[b];
+      unsigned long packed = 0UL;
+      long a0 = 0;
+
+      k = 0;
+      if(w)
+      { long a = RP_CTZL(w); /* the least admissible numerator, which fixes
+                              * the class mod 2^k for every k */
+
+        /* the largest k for which every set bit is at a = a0 mod 2^k */
+        for(k = RP_NUM_STRIDES - 1; k > 0; k--)
+        { if((w & ~(class_mask[k] << (a & ((1L << k) - 1)))) == 0UL) { break; } }
+        a0 = a & ((1L << k) - 1);
+        /* the set bits, each at its place t = (a - a0)/2^k in the packing;
+         * a runs over 0..63 and the pattern has period 64/2^k in t, so
+         * every set bit lands below that and the word is then replicated */
+        while(w)
+        { long t;
+
+          a = RP_CTZL(w); w &= w - 1UL;
+          t = ((a - a0) & 0x3f) >> k;
+          packed |= 1UL << t;
+        }
+        for(a = LONG_LENGTH >> k; a < LONG_LENGTH; a <<= 1)
+        { packed |= packed << a; }
+        db |= 1UL << b;
+      }
+      cls[b].bits = RBA(packed);
+      cls[b].k = k;
+      cls[b].a0 = a0;
+      cls[b].offset = NULL; /* set once the primes are known, class_offsets */
+    }
+  }
   *den_bits = db;
 
 #ifdef DEBUG
   printf("\nfsq = %016lx, gsq = %016lx, den_bits = %016lx\n", fsq, gsq, db);
-  fflush(NULL);
-#endif
-
-  /* The patterns, replicated to the word.  When no class of the denominator
-   * admits a numerator they are all zero, and the caller reads them all
-   * (bits_per_word, run_shape, the test on every denominator). */
   for(b = 0; b < 64; b++)
-  { unsigned long w = nb[b];
-    long i;
-
-    /* a pattern over the odd or the even numerators alone has period 32 */
-    if((b & 1) == 0 || result != num_all)
-    { for(i = 32; i < LONG_LENGTH; i <<= 1) { w |= w << i; } }
-    num_bits[b] = RBA(w);
-  }
-
-#ifdef DEBUG
+  { if(nb[b])
+    { printf("  b = %2ld mod 64: numerators %ld mod %ld, packed pattern %016lx\n",
+             b, cls[b].a0, 1L << cls[b].k, EXT0(cls[b].bits));
+  } }
   printf("\nget_2adic_info: done.\n"); fflush(NULL);
 #endif
+}
 
-  return(result);
+/* The row shifts of the numerator classes (rp_num_class), once the primes
+ * are known: for a class with stride 2^k and offset a0 and the n-th prime p
+ * of sieve_list, a0 (2^k RBA_LENGTH)^-1 mod p, plus the multiple of p that
+ * keeps the word number plus the shift non-negative (RP_ROW_BIAS).  Classes
+ * with the same packing share a row.  offsets has room for 64 rows of np
+ * entries, one per prime that may come to be sieved with (adapt_primes can
+ * promote one into the second phase during the run). */
+static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
+                          long np, long *offsets)
+{ long b, rows = 0;
+
+  for(b = 0; b < 64; b++)
+  { long c;
+
+    if(!EXT0(cls[b].bits)) { continue; }
+    for(c = 0; c < b; c++)
+    { if(EXT0(cls[c].bits) && cls[c].k == cls[b].k && cls[c].a0 == cls[b].a0)
+      { break; }
+    }
+    if(c < b) { cls[b].offset = cls[c].offset; }
+    else
+    { long *row = offsets + rows*np;
+      long n;
+
+      for(n = 0; n < np; n++)
+      { ratpoints_sieve_entry *se = sieve_list[n];
+        long p = se->p;
+        /* (2^k RBA_LENGTH) mod p, which is not zero as p is odd */
+        long m = RP_MULMOD(RBA_LENGTH << cls[b].k, p, se->magic);
+
+        row[n] = RP_MULMOD(cls[b].a0*se->inverses[m], p, se->magic) + se->bias;
+      }
+      cls[b].offset = row;
+      rows++;
+    }
+  }
 }
 
 /**************************************************************************
@@ -1375,7 +1436,7 @@ static int examine_prime(ratpoints_args *args, long pn,
      typedef struct
        { ratpoints_init_fun init; long p; int *is_f_square;
          const long *inverses; unsigned long magic; double r;
-         long offset; long bias;
+         long bias; long dinv[RP_NUM_STRIDES];
          ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
        ratpoints_sieve_entry;
    */
@@ -1396,10 +1457,18 @@ static int examine_prime(ratpoints_args *args, long pn,
     /* the entry keeps the density too, so that the choice of primes can be
      * revisited during the run, when prec[] is long gone */
     se->r = prec_entry->r;
-    se->offset = offsets[pn];
-    /* the multiple of p that sift() adds to the offset, so that the word
-     * number plus the offset is never negative; see RP_ROW_BIAS */
+    /* the multiple of p in the row shifts, so that the word number plus the
+     * shift is never negative; see RP_ROW_BIAS and class_offsets() */
     se->bias = p*((RP_ROW_BIAS + p - 1)/p);
+    /* 2^-k mod p for the strides the numerators can be packed with
+     * (rp_num_class), by halving: 2^-1 mod p is (p+1)/2 */
+    { long k, d = 1;
+
+      for(k = 0; k < RP_NUM_STRIDES; k++)
+      { se->dinv[k] = d;
+        d = (d & 1) ? (d + p) >> 1 : d >> 1;
+      }
+    }
     /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
      * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
     se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
@@ -1474,9 +1543,8 @@ static double forbidden_fraction(long p, unsigned long mask)
   return(f);
 }
 
-static void run_shape(ratpoints_args *args, bit_selection which_bits,
-                      unsigned long den_bits,
-                      const ratpoints_bit_array *num_bits,
+static void run_shape(ratpoints_args *args, unsigned long den_bits,
+                      const rp_num_class *cls,
                       long fba, long fdc,
                       double *n_denom, double *u_words)
 { double H = (double)args->height;
@@ -1484,7 +1552,8 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
   double count = 0.0;   /* candidate denominators */
   double nums = 0.0;    /* numerators they sweep, before that fraction */
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
-  long good_even = 0;   /* ... of which even */
+  double packed = 0.0;  /* the sum over them of 1/stride: the share of their
+                         * numerators the bit arrays hold */
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
@@ -1503,8 +1572,9 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
      * in k */
     for(j = 0; j < 32; j++)
-    { if(EXT0(num_bits[(j*j) & 0x3f]))
-      { good++; if((j & 1) == 0) { good_even++; } }
+    { const rp_num_class *cl = &cls[(j*j) & 0x3f];
+
+      if(EXT0(cl->bits)) { good++; packed += 1.0/(double)(1L << cl->k); }
     }
     keep = (double)good/32.0;
   }
@@ -1532,11 +1602,10 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
       /* every divisor's 32 classes weigh the same here, whatever its share
        * of the denominators -- a bias keep has always had */
       for(j = 0; j < 32; j++, tried++)
-      { if(EXT0(num_bits[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f]))
-        { good++;
-          if((((unsigned long)divisors[n]*(unsigned long)j) & 1) == 0)
-          { good_even++; }
-        }
+      { const rp_num_class *cl
+          = &cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f];
+
+        if(EXT0(cl->bits)) { good++; packed += 1.0/(double)(1L << cl->k); }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -1556,8 +1625,13 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     /* bit j of den_bits is set exactly when the denominators congruent to j
      * modulo 64 have a numerator pattern (the word for the denominators
      * 64w..64w+63 has b at bit b mod 64) */
-    good = __builtin_popcountl(den_bits);
-    good_even = __builtin_popcountl(den_bits & 0x5555555555555555UL);
+    { unsigned long w = den_bits;
+
+      while(w)
+      { j = RP_CTZL(w); w &= w - 1UL;
+        good++; packed += 1.0/(double)(1L << cls[j].k);
+      }
+    }
     keep = (double)good/64.0;
 
     if(args->flags & RATPOINTS_CHECK_DENOM)
@@ -1572,22 +1646,14 @@ static void run_shape(ratpoints_args *args, bit_selection which_bits,
     }
   }
 
-  /* Only every other numerator is looked at for an even denominator (sift()
-   * forces the num_odd packing for those), and for an odd one too unless
-   * both parities are in play.  The classes counted above are equally
-   * frequent among the denominators, so the even ones are good_even of good
-   * of those kept.  This covers num_none, which says only that no odd
-   * denominator has an admissible numerator: the even denominators are still
-   * sieved, at half width.  (Setting nums to zero there put U on its floor
-   * of 1, which switched the second and third stages off for those curves;
-   * and counting the even denominators of a num_all curve at full width
+  /* The bit arrays of a denominator hold one numerator in 2^k, k the stride
+   * of its class (rp_num_class), so a class sweeps that share of its
+   * numerators; the classes counted above are equally frequent among the
+   * denominators, so the mean over the classes kept is the factor.  (Until
+   * 2.3 only the packing by parity existed, and counting the even
+   * denominators of a curve with numerators of both parities at full width
    * over-estimated U by up to a third.) */
-  if(good > 0)
-  { double odd = (which_bits == num_all) ? 1.0 : 0.5;
-
-    nums *= (odd*(double)(good - good_even) + 0.5*(double)good_even)
-            /(double)good;
-  }
+  if(good > 0) { nums *= packed/(double)good; }
 
   *n_denom = keep*count;
   *u_words = keep*nums/(double)LONG_LENGTH;
@@ -1674,8 +1740,7 @@ static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
                          ratpoints_sieve_entry **sieve_list,
                          double bits_per_word, int may_extend,
-                         bit_selection which_bits, unsigned long den_bits,
-                         const ratpoints_bit_array *num_bits)
+                         unsigned long den_bits, const rp_num_class *cls)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or else returns 0. */
@@ -1722,7 +1787,7 @@ static long sieving_info(ratpoints_args *args,
    * given uses the same offset as the final choice does; it is computed
    * again below, once the forbidden divisors are known and the estimate can
    * take them into account. */
-  run_shape(args, which_bits, den_bits, num_bits, 0, 0,
+  run_shape(args, den_bits, cls, 0, 0,
             &args->run_denoms, &args->run_words);
   sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
@@ -1925,7 +1990,7 @@ static long sieving_info(ratpoints_args *args,
   { long e = (args->sp2_extra >= 0) ? args->sp2_extra : RATPOINTS_SP2_EXTRA;
     long n;
 
-    run_shape(args, which_bits, den_bits, num_bits, fba, fdc,
+    run_shape(args, den_bits, cls, fba, fdc,
               &args->run_denoms, &args->run_words);
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
@@ -2161,7 +2226,7 @@ static long sieving_info(ratpoints_args *args,
 
 static
 long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
-          bit_selection which_bits, ratpoints_bit_array bits64,
+          const rp_num_class *cls,
           ratpoints_sieve_entry **sieve_list, long *bp_list, int *quit,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
@@ -2181,8 +2246,6 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 #ifdef DEBUG
   printf("\nsift(b = %ld): start...\n", b); fflush(NULL);
 #endif
-
-  if((b & 1) == 0) { which_bits = num_odd; } /* even denominator */
 
   /* Note that b is new */
   args->flags |= RATPOINTS_COMPUTE_BC;
@@ -2234,17 +2297,14 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         for(n = 0; n < args->sp2; n++)
         { ratpoints_sieve_entry *se = sieve_list[n];
           long p = se->p;
-          long bp = bp_list[n];
-          ratpoints_bit_array *sptr;
-
-          if(which_bits != num_all) /* divide by 2 mod p */
-          { bp = (bp & 1) ? (bp+p) >> 1 : bp >> 1; }
-          sptr = se->sieve[bp];
+          long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
+          ratpoints_bit_array *sptr = se->sieve[bp];
 
           ssp[n].p = p;
-          /* the shift for odd numerators, plus the multiple of p that keeps
-           * the row index non-negative (see sieve_spec in rp-private.h) */
-          ssp[n].offset = ((which_bits == num_odd) ? se->offset : 0) + se->bias;
+          /* the shift of the row for the packing of the class, with the
+           * multiple of p that keeps the row index non-negative built in
+           * (see rp_num_class and sieve_spec in rp-private.h) */
+          ssp[n].offset = cls->offset[n];
 
 #ifdef DEBUG
           printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
@@ -2287,11 +2347,14 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         RP_SETUP_TOC(t_setup);
       }
 
-      switch(which_bits)
-      { case num_all: break;
-        case num_none: break;
-        case num_odd: low >>= 1; high--; high >>= 1; break;
-        case num_even: low++; low >>= 1; high >>= 1; break;
+      /* From numerators to bits: bit t stands for a0 + 2^k t, so the bits
+       * are ceil((low - a0)/2^k) .. floor((high - a0)/2^k); the shifts of
+       * signed values round down, as they do throughout the program.  (Only
+       * the two-fold packings existed until 2.3: low >>= 1 and so on.) */
+      { long k = cls->k, a0 = cls->a0;
+
+        low = (low - a0 + (1L << k) - 1) >> k;
+        high = (high - a0) >> k;
       }
 
       /* now turn the bit interval into [low, high[ */
@@ -2331,8 +2394,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             /* upper bits of the last bit array are to be set to zero */
             { mask_high = RBA_LENGTH * w_high - high; }
 
-            total += _ratpoints_sift0(b, w_low0, w_high0, args, which_bits,
-                                      survivors, bits64, mask_low, mask_high,
+            total += _ratpoints_sift0(b, w_low0, w_high0, args, cls,
+                                      survivors, mask_low, mask_high,
                                       &ssp[0], &csp[0], quit, process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
@@ -2346,9 +2409,11 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * Find points by looping over the denominators and sieving numerators    *
  **************************************************************************/
 
-/* The denominator modulo each prime of the first two phases, in bp_list,
- * computed afresh for every denominator by the multiply-high reduction
- * (RP_MULMOD; a division for a denominator beyond 2^32).  It used to be
+/* The denominator, divided by 2^k modulo each prime of the first two phases
+ * -- k the stride its numerators are packed with, so that this is the
+ * residue whose sieve table the denominator reads (see rp_num_class) -- in
+ * bp_list, computed afresh for every denominator by the multiply-high
+ * reduction (RP_MULMOD; a division for a denominator beyond 2^24).  It used to be
  * stepped from the previous denominator, bp += d followed by while(bp >= p)
  * bp -= p: one to three data-dependent branches per prime and denominator,
  * mispredicted a quarter of the time, an eighth of all the branch misses of
@@ -2358,7 +2423,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * due once the sieve has swept as many words as adapt_at says.  The primes
  * of the third stage are not in the list any more: what that stage needs is
  * looked up when a numerator reaches it, see fill_checks() in sift.c. */
-static inline void fill_bp_list(long b, long *bp_list, ratpoints_args *args,
+static inline void fill_bp_list(long b, long k, long *bp_list,
+                                ratpoints_args *args,
                                 ratpoints_sieve_entry **sieve_list)
 { long n, sp2;
   const unsigned long *magics = (const unsigned long *)args->magics;
@@ -2366,12 +2432,24 @@ static inline void fill_bp_list(long b, long *bp_list, ratpoints_args *args,
   if(args->n_words >= args->adapt_at) { adapt_primes(args); }
   sp2 = args->sp2;
   RP_BP_TIC(t_bp);
-  if(b <= RP_MULMOD_LIMIT)
+  /* b times 2^-k mod p stays below 2^32, where the reduction is exact, for
+   * a denominator below 2^32 divided by the largest prime that can be
+   * compiled in -- a height bound of some ten million */
+  if(b <= RP_MULMOD_LIMIT/RATPOINTS_MAX_PRIME_EVEN)
   { for(n = 0; n < sp2; n++)
-    { bp_list[n] = RP_MULMOD(b, sieve_list[n]->p, magics[n]); }
+    { ratpoints_sieve_entry *se = sieve_list[n];
+
+      bp_list[n] = RP_MULMOD(b*se->dinv[k], se->p, magics[n]);
+    }
   }
   else
-  { for(n = 0; n < sp2; n++) { bp_list[n] = mod(b, sieve_list[n]->p); } }
+  { for(n = 0; n < sp2; n++)
+    { ratpoints_sieve_entry *se = sieve_list[n];
+      long p = se->p;
+
+      bp_list[n] = RP_MULMOD(mod(b, p)*se->dinv[k], p, magics[n]);
+    }
+  }
   RP_BP_TOC(t_bp, sp2);
 }
 
@@ -2468,9 +2546,8 @@ static long find_points_work_1(ratpoints_args *args,
   int use_c_long = 0;    /* Flag that says if c_long[] is set */
 
   ratpoints_sieve_entry **sieve_list = (ratpoints_sieve_entry **)args->sieve_list;
-  bit_selection which_bits = num_all;
   unsigned long den_bits;
-  ratpoints_bit_array num_bits[64];
+  rp_num_class cls[64]; /* the numerator classes, by b mod 64 */
 
   args->flags &= RATPOINTS_FLAGS_INPUT_MASK;
   args->flags |= RATPOINTS_CHECK_DENOM;
@@ -2789,18 +2866,11 @@ static long find_points_work_1(ratpoints_args *args,
   /* deal with f mod powers of 2 */
   if(args->flags & RATPOINTS_VERBOSE)
   { printf("Obtain information from the polynomial mod 64:\n"); }
-  which_bits = get_2adic_info(args, &den_bits, &num_bits[0]);
-  /* which_bits says whether to consider even and/or odd numerators
-     when the denominator is odd.
-
-     Bit k in den_bits is 0 if b congruent to k mod LONG_LENGTH need
-     not be considered as a denominator.
-
-     Bit k in num_bits[b] is 0 is numerators congruent to
-     k (which_bits = den_all) / 2k (which_bits = den_even) /
-     2k+1 (which_bits = den_odd)
-     need not be considered for denominators congruent to b mod 64.
-   */
+  get_2adic_info(args, &den_bits, &cls[0]);
+  /* Bit k in den_bits is 0 if b congruent to k mod 64 need not be
+     considered as a denominator; cls[b] says how the numerators of the
+     denominators b mod 64 are packed into the bit arrays, and which of
+     them are admissible (rp_num_class in rp-private.h). */
 
   if(den_bits == 0 && !point_at_infty)
   { /* No residue class of the denominator mod 64 admits any numerator, so
@@ -2814,30 +2884,22 @@ static long find_points_work_1(ratpoints_args *args,
   }
 
 #ifdef DEBUG
-  { long i, c = 0;
-
-    printf("\nusing %s numerators for odd denominators\n",
-           (which_bits == num_none) ? "no"
-            : (which_bits == num_even) ? "even"
-            : (which_bits == num_odd) ? "odd"
-            : "all");
-    printf("\nden_bits: %*.*lx\n", WIDTH, WIDTH, den_bits);
-    printf("\nnum_bits for b = 63, 62, ..., 0 mod 64 "
-           "[high numerators to the left]:");
-    for(i = 63; i >= 0; i--, c++)
-    { if((c & (0xff >> LONG_SHIFT)) == 0) { printf("\n"); }
-      printf(" %*.*lx", WIDTH, WIDTH, EXT0(num_bits[i]));
-    }
-    printf("\n\n");
-    fflush(NULL);
-  }
+  printf("\nden_bits: %*.*lx\n\n", WIDTH, WIDTH, den_bits);
+  fflush(NULL);
 #else
   if(args->flags & RATPOINTS_VERBOSE)
-  { printf("  use %s numerators for odd denominators\n\n",
-           (which_bits == num_none) ? "no"
-            : (which_bits == num_even) ? "even"
-            : (which_bits == num_odd) ? "odd"
-            : "all");
+  { /* the stride is the same for every class of one 2-adic valuation of the
+     * denominator (see get_2adic_info), so one class of each kind says it */
+    static const long rep[RP_NUM_STRIDES] = {1, 2, 4, 8, 16, 32, 0};
+    long v;
+
+    printf("  the bit arrays hold one numerator in (for b odd, 2 mod 4,"
+           " 4 mod 8, ..., 32 mod 64, 0 mod 64):");
+    for(v = 0; v < RP_NUM_STRIDES; v++)
+    { if(EXT0(cls[rep[v]].bits)) { printf(" %ld", 1L << cls[rep[v]].k); }
+      else { printf(" -"); }
+    }
+    printf("\n\n");
   }
 #endif
 
@@ -2847,9 +2909,10 @@ static long find_points_work_1(ratpoints_args *args,
            args->num_primes);
   }
   { /* The mean number of bits set in one word of a bit-array on entry to
-     * the sieve.  num_bits[b] holds the admissible numerators for
-     * denominators b mod 64, as one word repeated through the bit-array, so
-     * the population count of that word is what is wanted; the denominators
+     * the sieve.  cls[b].bits holds the admissible numerators for the
+     * denominators b mod 64, in their packing, as one word repeated through
+     * the bit-array, so the population count of that word is what is
+     * wanted; the denominators
      * with no admissible numerator at all are skipped, so the mean is taken
      * over the non-zero entries only.
      * Per word rather than per bit-array on purpose: measurements across
@@ -2860,7 +2923,7 @@ static long find_points_work_1(ratpoints_args *args,
     { long i, nz = 0, tot = 0;
 
       for(i = 0; i < 64; i++)
-      { long c = __builtin_popcountl(EXT0(num_bits[i]));
+      { long c = __builtin_popcountl(EXT0(cls[i].bits));
 
         if(c) { tot += c; nz++; }
       }
@@ -2868,7 +2931,7 @@ static long find_points_work_1(ratpoints_args *args,
     }
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
                               bits_per_word, np_is_default,
-                              which_bits, den_bits, &num_bits[0]);
+                              den_bits, &cls[0]);
 
     if(ret)
     {
@@ -2987,6 +3050,7 @@ static long find_points_work_1(ratpoints_args *args,
   /* now do the sieving */
   { ratpoints_bit_array *survivors;
     void *survivors_na;
+    long *offsets; /* the row shifts of the numerator classes */
 
 #ifdef DEBUG
     printf("\nfind_points_work: allocating space for survivors...");
@@ -3000,6 +3064,11 @@ static long find_points_work_1(ratpoints_args *args,
     survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
     survivors = (ratpoints_bit_array *)
                 pointer_align(survivors_na, sizeof(ratpoints_bit_array));
+    /* and the row shifts of the numerator classes, now that the primes are
+     * known: one row per distinct packing, over every prime that may come
+     * to be sieved with */
+    offsets = malloc(64*args->sp3_max*sizeof(long));
+    class_offsets(&cls[0], sieve_list, args->sp3_max, offsets);
 #ifdef DEBUG
     printf(" done\n");
     fflush(NULL);
@@ -3020,11 +3089,11 @@ static long find_points_work_1(ratpoints_args *args,
 
         for(b = 1; bb = b*b, bb <= args->b_high; b++)
         { if(bb >= args->b_low)
-          { ratpoints_bit_array bits = num_bits[bb & 0x3f];
+          { const rp_num_class *cl = &cls[bb & 0x3f];
 
-            if(TEST(bits))
-            { fill_bp_list(bb, bp_list, args, sieve_list);
-              total += sift(bb, survivors, args, which_bits, bits,
+            if(EXT0(cl->bits))
+            { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
+              total += sift(bb, survivors, args, cl,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
               if(quit) { break; }
@@ -3061,9 +3130,9 @@ static long find_points_work_1(ratpoints_args *args,
           for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
           { if(bb >= args->b_low)
             { int flag = 1;
-              ratpoints_bit_array bits = num_bits[bb & 0x3f];
+              const rp_num_class *cl = &cls[bb & 0x3f];
 
-              if(EXT0(bits))
+              if(EXT0(cl->bits))
               { long i;
 
                 for(i = 0; den_info[i].p; i++)
@@ -3073,8 +3142,8 @@ static long find_points_work_1(ratpoints_args *args,
                   { flag = 0; break; }
                 }
                 if(flag)
-                { fill_bp_list(bb, bp_list, args, sieve_list);
-                  total += sift(bb, survivors, args, which_bits, bits,
+                { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
+                  total += sift(bb, survivors, args, cl,
                                 sieve_list, &bp_list[0],
                                 &quit, process, info);
                   if(quit) { break; }
@@ -3163,11 +3232,11 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
           while(b_bits)
-          { ratpoints_bit_array bits;
+          { const rp_num_class *cl;
 
             b = base + RP_CTZL(b_bits);
             b_bits &= b_bits - 1UL;
-            bits = num_bits[b & 0x3f];
+            cl = &cls[b & 0x3f];
 
             /* the Jacobi symbol test comes first when it is the cheap one:
              * a few multiplications against the divisions of the valuation
@@ -3200,8 +3269,8 @@ static long find_points_work_1(ratpoints_args *args,
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
-            { fill_bp_list(b, bp_list, args, sieve_list);
-              total += sift(b, survivors, args, which_bits, bits,
+            { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
+              total += sift(b, survivors, args, cl,
                             sieve_list, &bp_list[0],
                             &quit, process, info);
               if(quit) { break; }
@@ -3226,11 +3295,11 @@ static long find_points_work_1(ratpoints_args *args,
            * further prime as the run goes on */
 
         for(b = args->b_low; b <= args->b_high; b++)
-        { ratpoints_bit_array bits = num_bits[b & 0x3f];
+        { const rp_num_class *cl = &cls[b & 0x3f];
 
-          if(EXT0(bits))
-          { fill_bp_list(b, bp_list, args, sieve_list);
-            total += sift(b, survivors, args, which_bits, bits,
+          if(EXT0(cl->bits))
+          { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
+            total += sift(b, survivors, args, cl,
                           sieve_list, &bp_list[0],
                           &quit, process, info);
             if(quit) { break; }
@@ -3247,6 +3316,7 @@ static long find_points_work_1(ratpoints_args *args,
     }
     /* de-allocate memory */
     free(survivors_na);
+    free(offsets);
   }
 
 #if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
@@ -3256,12 +3326,12 @@ static long find_points_work_1(ratpoints_args *args,
   { static unsigned long long last_arrays = 0, last_dens = 0;
 
     fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
-            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu wb=%d\n",
+            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu kodd=%ld\n",
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
             args->n_words, args->n_arrays, args->n_bits,
-            args->n_coprime, args->n_checks, (int)which_bits);
+            args->n_coprime, args->n_checks, cls[1].k);
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif
