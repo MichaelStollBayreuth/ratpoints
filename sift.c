@@ -528,7 +528,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * values lie in [0, 2^32) for every word number in this range -- which
    * reaches a height bound above 10^11.  Beyond it, mod() divides. */
   int small = (w_low >= -RP_ROW_BIAS
-                && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME);
+                && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME_EVEN);
 
 #ifdef DEBUG
   /* There is nothing in the survivors array to print: since 2.3 the first

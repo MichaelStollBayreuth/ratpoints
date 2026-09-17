@@ -669,9 +669,9 @@ void message(long n, long total, ratpoints_args *args)
             } }
             printf("\n");
             break;
-    case 4: printf("%ld primes used for first stage of sieving,\n",
+    case 4: printf("%ld moduli used for first stage of sieving,\n",
                    args->sp1_used);
-            printf("%ld primes used for both stages of sieving together,\n",
+            printf("%ld moduli used for both stages of sieving together,\n",
                    args->sp2_used);
             printf("%ld further primes used in the third stage.\n",
                    args->sp3_used - args->sp2_used);

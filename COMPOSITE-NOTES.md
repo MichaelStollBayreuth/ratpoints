@@ -94,8 +94,17 @@ where composites may appear.
 Every row a composite modulus builds can be checked against the
 definition with `-DRP_VERIFY_MODULI` (init.c): bit N of the row for the
 residue b is set exactly when F(N, b) is a square mod m and no prime of m
-divides both N and b.  test1, test1many and testdegrees and the stride-8
-curve at height 200000 ran under it with no mismatch.
+divides both N and b.  All five suites -- test1, test1many, testdegrees,
+testhigh and testhighmany -- ran under it with no mismatch and their
+outputs identical to the references.
+
+**The prime's density.**  The sweep review found that `examine_prime`
+counted the class of denominators divisible by p with density 1 where its
+row (sieves0, the numerators not divisible by p) has (p-1)/p: r was
+(np (p-1) + p)/p^2 instead of (np + 1)(p-1)/p^2, 1/p^2 too much, which made
+a prime look less informative than it is against the exact density of its
+powers (0.111 for 3).  Corrected on this branch (the fix is one line); the
+primes' ranking shifts slightly for 3, 5 and 7, measured below.
 
 ## What it is worth
 
@@ -113,8 +122,9 @@ arrays).  On the point-rich curves composites enter the second phase on 73
 of 98 and 29 of 30 curves (171, 153, 187, 247, 125 ...), and there they
 lose.
 
-**Why the cycles do not follow the instructions.**  On the stride-8 curve
-at 200000 the first phase's ANDs fall 45% (43.3M -> 23.6M) and its cycles
+**Why the cycles do not follow the instructions.**  On the curve
+`-5 10 -9 -6 7 -1 3` (item 28's stride-8 curve; its counters are in
+stride8-curve-200000.txt in the reports) at 200000 the first phase's ANDs fall 45% (43.3M -> 23.6M) and its cycles
 not at all (69.9M -> 69.2M): 1.6 cycles per AND with the base's small
 primes (13, 31, 5, 17, 67, 79, 37, 89, 127, 19, 71; 555 arrays = 18 KB of
 rows), 2.9 with 225, 221, 217, 209, 67, 79 (1018 arrays = 33 KB of rows,
@@ -165,16 +175,19 @@ What is taken (cap 64): on test1 a composite in the first phase on 874 of
 879 curves -- 25 on 286, 49 on 202, 45 on 137, 9 on 134, 27 on 128, 35 on
 127, 55 on 121, 63 on 105, 33, 39, 21, 51, 57, 15 -- and in the second on
 49; at 200000 55 on 294, 63 on 293, 49 on 202, 25 on 178, 45 on 171; at
-1000 only 9 (on 286 curves), the table gate leaving nothing else; on the
+1000 mostly 9 (on 286 curves; 25 on 11, 21 on 4, 15 on 1), the table gate
+leaving nothing else; on the
 point-rich suites the first phase takes a composite on 18 of 98 and 0 of
 30 curves, the second phase 9, 25, 27, 49 on 42 of 98 and 26 of 30.  The
 exact checks rise where the composites take primes out of the pool: the
 third stage has fewer informative primes left and takes two fewer on test1
-(sp3 16.2 -> 14.3); the cycles absorb it.  On the point-rich curves a
-composite in the second phase lowers the model's S more than the actual
-survivors fall (they sit on the floor of non-reduced points), so the stage
-takes fewer primes there too (checks +23% on testhighmany, 2.7% faster
-regardless).
+(sp3 16.2 -> 14.3); the cycles absorb it.  On the point-rich curves the
+checks rise too (+23% on testhighmany) although the third stage takes as
+many primes as before (37.5 -> 38.0 on average; the sweep reviewer
+checked one curve's corrections during the run: the same sp3 at every one
+of them) -- the composite in the second phase takes the place a prime
+had, and which primes the stage is left with changes; the cause was not
+pinned down further, and the suite is 2.7% faster regardless.
 
 ## Not done, and why
 

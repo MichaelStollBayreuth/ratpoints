@@ -343,7 +343,8 @@ typedef unsigned long ratpoints_bit_array;
 
 /* define some datatypes */
 
-/* This is used to hold the preliminary sieving information for one prime p.
+/* This is used to hold the preliminary sieving information for one modulus
+ * p, a prime or a composite modulus (see ratpoints_sieve_entry below).
  * The table at ptr has p bit arrays (and a few more repeating the first
  * ones, for the first phase to run past the end), and the one for word
  * number i is at index (i + offset) mod p.  Besides the shift that the
@@ -359,8 +360,9 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
 /* The multiple of p in the offset lies in [RP_ROW_BIAS, RP_ROW_BIAS + p).
  * The reductions in sift.c multiply by the reciprocal, which is exact below
  * 2^32, so with this value they are exact for every word number in
- * [-2^31, 2^31 - 2*RATPOINTS_MAX_PRIME]; _ratpoints_sift0 tests for that
- * and divides otherwise. */
+ * [-2^31, 2^31 - 2*RATPOINTS_MAX_PRIME_EVEN] (a composite modulus can
+ * exceed the largest prime, by less than RATPOINTS_MAX_PRIME_EVEN);
+ * _ratpoints_sift0 tests for that and divides otherwise. */
 #define RP_ROW_BIAS 2147483648L
 
 /* Reducing modulo a prime by multiplying rather than dividing.  With
@@ -456,8 +458,8 @@ typedef struct { long p; long binv; long bias; unsigned long magic;
  * a0 + 2^k t, and a bit array sweeps 2^k times as many numerators as it has
  * bits.  bits is the 2-adic pattern in that packing -- the admissible ones
  * among a0 + 2^k t, of period 64/2^k in t and so one word repeated -- which
- * the first prime ANDs into every bit array.  offset[n], for the n-th prime
- * of sieve_list, is the shift of the table row that the packing needs, with
+ * the first modulus ANDs into every bit array.  offset[n], for the n-th
+ * modulus of sieve_list, is the shift of the table row that the packing needs, with
  * the multiple of p of sieve_spec built in: bit t wants the pattern for the
  * residue (a0 + 2^k t) b^-1 = (t + a0 2^-k) (b 2^-k)^-1 mod p, so the row for
  * the denominator is the one for b 2^-k mod p, read a0 2^-k bits further on,
@@ -491,8 +493,9 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 /* the largest number of prime-power factors a modulus below 2^10 can have
  * (3*5*7*11 > 1024) */
 #define RP_MAX_FACTORS 3
-/* words holding a pattern of RATPOINTS_MAX_PRIME_EVEN bits */
-#define RP_MODWORDS (RATPOINTS_MAX_PRIME_EVEN/LONG_LENGTH)
+/* words holding a pattern of RATPOINTS_MAX_PRIME_EVEN bits (at least one:
+ * the smallest prime size has 32) */
+#define RP_MODWORDS ((RATPOINTS_MAX_PRIME_EVEN + LONG_LENGTH - 1)/LONG_LENGTH)
 
 /* What a prime power p^e = m says about the curve: bit x of fsq is set when
  * f(x) is a square mod m, bit t of gsq (p | t) when frev(t) is one; inv[x]

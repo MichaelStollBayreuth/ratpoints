@@ -66,13 +66,13 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
 # define RP_BC_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BC_TOC(t) do { _rp_bc_cycles += __rdtsc() - (t); _rp_bc_calls++; } \
                       while(0)
-/* and the loop that computes b modulo each prime of the first two phases,
- * once per denominator and prime; the primes of the third stage have no
+/* and the loop that computes b modulo each modulus of the first two phases,
+ * once per denominator and modulus; the primes of the third stage have no
  * such cost, since their set-up is done on demand (fill_checks in sift.c) */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
 extern unsigned long long _rp_arrays_swept;
-/* and building one sieve table, which is the fixed cost a prime has to earn
- * back over the run; see run_shape */
+/* and building one sieve table, which is the fixed cost a modulus has to
+ * earn back over the run; see run_shape */
 extern unsigned long long _rp_init_cycles, _rp_init_calls, _rp_init_rows;
 extern unsigned long long _rp_setup_cycles, _rp_setup_dens;
 # define RP_SETUP_TIC(t) unsigned long long t = __rdtsc()
@@ -122,7 +122,8 @@ typedef struct { double r; double key; long p; unsigned long mask;
                  ratpoints_sieve_entry *ssp; long nf; long fac[RP_MAX_FACTORS]; }
         entry;
 
-/* a bound on the composite moduli offered: the odd numbers below the limit */
+/* a bound on the number of composite moduli offered: at most the odd
+ * numbers below the limit */
 #define RP_MAX_MODULI (RATPOINTS_MAX_PRIME_EVEN/2)
 
 typedef struct { int p; int val; int slope; } use_squares1_info;
@@ -159,16 +160,19 @@ void *pointer_align(void *xx, long m)
 }
 
 /* NOTE: args->degree must be set */
-/* Reserve the space for the sieving information for the first n primes.
- * For each prime p we may need p arrays (one for each denominator mod p) of
- * length p + RATPOINTS_CHUNK-1, the CHUNK-1 so that _ratpoints_sift0 can
- * avoid a wrap-around.  The sum grows with the square of the largest prime,
- * which is why n matters: taking it to be RATPOINTS_NUM_PRIMES asks for 5 MB
- * when primes go up to 127, but 1.7 GB when they go up to 1021, whether or
- * not the large primes are ever looked at.
+/* Reserve the space for the sieving information for the first n primes,
+ * and for extra further bit arrays (the tables of the composite moduli the
+ * ranking has taken, see ensure_ba_buffer).  For each prime p we may need p
+ * arrays (one for each denominator mod p) of length p + RATPOINTS_CHUNK-1,
+ * the CHUNK-1 so that _ratpoints_sift0 can avoid a wrap-around.  The sum
+ * grows with the square of the largest prime, which is why n matters:
+ * taking it to be RATPOINTS_NUM_PRIMES asks for 5 MB when primes go up to
+ * 127, but 1.7 GB when they go up to 1021, whether or not the large primes
+ * are ever looked at.
  * args->ba_buffer_na keeps the address malloc returned, so that it can be
  * freed later; the +1 leaves the leeway needed for the alignment.
- * args->ba_buffer_primes records what the block is good for.
+ * args->ba_buffer_primes and args->ba_buffer_arrays record what the block
+ * is good for.
  */
 static long ba_buffer_need(long n, long extra)
 { long need = extra;
@@ -262,7 +266,9 @@ void find_points_init(ratpoints_args *args)
     = malloc(RATPOINTS_NUM_PRIMES*(RATPOINTS_MAX_PRIME+1)*sizeof(int));
   args->int_next = args->int_buffer;
 
-  /* allocate sieve_list: the moduli taken and the primes left over */
+  /* allocate sieve_list: the moduli taken and the primes left over (at most
+   * RATPOINTS_NUM_PRIMES entries in all, since each owns a prime no other
+   * has; the doubling is headroom) */
   args->sieve_list = malloc(2*RATPOINTS_NUM_PRIMES
                              * sizeof(ratpoints_sieve_entry*));
 
@@ -273,9 +279,11 @@ void find_points_init(ratpoints_args *args)
   args->stage3_list = malloc(RATPOINTS_NUM_PRIMES * sizeof(check_spec));
 
   /* the reciprocals _ratpoints_sift0 reduces word numbers with.  They belong
-   * to the primes, not to the denominators, so they are filled in once per
+   * to the moduli, not to the denominators, so they are filled in once per
    * curve; and they are kept out of sieve_spec because that structure is read
-   * in the innermost loop of the first phase, where its size tells. */
+   * in the innermost loop of the first phase, where its size tells.  As many
+   * as sieve_list has (RATPOINTS_NUM_PRIMES would do, since every entry in
+   * the list owns a prime no other has; the doubling is headroom). */
   args->magics = malloc(2*RATPOINTS_NUM_PRIMES * sizeof(unsigned long));
 
   /* allocate remaining data structures */
@@ -1030,15 +1038,16 @@ static long num_packings(const rp_num_class *cls)
   return(n > 0 ? n : 1);
 }
 
-/* The row shifts of the numerator classes (rp_num_class), once the primes
- * are known: for a class with stride 2^k and offset a0 and the n-th prime p
- * of sieve_list, a0 (2^k RBA_LENGTH)^-1 mod p, plus the multiple of p that
+/* The row shifts of the numerator classes (rp_num_class), once the moduli
+ * are known: for a class with stride 2^k and offset a0 and the n-th modulus
+ * p of sieve_list, a0 (2^k RBA_LENGTH)^-1 mod p, plus the multiple of p that
  * keeps the word number plus the shift non-negative (RP_ROW_BIAS).  Classes
  * with the same packing share a row.  offsets has room for num_packings()
- * rows of np entries, one per prime that may come to be sieved with
- * (adapt_primes can promote one into the second phase during the run).  On
- * the way the sieve entries get 2^-k mod p for the strides in use (dinv,
- * read by fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2. */
+ * rows of np entries, one per modulus that may come to be sieved with
+ * (adapt_primes can promote a prime into the second phase during the run).
+ * On the way the sieve entries get 2^-k mod p for the strides in use (dinv,
+ * read by fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2, which
+ * works for any odd modulus. */
 static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
                           long np, long *offsets)
 { /* the row of the packing (k, a0), if built: a0 < 2^k, so 2^k + a0 is a
@@ -1087,7 +1096,7 @@ static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
  * the `best' primes for sieving.                                         *
  **************************************************************************/
 
-/* Primes are ranked by what they say per unit of what they cost, not by
+/* Moduli are ranked by what they say per unit of what they cost, not by
  * what they say alone; key is set by prime_key() below.  With the cost of a
  * table switched off the key is monotone in r and this is the old order. */
 static int compare_entries(const void *a, const void *b)
@@ -1104,8 +1113,8 @@ static int compare_by_r(const void *a, const void *b)
   return (diff > 0) ? 1 : (diff < 0) ? -1 : 0;
 }
 
-/* What one more prime costs the sieve, per numerator word, in units of what
- * a first-phase prime costs there.
+/* What one more modulus -- a prime, or a composite modulus -- costs the
+ * sieve, per numerator word, in units of what a first-phase AND costs there.
  *
  * per_word is the part that is paid for every word (or for every surviving
  * bit array, which comes to the same thing once multiplied by the survival
@@ -1133,9 +1142,9 @@ static double prime_cost(long p, double per_word, int tabled,
   return(cost);
 }
 
-/* The rank of a prime: what it costs divided by what it says.  A prime
+/* The rank of a modulus: what it costs divided by what it says.  A modulus
  * multiplies the survival rate by r, so what it says is -log(r), and the
- * best set of primes for a given total cost is found by taking them in
+ * best set of moduli for a given total cost is found by taking them in
  * increasing order of this ratio. */
 static double prime_key(double r, long p, double per_word, int tabled,
                         double cost_table, double u_words, double n_denoms)
@@ -1361,10 +1370,14 @@ static void adapt_primes(ratpoints_args *args)
 #endif
 }
 
-/* How many primes the first phase needs: enough of them that the expected
- * number of surviving numerators per 64-bit word falls to the target.
- * prec[] must be sorted by increasing r.  If the target cannot be reached
- * with the primes available, all of them are used. */
+/* How many primes the first phase would need: enough of them that the
+ * expected number of surviving numerators per 64-bit word falls to the
+ * target.  prec[] must be sorted by increasing key.  If the target cannot
+ * be reached with the primes available, all of them are used.  Since 2.3
+ * the choice itself is made by take_entries(), with the composite moduli in
+ * the pool; this estimate, over the primes alone, serves the rule that
+ * decides whether to look at more primes, and errs on the high side since
+ * a composite modulus can only lower the count. */
 static long primes_for_phase_1(entry *prec, long pnp,
                                double bits_per_word, double target)
 { double rate = 1.0;
@@ -1517,7 +1530,13 @@ static int examine_prime(ratpoints_args *args, long pn,
 
   if(np >= p) { return(0); } /* the prime carries no information */
 
-  { double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
+  { /* the mean density of admissible numerators over the classes of the
+     * denominator mod p: np/p for the p-1 unit classes, (p-1)/p for the
+     * class divisible by p (its row, sieves0, admits the numerators not
+     * divisible by p), which counts only when such denominators occur.
+     * Until 2.3 the last class was counted with density 1, 1/p^2 too much,
+     * which the exact density of a prime power (examine_power) then beat. */
+    double r = is_f_square[p] ? ((double)((np + 1)*(p-1)))/((double)(p*p))
                               : (double)np/(double)p;
 
     prec_entry->r = r;
@@ -2379,12 +2398,12 @@ static long sieving_info(ratpoints_args *args,
   qsort(prec, pnp, sizeof(entry), compare_entries);
 
   /* Choose sp1 and sp2 unless they were given.
-   * prec[] is now sorted by increasing r, where r is the density of the
-   * numerators that are admissible modulo the corresponding prime, so the
-   * expected fraction of numerators surviving the first n primes is the
-   * product of the first n values of r.  Multiplied by the number of bits
-   * actually set in a bit-array to begin with, that is the expected number
-   * of survivors per bit-array; see the comment on
+   * prec[] is now sorted by increasing key, what a modulus costs per unit
+   * of what it says; r is the density of the numerators that are admissible
+   * modulo the modulus, so the expected fraction of numerators surviving
+   * the first n moduli is the product of their r.  Multiplied by the number
+   * of bits actually set in a bit-array to begin with, that is the expected
+   * number of survivors per bit-array; see the comment on
    * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h . */
   /* The candidates are taken in the order of their keys, but a modulus
    * sharing a prime with one already taken is passed over: the composite
@@ -2738,7 +2757,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
           }
           /* the end of the table, which the first phase's wrap-around
            * compares against; the start field is set by sift0 at the head
-           * of every call, for the first-phase primes, and nothing reads
+           * of every call, for the first-phase moduli, and nothing reads
            * it before that */
           ssp[n].end = ssp[n].ptr + p;
 
@@ -3073,11 +3092,11 @@ static long find_points_work_1(ratpoints_args *args,
     printf("  denominators from %ld to %ld\n", args->b_low, args->b_high);
     printf("  number of primes to consider:     %3ld\n", args->num_primes);
     if(args->sp2 < 0)
-    { printf("  number of primes for sieving:     (chosen from the curve)\n"); }
-    else { printf("  number of primes for sieving:     %3ld\n", args->sp2); }
+    { printf("  number of moduli for sieving:     (chosen from the curve)\n"); }
+    else { printf("  number of moduli for sieving:     %3ld\n", args->sp2); }
     if(args->sp1 < 0)
-    { printf("  number of primes for first stage: (chosen from the curve)\n"); }
-    else { printf("  number of primes for first stage: %3ld\n", args->sp1); }
+    { printf("  number of moduli for first stage: (chosen from the curve)\n"); }
+    else { printf("  number of moduli for first stage: %3ld\n", args->sp1); }
     printf("  maximal number of `forbidden divisors': %ld\n",
            args->max_forbidden);
     if(args->sturm >= 0)

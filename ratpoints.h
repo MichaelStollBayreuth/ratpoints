@@ -193,8 +193,9 @@
  * fifth of the instructions and a tenth of the time on random curves at
  * height 200000 while losing 7% on the point-rich ones.  With the moduli
  * bounded by 64 -- the powers 9, 25, 27, 49 and the products of the primes
- * up to 21 -- the cycles follow the instructions on every test set (32 and
- * 128 were measured too; 64 is the best of them).  A per-AND cost that
+ * up to 21 -- the cycles follow the instructions on the random curves (32,
+ * 128 and 255 were measured too; 64 wins on test1, testhigh and
+ * testhighmany and loses a point to 32 on test1many).  A per-AND cost that
  * rises with the modulus would let the model use the larger products
  * where they pay; that wants a cache-size constant, see TODO item 30. */
 #ifndef RATPOINTS_COMPOSITE_MAX
@@ -326,9 +327,11 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used;
-                   /* output: the number of primes the last search used in
-                      the first stage, in the first two, and in all three;
-                      the input fields above come back as they went in */
+                   /* output: the number of sieving moduli (primes, and
+                      since 2.3 composite moduli) the last search used in
+                      the first stage and in the first two, and the number
+                      of moduli and primes in all three stages; the input
+                      fields above come back as they went in */
         /* from here: private data */
                  mpz_t *work; long work_length;
                  void *se_buffer; void *se_next;

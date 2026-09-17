@@ -1903,11 +1903,13 @@ Chinese remainder theorem its density is the product of theirs: $45 = 9
 \cdot 5$ carries what two large primes do. Every odd composite up to~$64$
 is now a candidate in the ranking that chooses the primes, with that
 density and its own table cost, and moduli sharing a prime exclude one
-another; the third stage keeps to primes, and at height bounds up to
-$1000$ no table pays and nothing changes. The first phase of a random
-curve at height~$16383$ uses $10$ moduli instead of $11.7$ primes and
-performs $14\%$ fewer \texttt{AND}s. Worth $6\%$ of \texttt{make test1},
-$11\%$ of \texttt{make testhigh} and $2.5\%$ of \texttt{make testhighmany},
+another; the third stage keeps to primes, and below a height bound of a
+few hundred no table pays and nothing is offered (at~$1000$ the modulus~$9$
+enters on a third of the random curves, and the run does not change
+measurably). The first phase of a random curve at height~$16383$ uses $10$
+moduli instead of $11.7$ primes and performs $14\%$ fewer \texttt{AND}s.
+Worth $6\%$ of \texttt{make test1}, $11\%$ of \texttt{make testhigh} and
+$2.7\%$ of \texttt{make testhighmany},
 at a loss of $1\%$ on \texttt{make test1many}, where the small moduli are
 nearly silent. Larger moduli save more instructions and lose time: a row
 of $220$ bit arrays does not stay in the first-level cache, and the cost

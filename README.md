@@ -139,9 +139,10 @@ curves that carries twice what 3 does, for a table of nine rows, and 25, 27 and 
 word carries them all: 45 = 9*5 carries what two large primes do. Every odd composite up to 64 is
 now a candidate in the ranking that chooses the primes, with the product of its factors' densities
 and its own table cost, and moduli sharing a prime exclude one another; the third stage keeps to
-primes, and at height bounds up to 1000 no table pays and nothing changes. The first phase of a
-random curve at height 16383 uses 10 moduli instead of 11.7 primes and does 14% fewer ANDs.
-Worth 6% of `make test1`, 11% of `make testhigh` and 2.5% of `make testhighmany`, at a loss of 1%
+primes, and below a height bound of a few hundred no table pays and nothing is offered (at 1000
+the modulus 9 enters on a third of the random curves, and the run does not change measurably). The
+first phase of a random curve at height 16383 uses 10 moduli instead of 11.7 primes and does 14%
+fewer ANDs. Worth 6% of `make test1`, 11% of `make testhigh` and 2.7% of `make testhighmany`, at a loss of 1%
 on `make test1many`, where the small moduli are nearly silent. Larger moduli save more instructions
 and lose time: a row of 220 bit arrays does not stay in the first-level cache, and the cost model
 prices an AND the same whatever the modulus, which is on the list.
