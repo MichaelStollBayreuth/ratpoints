@@ -477,7 +477,9 @@ typedef struct
           long bias;    /* the multiple of p in a row shift; see RP_ROW_BIAS */
           long dinv[RP_NUM_STRIDES]; /* 2^-k mod p: the denominator is
                                       * reduced to b 2^-k mod p for the
-                                      * table row, see rp_num_class */
+                                      * table row, see rp_num_class; filled
+                                      * by class_offsets() for the strides
+                                      * in use */
           ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
         ratpoints_sieve_entry;
 

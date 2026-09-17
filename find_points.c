@@ -917,22 +917,28 @@ static void get_2adic_info(ratpoints_args *args, unsigned long *den_bits,
       { long a = RP_CTZL(w); /* the least admissible numerator, which fixes
                               * the class mod 2^k for every k */
 
-        /* the largest k for which every set bit is at a = a0 mod 2^k */
-        for(k = RP_NUM_STRIDES - 1; k > 0; k--)
-        { if((w & ~(class_mask[k] << (a & ((1L << k) - 1)))) == 0UL) { break; } }
+        /* the largest k for which every set bit is at a = a0 mod 2^k;
+         * upwards, since most classes stop at the first test */
+        for(k = 1; k < RP_NUM_STRIDES; k++)
+        { if(w & ~(class_mask[k] << (a & ((1L << k) - 1)))) { break; } }
+        k--;
         a0 = a & ((1L << k) - 1);
-        /* the set bits, each at its place t = (a - a0)/2^k in the packing;
-         * a runs over 0..63 and the pattern has period 64/2^k in t, so
-         * every set bit lands below that and the word is then replicated */
-        while(w)
-        { long t;
+        if(k == 0) { packed = w; }
+        else
+        { /* the set bits -- at most 64/2^k of them -- each at its place
+           * t = (a - a0)/2^k in the packing; a runs over 0..63 and the
+           * pattern has period 64/2^k in t, so every set bit lands below
+           * that and the word is then replicated */
+          while(w)
+          { long t;
 
-          a = RP_CTZL(w); w &= w - 1UL;
-          t = ((a - a0) & 0x3f) >> k;
-          packed |= 1UL << t;
+            a = RP_CTZL(w); w &= w - 1UL;
+            t = ((a - a0) & 0x3f) >> k;
+            packed |= 1UL << t;
+          }
+          for(a = LONG_LENGTH >> k; a < LONG_LENGTH; a <<= 1)
+          { packed |= packed << a; }
         }
-        for(a = LONG_LENGTH >> k; a < LONG_LENGTH; a <<= 1)
-        { packed |= packed << a; }
         db |= 1UL << b;
       }
       cls[b].bits = RBA(packed);
@@ -960,33 +966,47 @@ static void get_2adic_info(ratpoints_args *args, unsigned long *den_bits,
  * keeps the word number plus the shift non-negative (RP_ROW_BIAS).  Classes
  * with the same packing share a row.  offsets has room for 64 rows of np
  * entries, one per prime that may come to be sieved with (adapt_primes can
- * promote one into the second phase during the run). */
+ * promote one into the second phase during the run).  On the way the
+ * sieve entries get 2^-k mod p for the strides in use (dinv, read by
+ * fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2. */
 static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
                           long np, long *offsets)
-{ long b, rows = 0;
+{ /* the row of the packing (k, a0), if built: a0 < 2^k, so 2^k + a0 is a
+   * key below 2^RP_NUM_STRIDES */
+  long *row_of[1L << RP_NUM_STRIDES];
+  long rinv[np > 0 ? np : 1][RP_NUM_STRIDES]; /* (2^k RBA_LENGTH)^-1 mod p */
+  long b, n, kmax = 0, rows = 0;
 
   for(b = 0; b < 64; b++)
-  { long c;
+  { if(EXT0(cls[b].bits) && cls[b].k > kmax) { kmax = cls[b].k; } }
+  for(n = 0; n < np; n++)
+  { ratpoints_sieve_entry *se = sieve_list[n];
+    long p = se->p, k, d = 1;
+    long e = se->inverses[RP_MULMOD(RBA_LENGTH, p, se->magic)];
+
+    for(k = 0; k <= kmax; k++)
+    { se->dinv[k] = d; rinv[n][k] = e;
+      d = (d & 1) ? (d + p) >> 1 : d >> 1;
+      e = (e & 1) ? (e + p) >> 1 : e >> 1;
+    }
+  }
+
+  for(b = 0; b < (1L << RP_NUM_STRIDES); b++) { row_of[b] = NULL; }
+  for(b = 0; b < 64; b++)
+  { long key = (1L << cls[b].k) + cls[b].a0;
 
     if(!EXT0(cls[b].bits)) { continue; }
-    for(c = 0; c < b; c++)
-    { if(EXT0(cls[c].bits) && cls[c].k == cls[b].k && cls[c].a0 == cls[b].a0)
-      { break; }
-    }
-    if(c < b) { cls[b].offset = cls[c].offset; }
+    if(row_of[key]) { cls[b].offset = row_of[key]; }
     else
     { long *row = offsets + rows*np;
-      long n;
 
       for(n = 0; n < np; n++)
       { ratpoints_sieve_entry *se = sieve_list[n];
-        long p = se->p;
-        /* (2^k RBA_LENGTH) mod p, which is not zero as p is odd */
-        long m = RP_MULMOD(RBA_LENGTH << cls[b].k, p, se->magic);
 
-        row[n] = RP_MULMOD(cls[b].a0*se->inverses[m], p, se->magic) + se->bias;
+        row[n] = RP_MULMOD(cls[b].a0*rinv[n][cls[b].k], se->p, se->magic)
+                   + se->bias;
       }
-      cls[b].offset = row;
+      cls[b].offset = row_of[key] = row;
       rows++;
     }
   }
@@ -1458,17 +1478,9 @@ static int examine_prime(ratpoints_args *args, long pn,
      * revisited during the run, when prec[] is long gone */
     se->r = prec_entry->r;
     /* the multiple of p in the row shifts, so that the word number plus the
-     * shift is never negative; see RP_ROW_BIAS and class_offsets() */
+     * shift is never negative; see RP_ROW_BIAS and class_offsets(), which
+     * also fills dinv[] once the strides in use are known */
     se->bias = p*((RP_ROW_BIAS + p - 1)/p);
-    /* 2^-k mod p for the strides the numerators can be packed with
-     * (rp_num_class), by halving: 2^-1 mod p is (p+1)/2 */
-    { long k, d = 1;
-
-      for(k = 0; k < RP_NUM_STRIDES; k++)
-      { se->dinv[k] = d;
-        d = (d & 1) ? (d + p) >> 1 : d >> 1;
-      }
-    }
     /* sieves0 is 64-bit words, but is read as bit-arrays; it is given
      * the alignment of ratpoints_bit_array in gen_find_points_h.c . */
     se->sieve[0] = (ratpoints_bit_array *)&sieves0[pn][0];
@@ -1554,6 +1566,8 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
   double packed = 0.0;  /* the sum over them of 1/stride: the share of their
                          * numerators the bit arrays hold */
+  static const double inv_stride[RP_NUM_STRIDES]
+    = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625};
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
@@ -1574,7 +1588,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     for(j = 0; j < 32; j++)
     { const rp_num_class *cl = &cls[(j*j) & 0x3f];
 
-      if(EXT0(cl->bits)) { good++; packed += 1.0/(double)(1L << cl->k); }
+      if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
     }
     keep = (double)good/32.0;
   }
@@ -1605,7 +1619,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       { const rp_num_class *cl
           = &cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f];
 
-        if(EXT0(cl->bits)) { good++; packed += 1.0/(double)(1L << cl->k); }
+        if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -1629,7 +1643,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
       while(w)
       { j = RP_CTZL(w); w &= w - 1UL;
-        good++; packed += 1.0/(double)(1L << cls[j].k);
+        good++; packed += inv_stride[cls[j].k];
       }
     }
     keep = (double)good/64.0;
@@ -3050,7 +3064,9 @@ static long find_points_work_1(ratpoints_args *args,
   /* now do the sieving */
   { ratpoints_bit_array *survivors;
     void *survivors_na;
-    long *offsets; /* the row shifts of the numerator classes */
+    /* the row shifts of the numerator classes: up to 64 rows, one per
+     * distinct packing, over every prime that may come to be sieved with */
+    long offsets[64*(args->sp3_max > 0 ? args->sp3_max : 1)];
 
 #ifdef DEBUG
     printf("\nfind_points_work: allocating space for survivors...");
@@ -3064,11 +3080,9 @@ static long find_points_work_1(ratpoints_args *args,
     survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
     survivors = (ratpoints_bit_array *)
                 pointer_align(survivors_na, sizeof(ratpoints_bit_array));
-    /* and the row shifts of the numerator classes, now that the primes are
-     * known: one row per distinct packing, over every prime that may come
-     * to be sieved with */
-    offsets = malloc(64*args->sp3_max*sizeof(long));
-    class_offsets(&cls[0], sieve_list, args->sp3_max, offsets);
+    /* the row shifts of the numerator classes, now that the primes are
+     * known */
+    class_offsets(&cls[0], sieve_list, args->sp3_max, &offsets[0]);
 #ifdef DEBUG
     printf(" done\n");
     fflush(NULL);
@@ -3316,7 +3330,6 @@ static long find_points_work_1(ratpoints_args *args,
     }
     /* de-allocate memory */
     free(survivors_na);
-    free(offsets);
   }
 
 #if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
