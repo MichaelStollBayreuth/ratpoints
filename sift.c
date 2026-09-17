@@ -983,7 +983,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
          * back by p, and continue in packets of p;
          * finally, there may be another partial run. */
         ratpoints_bit_array *siv1 = &sieve_n[p-r];
-        ratpoints_bit_array *surv_end = &survivors[range - p];
+        long left = range - r; /* bit arrays after the first r; >= 0 here */
 
         { long i;
 
@@ -991,16 +991,18 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
           { AND(*surv, *siv1++); surv++; }
         }
         siv1 -= p;
-        while(surv <= surv_end)
+        for( ; left >= p; left -= p)
         { long i;
 
           for(i = p; i; i--)
           { AND(*surv, *siv1++); surv++; }
           siv1 -= p;
         }
-        surv_end += p;
-        while(surv < surv_end)
-        { AND(*surv, *siv1++); surv++; }
+        { long i;
+
+          for(i = left; i; i--)
+          { AND(*surv, *siv1++); surv++; }
+        }
       }
 
 #ifdef DEBUG

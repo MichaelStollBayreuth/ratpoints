@@ -12,9 +12,10 @@
 #
 # Which pair of tests, and at what height bound, is set by TUNE_TESTS and
 # TUNE_HEIGHT below.  The default is the pair "make test" uses, at their own
-# height of 16383.  That is a short run in which a fifth of the time goes into
-# building sieve tables rather than into sieving, so a setting is judged partly
-# on work it does not affect; "make tunehigh" measures the same thing on the
+# height of 16383.  That is a short run in which two fifths of the time goes
+# into work other than the two sieving phases (choosing the primes, the set-up
+# per denominator, the exact checks), so a setting is judged partly on work it
+# does not affect; "make tunehigh" measures the same thing on the
 # large-height suites instead, where the sieve is nearly all of it.  Use that
 # one if the runs that matter are long.  The two write the same tuning.mk and
 # each starts from what the other left, so the cheap sweep can be run first and

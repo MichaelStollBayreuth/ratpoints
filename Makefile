@@ -61,12 +61,6 @@ VERSION = 2.2.3
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
 
-# The test targets time their runs with the shell's "time".  That is a shell
-# built-in, and dash -- which is /bin/sh on Debian and Ubuntu -- does not have
-# it, so name a shell that does rather than relying on whatever /bin/sh is.
-# Override on the command line if bash lives elsewhere on your system.
-SHELL = /bin/bash
-
 CC = gcc
 RM = rm -f
 INSTALL = cp
@@ -234,10 +228,13 @@ tune: rptest rptest-many
 
 # The same, measured on the large-height suites instead (see testhigh and
 # testhighmany below).  Which one to use depends on the runs that matter: at
-# the 16383 of "make test" a fifth of the time is spent building sieve tables,
-# which the threshold and the offset have no effect on (the table cost is the
-# one constant that bears on it), so a short-run tuning judges them partly on
-# work they do not touch.
+# the 16383 of "make test" two fifths of the time on the random curves goes
+# into work other than the two sieving phases -- choosing the primes, the
+# set-up per denominator, the reductions of the denominators, the exact checks
+# -- on which the threshold and the offset have little or no effect (the sieve
+# tables alone are 4%, and the cost of building a table is the one constant
+# that bears on them), so a short-run tuning judges them partly on work they
+# do not touch.
 #
 # One timing here is two minutes against three seconds there, so this does not
 # sweep the whole ladder of candidates.  It starts from the settings in force
@@ -262,6 +259,12 @@ tunehigh: rptest rptest-high-many
 	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' C_FACTORS='0.5 2' \
 	 ./tune.sh
 
+# The timed test targets time their runs with the shell's "time".  That is a
+# shell built-in which dash, /bin/sh on Debian and Ubuntu, does not have, so
+# those targets run under bash; the build itself runs under whatever /bin/sh
+# is.  Override on the command line if bash lives elsewhere on your system.
+test1 test1many testhigh testhighmany testdegrees test2 timing: SHELL = /bin/bash
+
 # Run ratpoints on a set of 1008 test cases -- 1000 random genus 2 curves and
 # eight chosen to reach the test on the denominators at a prime dividing the
 # leading coefficient, see testdata.h -- and check the output
@@ -284,10 +287,12 @@ test1many: rptest-many testbase-many
 # that bound: the sieve tables are built lazily, once for each pair (prime,
 # denominator mod that prime), and then reused, so their total cost is bounded
 # by the primes and does not grow with the height, while the sifting does.  On
-# the random curves the table set-up is 22% of "make test1" but 0.5% here, and
-# sifting goes from 48% to 87% of the run.  So these are the suites to judge a
-# change to the sieving loops by, and the ones to point "make tune" at if the
-# runs that matter are long ones.  Each takes about a minute.
+# the random curves the tables are 4% of "make test1" (22% when these suites
+# were added) but 0.3% here, the whole set-up per denominator 8.5% against
+# 1.3%, and the two sieving phases go from 57% to 90% of the run.  So these
+# are the suites to judge a change to the sieving loops by, and the ones to
+# point "make tune" at if the runs that matter are long ones.  Each takes
+# about a minute.
 
 # The curves of test1 at the larger height bound.  None of them has a
 # rational point of height between 16383 and 200000, so the list of
