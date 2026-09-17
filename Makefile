@@ -230,10 +230,11 @@ tune: rptest rptest-many
 # testhighmany below).  Which one to use depends on the runs that matter: at
 # the 16383 of "make test" two fifths of the time on the random curves goes
 # into work other than the two sieving phases -- choosing the primes, the
-# set-up per denominator (the sieve tables alone are 4%; their cost is the one
-# constant that bears on it), the reductions of the denominators, the exact
-# checks -- on which the threshold and the offset have little or no effect, so
-# a short-run tuning judges them partly on work they do not touch.
+# set-up per denominator, the reductions of the denominators, the exact checks
+# -- on which the threshold and the offset have little or no effect (the sieve
+# tables alone are 4%, and the cost of building a table is the one constant
+# that bears on them), so a short-run tuning judges them partly on work they
+# do not touch.
 #
 # One timing here is two minutes against three seconds there, so this does not
 # sweep the whole ladder of candidates.  It starts from the settings in force
@@ -289,8 +290,9 @@ test1many: rptest-many testbase-many
 # the random curves the tables are 4% of "make test1" (22% when these suites
 # were added) but 0.3% here, the whole set-up per denominator 8.5% against
 # 1.3%, and the two sieving phases go from 57% to 90% of the run.  So these
-# are the suites to judge a change to the sieving loops by, and the ones to point "make tune" at if the
-# runs that matter are long ones.  Each takes about a minute.
+# are the suites to judge a change to the sieving loops by, and the ones to
+# point "make tune" at if the runs that matter are long ones.  Each takes
+# about a minute.
 
 # The curves of test1 at the larger height bound.  None of them has a
 # rational point of height between 16383 and 200000, so the list of

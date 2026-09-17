@@ -1256,11 +1256,12 @@ noisy.
 Which tests it measures on is worth a thought. At the height bound
 \texttt{test1} and \texttt{test1many} use, two fifths of the time on the random
 curves goes into work other than the two sieving phases --- choosing the
-primes, the set-up per denominator (the sieve tables alone are $4\%$; their
-cost is the one constant that bears on it), the reductions of the
-denominators, the exact checks --- on which the threshold and the offset have
-little or no effect, so a setting is judged partly on work it does not touch. \texttt{make
-tunehigh} measures on the large-height tests instead, where the sieve is nearly
+primes, the set-up per denominator, the reductions of the denominators, the
+exact checks --- on which the threshold and the offset have little or no
+effect (the sieve tables alone are $4\%$, and the cost of building a table is
+the one constant that bears on them), so a setting is judged partly on work it
+does not touch. \texttt{make tunehigh} measures on the large-height tests
+instead, where the sieve is nearly
 all of the run; use it if the runs that matter to you are long ones.
 
 One timing there is two minutes rather than three seconds, so it does not sweep
@@ -1700,8 +1701,8 @@ sieving phases (the sieve tables alone were a fifth of it when the suites were
 added, and are $4\%$ after the work on the set-up), so it measures a change to
 the sieving loops through a filter; at the new one the two phases are nine
 tenths of the run and the tables a third of a per cent. \texttt{make
-tunehigh} tunes the constants on
-them. The test programs also no longer pass the default number of primes
+tunehigh} tunes the constants on them. The test programs also no longer pass
+the default number of primes
 explicitly, which had quietly stopped them from ever using the new rule above.
 
 There is a third sieving stage. The two that were there work on bit arrays,

@@ -25,7 +25,9 @@ chunked default build.  Nothing builds this arm by default.
 `SHELL = /bin/bash` was file-scope in v2.3; 2.2.4 on `main` scopes it to the
 targets whose recipes use the shell's `time` (a built-in dash lacks).  Now
 `test1 test1many testhigh testhighmany testdegrees test2 timing: SHELL =
-/bin/bash`; every other recipe runs under whatever `/bin/sh` is.  The seven
+/bin/bash`; every other recipe runs under whatever `/bin/sh` is (except when
+a build is pulled in as a prerequisite of one of the seven: GNU make passes a
+target-specific variable on to the prerequisites, which is harmless).  The seven
 are all the recipes that use `time`; no other recipe uses a bash-only
 construct (grep for `[[`, brace expansion, `$((`, `<(`, `&>`, `set -o`).
 `tune.sh` and `test3.sh` have their own `#!`.  Verified by `make test`:
@@ -58,15 +60,17 @@ high suites were added, before items 23 and 24 reworked the set-up), and
 run, not 48% and 87%.  What is still outside the two sieving phases at
 16383 is two fifths of the run: the prime choice, the set-up per
 denominator, the `b mod p` reductions, the exact checks, the third stage.
-Five passages said the old numbers; all now say the new ones with the old
-as history where the sentence is historical:
+Six passages said the old numbers (the sixth, in tune.sh, was found by the
+review); all now say the new ones with the old as history where the sentence
+is historical:
 
 * `ratpoints-doc-2.3.tex`, the test-suite section (`22%`/`0.5%`/`48%`/`87%`);
 * the `make tune` section ("a fifth of the time ... building sieve tables");
 * the 2.3 narrative on the high suites ("a fifth of the run to be table
   construction"; kept as what was true when they were added, with the
   present figure);
-* `Makefile`, the tunehigh comment and the testhigh comment.
+* `Makefile`, the tunehigh comment and the testhigh comment;
+* `tune.sh`, the head comment (ships in the distribution).
 
 The README has no such figure (its "fifth" sentences are gains of items 25
 and 27, not shares).  The manual compiles with 0 errors and the same four
@@ -76,3 +80,15 @@ overfull boxes as before.
 
 No measurement of the default build: none of the three changes is compiled
 into it (1), affects a recipe's work (2) or the code (3).
+
+## Review
+
+One Opus reviewer (brief review-2026-09-12/rev-review-tidy.txt), sweep and
+skeptic in one, on 09f13f9.  The loop equivalence checked by hand and by
+running the CHUNK=1 and CHUNK=32 builds against the default one at six
+heights; the SHELL list complete and verified under dash; every number in
+the prose recomputed from the counters.  One finding: tune.sh's head comment
+still had the old "fifth", fixed.  Nits taken: the antecedent of "it" in the
+tune passages, three unwrapped lines, the note on target-specific variables
+reaching prerequisites.  Not taken: listing the fill and the third stage in
+the enumeration of the non-sieving work (it is not meant to be complete).
