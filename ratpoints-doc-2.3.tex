@@ -275,10 +275,12 @@ each. That bound decides a good deal of what a test measures. A sieve table
 is built the first time a given prime meets a given class of denominators and
 is reused afterwards, so the total cost of building the tables is bounded by
 the number of primes and does not grow with the height, whereas the sieving
-does: on the random curves the tables are $22\%$ of \texttt{make test1} but
-$0.5\%$ of \texttt{make testhigh}, and the sifting itself goes from $48\%$
-to $87\%$ of the run. These are therefore the tests to judge a change to the
-sieving loops by. \texttt{testhigh} uses the same curves as
+does: on the random curves the sieve tables are $4\%$ of \texttt{make test1}
+(they were $22\%$ when these suites were added, before the set-up was
+reworked) but $0.3\%$ of \texttt{make testhigh}, the whole of the set-up per
+denominator $8.5\%$ against $1.3\%$, and the two sieving phases themselves go
+from $57\%$ to $90\%$ of the run. These are therefore the tests to judge a
+change to the sieving loops by. \texttt{testhigh} uses the same curves as
 \texttt{test1}; none of them has a rational point of height between $16383$
 and $2\cdot10^5$, so the expected output is \texttt{testbase} again, and that
 the two agree is itself worth knowing. \texttt{testhighmany} uses the thirty
@@ -1252,10 +1254,12 @@ instance \texttt{ROUNDS=6 make tune} on a machine that reports itself too
 noisy.
 
 Which tests it measures on is worth a thought. At the height bound
-\texttt{test1} and \texttt{test1many} use, a fifth of the time on the random
-curves goes into building sieve tables, which the threshold and the offset
-have no effect on (the table cost is the one constant that bears on it), so a
-setting is judged partly on work it does not touch. \texttt{make
+\texttt{test1} and \texttt{test1many} use, two fifths of the time on the random
+curves goes into work other than the two sieving phases --- choosing the
+primes, the set-up per denominator (the sieve tables alone are $4\%$; their
+cost is the one constant that bears on it), the reductions of the
+denominators, the exact checks --- on which the threshold and the offset have
+little or no effect, so a setting is judged partly on work it does not touch. \texttt{make
 tunehigh} measures on the large-height tests instead, where the sieve is nearly
 all of the run; use it if the runs that matter to you are long ones.
 
@@ -1691,9 +1695,12 @@ the old forms back, should you want to measure this on your own machine.
 There are two further test suites, \texttt{make testhigh} and \texttt{make
 testhighmany}, which run the two regimes at a height bound of $2\cdot10^5$
 instead of $16383$. The point of them is that the old bound is short enough
-for a fifth of the run to be table construction rather than sieving, so it
-measures a change to the sieving loops through a filter; at the new one that
-share is half a per cent. \texttt{make tunehigh} tunes the constants on
+for two fifths of the run to be set-up and overhead rather than the two
+sieving phases (the sieve tables alone were a fifth of it when the suites were
+added, and are $4\%$ after the work on the set-up), so it measures a change to
+the sieving loops through a filter; at the new one the two phases are nine
+tenths of the run and the tables a third of a per cent. \texttt{make
+tunehigh} tunes the constants on
 them. The test programs also no longer pass the default number of primes
 explicitly, which had quietly stopped them from ever using the new rule above.
 
