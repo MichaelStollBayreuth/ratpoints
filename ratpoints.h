@@ -320,6 +320,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *forb_ba; void *forbidden;
                  void *forb_words; long forb_words_len;
                  void *ba_buffer_na; long ba_buffer_primes;
+                 long ba_buffer_arrays; void *pw_buffer;
                  double run_words; double run_denoms;
                  unsigned long n_words; unsigned long n_arrays;
                  unsigned long n_bits; unsigned long n_coprime;
