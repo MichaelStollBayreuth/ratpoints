@@ -12,16 +12,21 @@ was timed (`pair.sh`).
 For a class of the denominator mod 64 the admissible numerators -- those
 with b^D f(a/b) a square mod 64, item 26's pattern -- are a union of
 residue classes mod 64, and on a random curve they often lie in a single
-class modulo 4 or 8: computed from the pattern over the thousand random
-test curves, the odd denominators take their numerators from one class
-mod 4 on 223 curves and mod 8 on 155 (one class mod 2 on 54, no
-restriction on 486, none admissible on 90); the even denominators reach 8
-as well.  Nothing reaches 16, and the stride is the same for every odd
-class and within each class of v_2(b) on every curve, as the theory says
-(the pattern of b = u b' with u a unit mod 64 is u times that of b', and
-multiplication by a unit keeps a set of residues within one class mod
-2^k).  The mod-64 information did not add any stride over mod 16 (491/53/
-232/147 there).
+class modulo 4 or 8: computed from the pattern over the 1008 test curves
+(the thousand random ones and the eight added in 2026), the odd
+denominators take their numerators from one class mod 4 on 223 curves and
+mod 8 on 155 (one class mod 2 on 54, no restriction on 486, none
+admissible on 90; over the thousand random ones alone 220/155/54/481/90);
+the even denominators reach 8 as well.  Nothing reaches 16, and the stride
+is the same for every odd class and within each class of v_2(b) on every
+curve, as the theory says (the pattern of b = u b' with u a unit mod 64 is
+u times that of b', and multiplication by a unit keeps a set of residues
+within one class mod 2^k).  Against the mod-16 information (491/53/232/147
+and 85 with nothing admissible) the modulus 64 raises the stride on 11 of
+the 1008 curves -- one from 1 to 2, two from 1 to 4, two from 1 to 8, six
+from 4 to 8 -- and excludes five more that mod 16 would have sieved at
+stride 4 (the sweep reviewer's transition table); nothing reaches 16
+either way.
 
 The program knew only the two-fold packing: `which_bits` said whether the
 odd denominators take all, only even or only odd numerators, and an even
@@ -101,10 +106,11 @@ over base:
 | testhighmany | 0.989 | 0.991 | 0.990 | 0.970 | 1.004 | |
 
 The verdict predicted arrays x 0.86 at both heights before the chunk
-padding (which item 25 removed since) and 0.99 point-rich: reproduced.
-Instructions (perf, whole run): test1 0.920, test1many 0.974, testdegrees
-0.907 -- the point-rich suite gains more than its arrays because the
-per-denominator loop got simpler.
+padding (which item 25 removed since) and 0.99 point-rich: reproduced
+(0.98-0.99 point-rich).  Instructions (perf stat, whole run, final code;
+setup-instructions.txt in the reports): test1 0.921, test1many 0.972,
+testdegrees 0.907 -- the point-rich suite gains more than its
+arrays because the per-denominator loop got simpler.
 
 Cycles, pinned, new over base (median of the per-round ratios; 5 rounds
 at the default placement, 3 at each of -falign-loops=32 and 64):
@@ -134,31 +140,36 @@ simpler per-denominator loop (2.2k instructions per curve at height 100,
 a few per cent of test1) or the scan, which walks the arrays too.
 
 The run-length estimate: log(Uact/Upred) on test1 mean 0.071 sd 0.077
-before, 0.088 sd 0.100 after; at height 1000 1.72 -> 2.04.  With fewer
+before, 0.088 sd 0.100 after; at height 1000 the geometric mean of
+Uact/Upred goes 1.72 -> 2.04.  With fewer
 bits per denominator the rounding of each denominator's range up to whole
 bit arrays weighs more (the Left-over "U at small height bounds" of item
 27); at 200000 unchanged (1.051 -> 1.053).
 
 ## The set-up, and the small height bounds
 
-The first form of the change cost 26k instructions per curve more than the
-base at height 100 (+7.6%), 29k at 200 and 21k at 1000, against the 11k
-the sieve saves there.  Callgrind on `rptest -h 100` split it: the
-seven halvings per prime for `dinv` and the row inverses in examine_prime
-3.7k, the packing and the offset rows in find_points_work 4.9k, a malloc
-and free per curve for the rows 3-4k, a floating-point division per class
-in run_shape 0.6k, the tables of the extra first-phase prime 6-7k, the
-quadratic search for a shared row inside that; sift saves 2.2k (its
-per-denominator loop lost the halving and the offset select).  The second
-commit (00673e9) takes what is cheap to take: the stride search runs
-upwards and stops at the first failure (most classes have stride 1 or 2),
-a class with stride 1 is not repacked, the rows are deduplicated by the
-key 2^k + a0 and live on the stack, the inverses are computed once per
-prime and only up to the largest stride in use, run_shape reads 1/2^k
-from a table.  Now +14.5k per curve at height 100 (+4.2%), +17.3k at 200
-(+4.3%), +15.2k at 1000 (+2.4%): find_points_work +7.3k (the packing of
-64 classes, about a dozen rows of 30 shifts), run_shape +0.6k, sift0
-+0.4k, sift -2.2k, and the tables +8.9k.
+The first form of the change (6716603) cost 26.3k instructions per curve
+more than the base at height 100 (+7.6%; perf stat over the 1008 curves
+of `rptest -h 100`, setup-instructions.txt in the reports), 28.9k at 200
+and 21.1k at 1000, against the 11k the sieve saves there.  Callgrind on
+`rptest -h 100` split it (taken with the quadratic search for a shared
+row already replaced by a key look-up, hence a total of +21.2k there;
+setup-callgrind.txt): the seven halvings per prime for `dinv` and the row
+inverses in examine_prime 3.7k, the packing and the offset rows in
+find_points_work 4.8k, a malloc and free per curve for the rows 4.2k, a
+floating-point division per class in run_shape 0.6k, the tables of the
+extra first-phase prime 6-7k; sift saves 2.2k (its per-denominator loop
+lost the halving and the offset select).  The second commit (00673e9)
+takes what is cheap to take: the stride search runs upwards and stops at
+the first failure (most classes have stride 1 or 2), a class with stride
+1 is not repacked, the rows are deduplicated by the key 2^k + a0 and live
+on the stack, the inverses are computed once per prime and only up to the
+largest stride in use, run_shape reads 1/2^k from a table.  Now +14.5k per
+curve at height 100 (+4.2%), +17.3k at 200 (+4.3%), +15.2k at 1000
+(+2.4%) by perf stat; callgrind's split of the +14.7k at 100:
+find_points_work +7.3k (the packing of 64 classes, about a dozen rows of
+30 shifts), run_shape +0.6k, sift0 +0.4k, sift -2.2k, and the tables
++8.9k.
 
 The tables are not this item's doing but the sp1 rule's: `bits_per_word`
 rises with the packing, so `primes_for_phase_1` takes 0.6 primes more at

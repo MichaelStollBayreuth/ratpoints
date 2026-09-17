@@ -153,9 +153,11 @@
  * factors lets through.  It is about 6/pi^2 for the numerators that survive
  * by chance, a little less because the denominators that keep the most
  * survivors are those divisible by several of the sieving primes, which are
- * also the ones with the fewest coprime numerators.  It also carries the
- * halving that an even denominator brings, since only odd numerators are
- * then considered; neither factor is worth estimating separately. */
+ * also the ones with the fewest coprime numerators.  It was fitted when the
+ * even denominators alone were packed, at half width, and carries what that
+ * left over; since 2.3 every class of the denominator is packed with its
+ * own stride (rp_num_class in rp-private.h) and run_shape counts that, so
+ * this is a fitted fudge; neither factor is worth estimating separately. */
 #ifndef RATPOINTS_SP3_COPRIME
 # define RATPOINTS_SP3_COPRIME 0.7
 #endif

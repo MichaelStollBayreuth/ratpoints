@@ -960,15 +960,30 @@ static void get_2adic_info(ratpoints_args *args, unsigned long *den_bits,
 #endif
 }
 
+/* How many distinct packings (k, a0) the classes with a pattern have: the
+ * number of rows class_offsets() builds. */
+static long num_packings(const rp_num_class *cls)
+{ unsigned long seen[2] = {0UL, 0UL}; /* the keys 2^k + a0, below 128 */
+  long b, n = 0;
+
+  for(b = 0; b < 64; b++)
+  { long key = (1L << cls[b].k) + cls[b].a0;
+
+    if(EXT0(cls[b].bits) && !((seen[key >> 6] >> (key & 63)) & 1UL))
+    { seen[key >> 6] |= 1UL << (key & 63); n++; }
+  }
+  return(n > 0 ? n : 1);
+}
+
 /* The row shifts of the numerator classes (rp_num_class), once the primes
  * are known: for a class with stride 2^k and offset a0 and the n-th prime p
  * of sieve_list, a0 (2^k RBA_LENGTH)^-1 mod p, plus the multiple of p that
  * keeps the word number plus the shift non-negative (RP_ROW_BIAS).  Classes
- * with the same packing share a row.  offsets has room for 64 rows of np
- * entries, one per prime that may come to be sieved with (adapt_primes can
- * promote one into the second phase during the run).  On the way the
- * sieve entries get 2^-k mod p for the strides in use (dinv, read by
- * fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2. */
+ * with the same packing share a row.  offsets has room for num_packings()
+ * rows of np entries, one per prime that may come to be sieved with
+ * (adapt_primes can promote one into the second phase during the run).  On
+ * the way the sieve entries get 2^-k mod p for the strides in use (dinv,
+ * read by fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2. */
 static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
                           long np, long *offsets)
 { /* the row of the packing (k, a0), if built: a0 < 2^k, so 2^k + a0 is a
@@ -2427,7 +2442,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * -- k the stride its numerators are packed with, so that this is the
  * residue whose sieve table the denominator reads (see rp_num_class) -- in
  * bp_list, computed afresh for every denominator by the multiply-high
- * reduction (RP_MULMOD; a division for a denominator beyond 2^24).  It used to be
+ * reduction (RP_MULMOD; for a denominator beyond 2^32 divided by the largest
+ * prime that can be compiled in, a division and a second reduction).  It
+ * used to be
  * stepped from the previous denominator, bp += d followed by while(bp >= p)
  * bp -= p: one to three data-dependent branches per prime and denominator,
  * mispredicted a quarter of the time, an eighth of all the branch misses of
@@ -2904,12 +2921,14 @@ static long find_points_work_1(ratpoints_args *args,
   if(args->flags & RATPOINTS_VERBOSE)
   { /* the stride is the same for every class of one 2-adic valuation of the
      * denominator (see get_2adic_info), so one class of each kind says it */
-    static const long rep[RP_NUM_STRIDES] = {1, 2, 4, 8, 16, 32, 0};
+    /* one class of each kind of denominator: b odd, 2 mod 4, 4 mod 8, ...,
+     * 32 mod 64, 0 mod 64 */
+    static const long rep[] = {1, 2, 4, 8, 16, 32, 0};
     long v;
 
     printf("  the bit arrays hold one numerator in (for b odd, 2 mod 4,"
-           " 4 mod 8, ..., 32 mod 64, 0 mod 64):");
-    for(v = 0; v < RP_NUM_STRIDES; v++)
+           " 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible):");
+    for(v = 0; v < (long)(sizeof(rep)/sizeof(rep[0])); v++)
     { if(EXT0(cls[rep[v]].bits)) { printf(" %ld", 1L << cls[rep[v]].k); }
       else { printf(" -"); }
     }
@@ -2926,9 +2945,8 @@ static long find_points_work_1(ratpoints_args *args,
      * the sieve.  cls[b].bits holds the admissible numerators for the
      * denominators b mod 64, in their packing, as one word repeated through
      * the bit-array, so the population count of that word is what is
-     * wanted; the denominators
-     * with no admissible numerator at all are skipped, so the mean is taken
-     * over the non-zero entries only.
+     * wanted; the denominators with no admissible numerator at all are
+     * skipped, so the mean is taken over the non-zero entries only.
      * Per word rather than per bit-array on purpose: measurements across
      * register widths show that the survivor rate at the best sp1 is
      * constant per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD
@@ -3064,9 +3082,10 @@ static long find_points_work_1(ratpoints_args *args,
   /* now do the sieving */
   { ratpoints_bit_array *survivors;
     void *survivors_na;
-    /* the row shifts of the numerator classes: up to 64 rows, one per
-     * distinct packing, over every prime that may come to be sieved with */
-    long offsets[64*(args->sp3_max > 0 ? args->sp3_max : 1)];
+    /* the row shifts of the numerator classes: one row per distinct
+     * packing (a dozen or so; at most 64), over every prime that may come to
+     * be sieved with */
+    long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
 
 #ifdef DEBUG
     printf("\nfind_points_work: allocating space for survivors...");
@@ -3344,7 +3363,8 @@ static long find_points_work_1(ratpoints_args *args,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
             args->n_words, args->n_arrays, args->n_bits,
-            args->n_coprime, args->n_checks, cls[1].k);
+            args->n_coprime, args->n_checks,
+            EXT0(cls[1].bits) ? cls[1].k : -1L);
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
   }
 #endif

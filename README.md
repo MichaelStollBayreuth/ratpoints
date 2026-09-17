@@ -105,8 +105,8 @@ no third stage at all and 250000 exact checks instead of 7900. Now the stage loo
 prime whenever none in hand pays but a prime of the density the curve has been offering would (the
 same test now also decides whether an empty pool is refilled at all; a fixed number of primes is
 taken as before). And
-the estimate of the run's length counts the numerators of even denominators at half width, which is
-what the sieve sweeps for them: it was too large by up to a third on such curves, and its spread
+the estimate of the run's length counts the numerators of even denominators at half width, which was
+what the sieve then swept for them: it was too large by up to a third on such curves, and its spread
 over the random curves halves. Worth 1% of `make test1many`, half a per cent of `make testhighmany`
 and nothing measurable elsewhere; the exact checks of `make testhighmany` fall 4.6 times.
 
@@ -121,7 +121,7 @@ residue is multiplied by the inverse of `2^k` and the row is read at a shift tha
 class, which is what the two-fold packing already did, and the sieving loops do not change. On
 the random curves the first phase sweeps 15% fewer bit arrays and does 12% fewer ANDs (the rule
 then wants three quarters of a prime more in the first phase), and the work done once per
-denominator got simpler. Worth 9% of `make test1` (7.5 to 9% at three code placements), 12.5% of
+denominator got simpler. Worth 9% of `make test1` (7.4 to 8.8% at three code placements), 12.5% of
 `make testhigh`, 1% of `make test1many`, 1.5% of `make testhighmany` and 3% at height bound
 4000. A run at height 1000 is 3.5% longer and one at 200 5% longer: deciding the 64 classes costs
 about 7000 instructions per curve, and the extra first-phase prime brings tables that a run of

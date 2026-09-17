@@ -1418,8 +1418,9 @@ can eliminate $b$ as a denominator altogether. If all potential $a$'s lie
 in one residue class modulo a power of two --- they are all odd for an even
 denominator, and on many curves those of the odd denominators lie in one
 class modulo $4$ or~$8$ --- we can restrict the sieving to such numerators:
-a bit of the bit arrays then stands for every second, fourth or eighth
-integer, and the arrays are that much shorter. Before version~2.3 only the
+a bit of the bit arrays then stands for every $2^k$-th integer, for the
+largest such~$k$ ($2$, $4$ and $8$ occur on the test curves), and the arrays
+are that much shorter. Before version~2.3 only the
 restriction to one parity was made; see the changes of that version below.
 
 \subsection{Elimination of denominators}
@@ -1848,7 +1849,7 @@ checks in place of $7900$. Now the stage looks at a further prime whenever
 none in hand pays but a prime of the density the curve has been offering
 would; the same test decides whether an empty pool is refilled at all, and
 a number of primes fixed with \verb+-P+ is taken as before. And the estimate of the run's length counts the numerators of even
-denominators at half width, which is what the sieve sweeps for them: it was
+denominators at half width, which was what the sieve then swept for them: it was
 too large by up to a third on such curves, and its spread over the random
 curves halves. Worth $1\%$ of \texttt{make test1many}, half a per cent of
 \texttt{make testhighmany} and nothing measurable elsewhere; the exact
@@ -1871,7 +1872,7 @@ packing already did with $k = 1$ --- and the sieving loops do not change.
 On the random curves the first phase sweeps $15\%$ fewer bit arrays and
 performs $12\%$ fewer \texttt{AND}s (the rule then takes three quarters of
 a prime more into the first phase), and the work done once per denominator
-got simpler. Worth $9\%$ of \texttt{make test1} ($7.5$ to $9\%$ at three
+got simpler. Worth $9\%$ of \texttt{make test1} ($7.4$ to $8.8\%$ at three
 placements of the code), $12.5\%$ of \texttt{make testhigh}, $1\%$ of
 \texttt{make test1many}, $1.5\%$ of \texttt{make testhighmany} and $3\%$ at
 the height bound~$4000$. A run at height~$1000$ is $3.5\%$ longer and one

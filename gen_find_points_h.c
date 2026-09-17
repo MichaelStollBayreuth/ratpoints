@@ -48,12 +48,12 @@ int main(int argc, char *argv[])
   long n;
 
   /* Record the configuration this file is generated for and check it when it
-   * is compiled.  The contents depend on the register width (offsets[] via
-   * RBA_LENGTH, sieves0[] via RBA_PACK and RATPOINTS_CHUNK) and on the prime
-   * size, but nothing in the build system ties the generated file to the
-   * flags.  Compiling a stale find_points.h against a wider configuration
-   * would leave sieves0[] partly zero -- too few initializers are perfectly
-   * legal C, so there would be no warning -- and offsets[] simply wrong. */
+   * is compiled.  The contents depend on the register width (sieves0[] via
+   * RBA_PACK and RATPOINTS_CHUNK) and on the prime size, but nothing in the
+   * build system ties the generated file to the flags.  Compiling a stale
+   * find_points.h against a wider configuration would leave sieves0[]
+   * partly zero -- too few initializers are perfectly legal C, so there
+   * would be no warning. */
   /* RBA_PACK pins the width down: RBA_LENGTH == RBA_PACK * LONG_LENGTH, and
    * LONG_LENGTH is fixed at 64. */
   printf("#define RP_FP_H_RBA_PACK %d\n", (int)RBA_PACK);

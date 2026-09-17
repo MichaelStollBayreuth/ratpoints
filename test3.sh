@@ -10,8 +10,8 @@
 #  8-12 the positivity region misses the search domain: the points at
 #       infinity used to be dropped (8-10 in general, 11-12 for even degree
 #       with a square leading coefficient when reversal is suppressed)
-# 13-15 no denominator class admits a numerator mod 64: num_bits[] used to be
-#       read uninitialised, which with -j -F 0 printed points outside the
+# 13-15 no denominator class admits a numerator mod 64: the array of numerator
+#       patterns used to be read uninitialised, which with -j -F 0 printed points outside the
 #       height bound after a 5000-fold blow-up.  13 and 15 print nothing
 #       either way; 14 shows the message of the early return, which the
 #       unfixed program does not have
@@ -26,6 +26,9 @@
 # 19-20 the report the program prints after a run (the primes used, the
 #       reversal, the search intervals), which no other test looks at; the
 #       numbers of primes are pinned so that retuning does not change it
+# 21    the -v report of the numerator packing (item 28), on a curve whose
+#       odd denominators take one numerator in eight and whose even ones
+#       one in four or none
 RP=./ratpoints
 $RP '1 2' 20 -q
 $RP '1 2 0' 50 -q
@@ -47,3 +50,4 @@ $RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 primes for second stage\|
 $RP '1 2 1' 20 -q
 $RP '1 0 126 0 441' 100 -n 5 -N 8 -P 2 -z | sed -n '/primes used/,$p'
 $RP '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -P 2 -z | sed -n '/primes used/,$p'
+$RP '-5 10 -9 -6 7 -1 3' 200 -v | grep 'bit arrays hold'
