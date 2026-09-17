@@ -181,6 +181,17 @@
 #ifndef RATPOINTS_COST_TABLE
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
+/* The largest composite modulus offered to the ranking (TODO item 21).  A
+ * composite modulus carries the information of its prime-power factors for
+ * one AND per word, but its row is m bit arrays and its table m rows of
+ * them, and the cost model charges an AND the same whatever the modulus:
+ * on this machine the first phase's cycles per AND double when rows of
+ * some 200 arrays replace the small primes' rows, which live in the first-
+ * level cache.  Below this bound the rows and tables are small enough for
+ * the model's assumption to hold. */
+#ifndef RATPOINTS_COMPOSITE_MAX
+# define RATPOINTS_COMPOSITE_MAX 255
+#endif
 #ifndef RATPOINTS_COST_BP
 # define RATPOINTS_COST_BP 8.0       /* one entry of bp_list, per denominator:
      the denominator reduced modulo the prime by a multiplication.  Measured

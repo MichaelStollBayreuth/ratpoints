@@ -1947,7 +1947,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
   { for(e = 0; e < 10; e++) { pw_idx[pn][e] = -1; } }
 
-  for(m = 9; m < RATPOINTS_MAX_PRIME_EVEN; m += 2)
+  for(m = 9; m < RATPOINTS_MAX_PRIME_EVEN && m <= RATPOINTS_COMPOSITE_MAX; m += 2)
   { long rest = m, nf = 0, fac[RP_MAX_FACTORS];
     double r = 1.0, builds = (d < (double)m) ? d : (double)m;
     unsigned long mask = 0UL;
