@@ -181,6 +181,26 @@
 #ifndef RATPOINTS_COST_TABLE
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
+/* The largest composite modulus offered to the ranking (2.3, TODO item
+ * 21).  A composite modulus -- a prime power, or a product of primes and
+ * prime powers -- carries the information of all its factors for one AND
+ * per word; but its row is m bit arrays and its table m rows of them, and
+ * the cost model charges an AND the same whatever the modulus.  That holds
+ * while the rows are small: measured here, the first phase's cycles per
+ * AND double when rows of some 200 bit arrays (7 KB) take the place of the
+ * small primes' rows, which live in the first-level cache and whose tables
+ * fit the second, and the products of two mid-size primes then save a
+ * fifth of the instructions and a tenth of the time on random curves at
+ * height 200000 while losing 7% on the point-rich ones.  With the moduli
+ * bounded by 64 -- the powers 9, 25, 27, 49 and the products of the primes
+ * up to 21 -- the cycles follow the instructions on the random curves (32,
+ * 128 and 255 were measured too; 64 wins on test1, testhigh and
+ * testhighmany and loses a point to 32 on test1many).  A per-AND cost that
+ * rises with the modulus would let the model use the larger products
+ * where they pay; that wants a cache-size constant, see TODO item 30. */
+#ifndef RATPOINTS_COMPOSITE_MAX
+# define RATPOINTS_COMPOSITE_MAX 64
+#endif
 #ifndef RATPOINTS_COST_BP
 # define RATPOINTS_COST_BP 8.0       /* one entry of bp_list, per denominator:
      the denominator reduced modulo the prime by a multiplication.  Measured
@@ -307,9 +327,11 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sturm; long num_primes; long max_forbidden;
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used;
-                   /* output: the number of primes the last search used in
-                      the first stage, in the first two, and in all three;
-                      the input fields above come back as they went in */
+                   /* output: the number of sieving moduli (primes, and
+                      since 2.3 composite moduli) the last search used in
+                      the first stage and in the first two, and the number
+                      of moduli and primes in all three stages; the input
+                      fields above come back as they went in */
         /* from here: private data */
                  mpz_t *work; long work_length;
                  void *se_buffer; void *se_next;
@@ -320,6 +342,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *forb_ba; void *forbidden;
                  void *forb_words; long forb_words_len;
                  void *ba_buffer_na; long ba_buffer_primes;
+                 long ba_buffer_arrays; void *pw_buffer;
                  double run_words; double run_denoms;
                  unsigned long n_words; unsigned long n_arrays;
                  unsigned long n_bits; unsigned long n_coprime;

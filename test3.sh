@@ -23,7 +23,7 @@
 #       such estimate and no line 17)
 # 18    not squarefree: the Sturm chain reaches a zero remainder, and the
 #       loop that found it used to index one below the array
-# 19-20 the report the program prints after a run (the primes used, the
+# 19-20 the report the program prints after a run (the moduli used, the
 #       reversal, the search intervals), which no other test looks at; the
 #       numbers of primes are pinned so that retuning does not change it
 # 21    the -v report of the numerator packing (item 28), on a curve whose
@@ -46,8 +46,8 @@ $RP '2 0 3' 200 -q -j -F 0 -x
 $RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 64'
 $RP '2 0 3' 300000 -q -j -F 0
 $RP '10 10 5 -7 0 3 -2' 16383 -q
-$RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 primes for second stage\|use 0 primes for third stage'
+$RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 moduli for second stage\|use 0 primes for third stage'
 $RP '1 2 1' 20 -q
-$RP '1 0 126 0 441' 100 -n 5 -N 8 -P 2 -z | sed -n '/primes used/,$p'
-$RP '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -P 2 -z | sed -n '/primes used/,$p'
+$RP '1 0 126 0 441' 100 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
+$RP '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
 $RP '-5 10 -9 -6 7 -1 3' 200 -v | grep 'bit arrays hold'

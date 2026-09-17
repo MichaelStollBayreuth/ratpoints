@@ -128,6 +128,26 @@ about 7000 instructions per curve, and the extra first-phase prime brings tables
 that length cannot use -- the rule that counts the first-phase primes knows nothing of their
 tables, which predates this change and is on the list.
 
+The sieve can use composite moduli. A table row only has to be periodic in the bit index with the
+modulus as its period and be selected by the denominator's residue, and nothing in the sieving
+loops asks for a prime; the program used primes only, and the small ones say little for what they
+cost: modulo 3 two residues in three are admissible on a random curve, so that AND removes a third
+of the candidates where a large prime's removes half. Modulo 9 the admissible residues are those
+with `f(x)` a square mod 9, and the squares are 4 of the 9 residues: over the thousand random test
+curves that carries twice what 3 does, for a table of nine rows, and 25, 27 and 49 do the like for
+5, 3 and 7. The row of a product of coprime moduli is the AND of its factors' rows, so one AND per
+word carries them all: 45 = 9*5 carries what two large primes do. Every odd composite up to 64 is
+now a candidate in the ranking that chooses the primes, with the product of its factors' densities
+and its own table cost, and moduli sharing a prime exclude one another; the third stage keeps to
+primes, and below a height bound of a few hundred no table pays and nothing is offered (at 1000
+the modulus 9 enters on a third of the random curves, and the run does not change measurably). The
+first phase of a random curve at height 16383 uses 10 moduli instead of 11.7 primes and does 14%
+fewer ANDs. Worth 7% of `make test1` (6 to 8% in two measurements), 11% of `make testhigh` and 3 to
+4% of `make testhighmany`, and nothing measurable on `make test1many`, where the small moduli are nearly
+silent. Larger moduli save more instructions
+and lose time: a row of 220 bit arrays does not stay in the first-level cache, and the cost model
+prices an AND the same whatever the modulus, which is on the list.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single

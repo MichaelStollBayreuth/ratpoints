@@ -343,7 +343,8 @@ typedef unsigned long ratpoints_bit_array;
 
 /* define some datatypes */
 
-/* This is used to hold the preliminary sieving information for one prime p.
+/* This is used to hold the preliminary sieving information for one modulus
+ * p, a prime or a composite modulus (see ratpoints_sieve_entry below).
  * The table at ptr has p bit arrays (and a few more repeating the first
  * ones, for the first phase to run past the end), and the one for word
  * number i is at index (i + offset) mod p.  Besides the shift that the
@@ -359,8 +360,9 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
 /* The multiple of p in the offset lies in [RP_ROW_BIAS, RP_ROW_BIAS + p).
  * The reductions in sift.c multiply by the reciprocal, which is exact below
  * 2^32, so with this value they are exact for every word number in
- * [-2^31, 2^31 - 2*RATPOINTS_MAX_PRIME]; _ratpoints_sift0 tests for that
- * and divides otherwise. */
+ * [-2^31, 2^31 - 2*RATPOINTS_MAX_PRIME_EVEN] (a composite modulus can
+ * exceed the largest prime, by less than RATPOINTS_MAX_PRIME_EVEN);
+ * _ratpoints_sift0 tests for that and divides otherwise. */
 #define RP_ROW_BIAS 2147483648L
 
 /* Reducing modulo a prime by multiplying rather than dividing.  With
@@ -456,8 +458,8 @@ typedef struct { long p; long binv; long bias; unsigned long magic;
  * a0 + 2^k t, and a bit array sweeps 2^k times as many numerators as it has
  * bits.  bits is the 2-adic pattern in that packing -- the admissible ones
  * among a0 + 2^k t, of period 64/2^k in t and so one word repeated -- which
- * the first prime ANDs into every bit array.  offset[n], for the n-th prime
- * of sieve_list, is the shift of the table row that the packing needs, with
+ * the first modulus ANDs into every bit array.  offset[n], for the n-th
+ * modulus of sieve_list, is the shift of the table row that the packing needs, with
  * the multiple of p of sieve_spec built in: bit t wants the pattern for the
  * residue (a0 + 2^k t) b^-1 = (t + a0 2^-k) (b 2^-k)^-1 mod p, so the row for
  * the denominator is the one for b 2^-k mod p, read a0 2^-k bits further on,
@@ -470,18 +472,70 @@ typedef struct { ratpoints_bit_array bits; long k; long a0; const long *offset; 
 /* the type of the functions used for initializing the sieve */
 typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 
-/* this is used to hold the sieving information for one prime p */
-typedef struct
+/* A sieving modulus need not be a prime (2.3, TODO item 21).  A table row
+ * only has to be periodic in the bit index with the modulus as its period,
+ * selected by the denominator's residue, and the first two phases read it
+ * the same way whatever the modulus is.  Three kinds of modulus are sieved
+ * with: a prime p, with the machinery that always was; a prime power p^e,
+ * whose row for the residue b is the pattern of the a with F(a,b) a square
+ * mod p^e -- f(a b^-1) for a unit b, frev(b a^-1) with frev(t) = t^D f(1/t)
+ * for p | b and a unit a, exactly as get_2adic_info decides mod 2^6 --
+ * which carries far more than the prime does (mod 9 about twice what mod 3
+ * says, for nine rows); and a product of primes and prime powers, whose row
+ * is the AND of its factors' rows and carries the information of all of
+ * them for one AND per word.  Which moduli are used is decided by the same
+ * ranking that chooses the primes, with the modulus's density the product
+ * of its factors' and its own table cost; moduli sharing a prime exclude
+ * one another.  The third stage, which indexes is_f_square by (a b^-1) mod
+ * p, uses primes only.  The strides the numerators can be packed with
+ * (rp_num_class) work with any odd modulus. */
+
+/* the largest number of prime-power factors a modulus below 2^10 can have
+ * (3*5*7*11 > 1024) */
+#define RP_MAX_FACTORS 3
+/* words holding a pattern of RATPOINTS_MAX_PRIME_EVEN bits (at least one:
+ * the smallest prime size has 32) */
+#define RP_MODWORDS ((RATPOINTS_MAX_PRIME_EVEN + LONG_LENGTH - 1)/LONG_LENGTH)
+
+/* What a prime power p^e = m says about the curve: bit x of fsq is set when
+ * f(x) is a square mod m, bit t of gsq (p | t) when frev(t) is one; inv[x]
+ * is x^-1 mod m for a unit x; r the mean density of admissible numerators
+ * over the classes of the denominator mod m, exact (a prime's, from
+ * examine_prime, counts the class it divides as 1: see there).  Filled by
+ * examine_power() in find_points.c. */
+typedef struct { long p; long e; long m; double r; int np;
+                 unsigned long fsq[RP_MODWORDS]; unsigned long gsq[RP_MODWORDS];
+                 unsigned short inv[RATPOINTS_MAX_PRIME_EVEN]; }
+        rp_power;
+
+/* This is used to hold the sieving information for one modulus p: a prime
+ * (nf == 0), a prime power (nf == 1 and pw set), or a product of nf >= 2
+ * primes and prime powers, whose entries factor[] points to.  is_f_square
+ * and inverses are the prime's tables and NULL for a composite modulus;
+ * rbainv is RBA_LENGTH^-1 mod p, which the row shifts of the numerator
+ * classes are computed from (class_offsets). */
+typedef struct ratpoints_sieve_entry_s
         { ratpoints_init_fun init; long p; int *is_f_square;
           const long *inverses; unsigned long magic; double r;
           long bias;    /* the multiple of p in a row shift; see RP_ROW_BIAS */
+          long rbainv;
           long dinv[RP_NUM_STRIDES]; /* 2^-k mod p: the denominator is
                                       * reduced to b 2^-k mod p for the
                                       * table row, see rp_num_class; filled
                                       * by class_offsets() for the strides
                                       * in use */
-          ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
+          long nf; struct ratpoints_sieve_entry_s *factor[RP_MAX_FACTORS];
+          const rp_power *pw;
+          ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME_EVEN]; }
         ratpoints_sieve_entry;
+
+/* The following two functions are provided in init.c: the table row of a
+ * prime power and of a product of moduli for the residue b, built into the
+ * table buffer like the rows of the primes (the CODE_INIT_SIEVE functions
+ * there), with -DRP_VERIFY_MODULI every row is checked against a direct
+ * evaluation of F(a,b) mod m as it is built. */
+ratpoints_bit_array *_ratpoints_sieve_init_power(void *se1, long b1, void *args1);
+ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *args1);
 
 /* The following function is provided in find_points.c : */
 long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,

@@ -313,16 +313,16 @@ Obtain information from the polynomial mod 64:
 
 Polynomial is not square-free.
 
-5 primes used for first stage of sieving,
-8 primes used for both stages of sieving together,
+5 moduli used for first stage of sieving,
+8 moduli used for both stages of sieving together,
 2 further primes used in the third stage.
 Search intervals:
 [-100.000000, 100.000000]
 
 12 rational points found.
 
-5 primes used for first stage of sieving,
-8 primes used for both stages of sieving together,
+5 moduli used for first stage of sieving,
+8 moduli used for both stages of sieving together,
 2 further primes used in the third stage.
 Search intervals:
 [-1.304688, 1.718750]

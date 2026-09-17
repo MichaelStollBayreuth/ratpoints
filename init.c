@@ -244,3 +244,200 @@ static ratpoints_bit_array *sieve_init_##prime(void *se1, long b1, void *args1) 
 }
 
 #include "init_sieve.h"
+
+/************************************************************************
+ * The rows of a composite modulus (TODO item 21, 2.3)                  *
+ ************************************************************************/
+
+/* Lay an m-periodic pattern of admissible bit indices out as a table row of
+ * m bit arrays (plus the RATPOINTS_CHUNK-1 wrap-around copies), taken from
+ * the table buffer like the rows of the primes.  Bit j of bit array x
+ * stands for the bit index x*RBA_LENGTH + j, so word l of bit array x is
+ * the 64 bits of the pattern from (x*RBA_LENGTH + 64 l) mod m on.  The
+ * pattern is first repeated so that those 64 bits can be read from two
+ * words wherever they start. */
+static ratpoints_bit_array *lay_out_pattern(const unsigned long *pat, long m,
+                                            ratpoints_args *args)
+{ unsigned long rep[RP_MODWORDS + 2];
+  unsigned long *si = (unsigned long *)args->ba_next;
+  long words = (m + LONG_LENGTH + LONG_LENGTH - 1) >> LONG_SHIFT;
+  long i, x, o, step;
+
+  args->ba_next += (m + RATPOINTS_CHUNK-1)*sizeof(ratpoints_bit_array);
+
+  /* the pattern, repeated over words*64 >= m + 64 bits */
+  for(i = 0; i < words; i++) { rep[i] = 0UL; }
+  for(o = 0; o < words*LONG_LENGTH; o += m)
+  { /* OR the pattern in at bit offset o: word by word, shifted */
+    long q = o >> LONG_SHIFT, s = o & LONG_MASK;
+    long pw = (m + LONG_LENGTH - 1) >> LONG_SHIFT;
+
+    for(i = 0; i < pw && q + i < words; i++)
+    { rep[q + i] |= pat[i] << s;
+      if(s && q + i + 1 < words) { rep[q + i + 1] |= pat[i] >> (LONG_LENGTH - s); }
+    }
+  }
+  /* the pattern has period m: bits beyond the last full copy were ORed in
+   * as far as they went; a copy that ran past words*64 was cut, which is
+   * what is wanted */
+
+  /* the rows: word l of bit array x starts at offset (x*RBA_LENGTH + 64 l)
+   * mod m; the offset of the next word is 64 further on, mod m */
+  step = LONG_LENGTH % m;
+  o = 0;
+  for(x = 0; x < m*RBA_PACK; x++)
+  { long q = o >> LONG_SHIFT, s = o & LONG_MASK;
+
+    si[x] = s ? (rep[q] >> s) | (rep[q + 1] << (LONG_LENGTH - s)) : rep[q];
+    o += step; if(o >= m) { o -= m; }
+  }
+  /* the wrap-around copies */
+  for(i = 0; i < (RATPOINTS_CHUNK-1)*RBA_PACK; i++) { si[m*RBA_PACK + i] = si[i]; }
+  return((ratpoints_bit_array *)si);
+}
+
+#ifdef RP_VERIFY_MODULI
+/* Check a row against what the program promises, factor by factor: for a
+ * prime-power factor q = p^e of m, bit index N of the row for the residue
+ * b is admissible when F(N, b) = sum c_j N^j b^(D-j) is a square mod q and
+ * not both p | N and p | b; for a prime factor p with p | b the promise is
+ * only that p does not divide N (the row is sieves0, whatever the curve:
+ * when the leading coefficient is a non-square mod p those denominators
+ * are excluded by the forbidden-divisor test, unless -F switched it off).
+ * By the Chinese remainder theorem F is a square mod m exactly when it is
+ * one mod every factor, so the row must be the AND of these.  The
+ * wrap-around copies are checked too (the pattern is periodic in N).
+ * Slow, for -DRP_VERIFY_MODULI builds only; aborts on the first mismatch. */
+#include <stdlib.h>
+static void verify_row(const ratpoints_bit_array *row, long m, long b,
+                       long nf, const long *q, const long *p, const int *power,
+                       ratpoints_args *args)
+{ mpz_t *c = args->cof;
+  long degree = args->degree, D = degree + (degree & 1);
+  unsigned long cm[RP_MAX_FACTORS][D + 1], sq[RP_MAX_FACTORS][RP_MODWORDS];
+  const unsigned long *w = (const unsigned long *)row;
+  long N, k, i;
+
+  for(i = 0; i < nf; i++)
+  { for(k = 0; k <= degree; k++) { cm[i][k] = mpz_fdiv_ui(c[k], q[i]); }
+    if(degree & 1) { cm[i][D] = 0UL; }
+    for(k = 0; k < RP_MODWORDS; k++) { sq[i][k] = 0UL; }
+    for(k = 0; k < q[i]; k++)
+    { long s = (k*k) % q[i]; sq[i][s >> LONG_SHIFT] |= 1UL << (s & LONG_MASK); }
+  }
+  for(N = 0; N < (m + RATPOINTS_CHUNK-1)*RBA_LENGTH; N++)
+  { long want = 1, bit;
+
+    for(i = 0; i < nf && want; i++)
+    { if(b % p[i] == 0 && !power[i]) { want = (N % p[i] != 0); }
+      else
+      { unsigned long F = 0UL, bpow = 1UL, Nq = (unsigned long)(N % q[i]);
+        long j;
+
+        for(j = D; j >= 0; j--)
+        { F = (F*Nq + cm[i][j]*bpow) % (unsigned long)q[i];
+          bpow = (bpow*(unsigned long)b) % (unsigned long)q[i];
+        }
+        want = (sq[i][F >> LONG_SHIFT] >> (F & LONG_MASK)) & 1UL;
+        if(b % p[i] == 0 && N % p[i] == 0) { want = 0; }
+      }
+    }
+    bit = (w[N >> LONG_SHIFT] >> (N & LONG_MASK)) & 1UL;
+    if(bit != want)
+    { fprintf(stderr, "RP_VERIFY_MODULI: modulus %ld, residue %ld, bit index %ld:"
+              " row says %ld, F says %ld\n", m, b, N, bit, want);
+      abort();
+    }
+  }
+}
+#endif
+
+/* The row of a prime power m = p^e for the residue b of the denominator.
+ * For a unit b the admissible bit indices x are those with f(x b^-1) a
+ * square mod m, bit x b^-1 of fsq; for p | b they are the units x with
+ * frev(b x^-1) a square, bit b x^-1 of gsq (see rp_power). */
+ratpoints_bit_array *_ratpoints_sieve_init_power(void *se1, long b1, void *args1)
+{ ratpoints_sieve_entry *se = se1;
+  ratpoints_args *args = args1;
+  const rp_power *pw = se->pw;
+  long m = pw->m, p = pw->p, b = b1, x;
+  unsigned long pat[RP_MODWORDS];
+  ratpoints_bit_array *row;
+
+  for(x = 0; x < RP_MODWORDS; x++) { pat[x] = 0UL; }
+  if(b % p)
+  { long binv = pw->inv[b], r = 0;
+
+    for(x = 0; x < m; x++)
+    { if((pw->fsq[r >> LONG_SHIFT] >> (r & LONG_MASK)) & 1UL)
+      { pat[x >> LONG_SHIFT] |= 1UL << (x & LONG_MASK); }
+      r += binv; if(r >= m) { r -= m; }
+    }
+  }
+  else
+  { for(x = 1; x < m; x++)
+    { long t;
+
+      if(x % p == 0) { continue; }
+      t = (long)(((unsigned long)b*(unsigned long)pw->inv[x]) % (unsigned long)m);
+      if((pw->gsq[t >> LONG_SHIFT] >> (t & LONG_MASK)) & 1UL)
+      { pat[x >> LONG_SHIFT] |= 1UL << (x & LONG_MASK); }
+    }
+  }
+  row = lay_out_pattern(pat, m, args);
+#ifdef RP_VERIFY_MODULI
+  { int power = 1; verify_row(row, m, b, 1, &m, &p, &power, args); }
+#endif
+  se->sieve[b] = row;
+  return(row);
+}
+
+/* The row of a product of moduli for the residue b: the AND of the factors'
+ * rows for b mod each factor, laid down in blocks of the factor's length
+ * (the factors divide m).  A factor's row is built first when it is not
+ * there yet. */
+ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *args1)
+{ ratpoints_sieve_entry *se = se1;
+  ratpoints_args *args = args1;
+  long m = se->p, b = b1, i, x, j;
+  const ratpoints_bit_array *frow[RP_MAX_FACTORS] = {0}; /* nf >= 2 fills
+                                                          * what is read */
+  ratpoints_bit_array *row;
+
+  for(i = 0; i < se->nf; i++)
+  { ratpoints_sieve_entry *fe = se->factor[i];
+    long bf = b % fe->p;
+
+    frow[i] = fe->sieve[bf] ? fe->sieve[bf] : (*(fe->init))(fe, bf, args);
+  }
+  /* the factors' rows are read before the row is taken from the buffer, so
+   * that a factor built just now does not land where this row goes */
+  row = (ratpoints_bit_array *)args->ba_next;
+  args->ba_next += (m + RATPOINTS_CHUNK-1)*sizeof(ratpoints_bit_array);
+  { long q = se->factor[0]->p;
+
+    for(x = 0; x < m; x += q)
+    { for(j = 0; j < q; j++) { row[x + j] = frow[0][j]; } }
+  }
+  for(i = 1; i < se->nf; i++)
+  { long q = se->factor[i]->p;
+
+    for(x = 0; x < m; x += q)
+    { for(j = 0; j < q; j++) { AND(row[x + j], frow[i][j]); } }
+  }
+  for(j = 0; j < RATPOINTS_CHUNK-1; j++) { row[m + j] = row[j]; }
+#ifdef RP_VERIFY_MODULI
+  { long q[RP_MAX_FACTORS], p[RP_MAX_FACTORS];
+    int power[RP_MAX_FACTORS];
+
+    for(i = 0; i < se->nf; i++)
+    { q[i] = se->factor[i]->p;
+      p[i] = se->factor[i]->pw ? se->factor[i]->pw->p : se->factor[i]->p;
+      power[i] = (se->factor[i]->pw != NULL);
+    }
+    verify_row(row, m, b, se->nf, q, p, power, args);
+  }
+#endif
+  se->sieve[b] = row;
+  return(row);
+}
