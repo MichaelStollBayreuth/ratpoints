@@ -2442,8 +2442,8 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * -- k the stride its numerators are packed with, so that this is the
  * residue whose sieve table the denominator reads (see rp_num_class) -- in
  * bp_list, computed afresh for every denominator by the multiply-high
- * reduction (RP_MULMOD; for a denominator beyond 2^32 divided by the largest
- * prime that can be compiled in, a division and a second reduction).  It
+ * reduction (RP_MULMOD; two of them for a denominator beyond 2^32 divided by
+ * the largest prime that can be compiled in, a division beyond 2^32).  It
  * used to be
  * stepped from the previous denominator, bp += d followed by while(bp >= p)
  * bp -= p: one to three data-dependent branches per prime and denominator,
@@ -2463,14 +2463,26 @@ static inline void fill_bp_list(long b, long k, long *bp_list,
   if(args->n_words >= args->adapt_at) { adapt_primes(args); }
   sp2 = args->sp2;
   RP_BP_TIC(t_bp);
-  /* b times 2^-k mod p stays below 2^32, where the reduction is exact, for
-   * a denominator below 2^32 divided by the largest prime that can be
-   * compiled in -- a height bound of some ten million */
+  /* The reduction is exact below 2^32.  b times 2^-k mod p stays below that
+   * for a denominator below 2^32 divided by the largest prime that can be
+   * compiled in (some ten million at the default prime size), and one
+   * reduction does; up to 2^32 itself b is reduced first and the product
+   * then, still without a division; beyond, mod() divides, as it always
+   * did. */
   if(b <= RP_MULMOD_LIMIT/RATPOINTS_MAX_PRIME_EVEN)
   { for(n = 0; n < sp2; n++)
     { ratpoints_sieve_entry *se = sieve_list[n];
 
       bp_list[n] = RP_MULMOD(b*se->dinv[k], se->p, magics[n]);
+    }
+  }
+  else if(b <= RP_MULMOD_LIMIT)
+  { for(n = 0; n < sp2; n++)
+    { ratpoints_sieve_entry *se = sieve_list[n];
+      long p = se->p;
+
+      bp_list[n] = RP_MULMOD(RP_MULMOD(b, p, magics[n])*se->dinv[k], p,
+                             magics[n]);
     }
   }
   else

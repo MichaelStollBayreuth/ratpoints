@@ -90,6 +90,35 @@ counter lines on stderr, as it did for items 26 and 27), test1once,
 test2, testhigh and testhighmany identical, valgrind clean on the debug
 and the optimised binary.
 
+**Reviewed** by two Opus agents (briefs rev-common/sweep/skeptic-stride.txt
+in review-2026-09-12/), no correctness fault.  The sweep derived the row
+shift from scratch and checked the halvings over every odd prime below
+1024, every register width and every stride; a brute force over all
+coprime (a, b) up to height 250 and 2000 on 86 curves covering 86 distinct
+stride patterns agreed with the program, as did eight option sets on a
+subset; eleven build variants (the ten of alt.sh and PRIME_SIZE 7 and 9)
+warning-free and byte-identical; the manual's overfull boxes are the base's
+four; every number in the notes recomputed from the raw reports.  It found
+two statements in the notes that their own numbers contradicted (the
+mod-16 comparison, the curve count), a cost figure that mixed two builds,
+stale `offsets[]` and `which_bits` in gen_find_points_h.c, the Makefile
+and ratpoints.h, and a dozen nits (c614d86: the rows sized by the number
+of packings, `kodd=-1` for an empty odd class, the verbose report's dash
+explained, test3 pins the report).  The skeptic packed 219 random curves
+of degrees 1-10 with coefficients up to 2^70 independently of fsq/gsq
+and compared with the DEBUG build's per-class dump (0 mismatches),
+checked 2148 (denominator, prime) rows of the DEBUG trace against the
+row formula, ran 900 randomized -l/-u interval cases and 960 sieve-free
+cases (-x -n 0 -N 0 -P 0 -j -F 0) against brute force, 3320 differential
+cases against the base over five builds and both reduction paths with
+identical points (only -x survivor lists differ, legitimately), ASan and
+UBSan silent, the U drift attributed to the array rounding by stride
+class (zero at stride 1, +0.7 at stride 8 at height 1000), no curve with
+its exact checks doubled.  It found the guard of fill_bp_list ignoring k:
+above 2^24 a stride-1 class took the division where the base multiplied
+(5.5% more instructions on such a curve at such heights); fixed with a
+middle tier of two reductions up to 2^32.
+
 ## What it is worth
 
 Counters (`-DRP_PHASE_TIMING -DRP_PHASE_COUNTS -DRP_PRIME_STATS`), new
