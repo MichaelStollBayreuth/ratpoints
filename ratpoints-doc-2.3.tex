@@ -1908,10 +1908,11 @@ few hundred no table pays and nothing is offered (at~$1000$ the modulus~$9$
 enters on a third of the random curves, and the run does not change
 measurably). The first phase of a random curve at height~$16383$ uses $10$
 moduli instead of $11.7$ primes and performs $14\%$ fewer \texttt{AND}s.
-Worth $6\%$ of \texttt{make test1}, $11\%$ of \texttt{make testhigh} and
-$2.7\%$ of \texttt{make testhighmany},
-at a loss of $1\%$ on \texttt{make test1many}, where the small moduli are
-nearly silent. Larger moduli save more instructions and lose time: a row
+Worth $7\%$ of \texttt{make test1} ($6$ to $8\%$ in two measurements),
+$11\%$ of \texttt{make testhigh} and $3$ to $4\%$ of \texttt{make
+testhighmany}, and nothing measurable on \texttt{make test1many}, where the
+small moduli are nearly silent. Larger moduli save more instructions and
+lose time: a row
 of $220$ bit arrays does not stay in the first-level cache, and the cost
 model prices an \texttt{AND} the same whatever the modulus; the bound is
 \texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}.

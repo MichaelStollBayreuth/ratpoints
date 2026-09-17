@@ -159,6 +159,14 @@ loses that.  So the mixture is kept, because it measures best on every
 suite, and the comments in examine_prime and examine_power say so.  A
 consistent treatment belongs to the tuning session with items 29 and 30.
 
+**The merge candidate** (b5105a7, behaviour that of the cap-64 build with
+the reviews' fixes), 3 rounds against cb0f187: test1 0.924 (0.913-0.934),
+test1many 1.000 (0.987-1.010), testhigh 0.889 (0.880-0.895), testhighmany
+0.956 (0.924-1.003), test1000 0.997; instructions 0.927 / 0.994 / 0.896 /
+0.998 / 0.991 (m-base-merge in the reports).  Against the cap-64 run
+(0.941 / 1.008 / 0.890 / 0.973 / 1.012) the difference is the noise
+between two chains, about 1.5 points on the 3-second suites.
+
 ## What it is worth
 
 **Uncapped (171cb63, every odd composite below 256 offered).**  Cycles

@@ -142,8 +142,9 @@ and its own table cost, and moduli sharing a prime exclude one another; the thir
 primes, and below a height bound of a few hundred no table pays and nothing is offered (at 1000
 the modulus 9 enters on a third of the random curves, and the run does not change measurably). The
 first phase of a random curve at height 16383 uses 10 moduli instead of 11.7 primes and does 14%
-fewer ANDs. Worth 6% of `make test1`, 11% of `make testhigh` and 2.7% of `make testhighmany`, at a loss of 1%
-on `make test1many`, where the small moduli are nearly silent. Larger moduli save more instructions
+fewer ANDs. Worth 7% of `make test1` (6 to 8% in two measurements), 11% of `make testhigh` and 3 to
+4% of `make testhighmany`, and nothing measurable on `make test1many`, where the small moduli are nearly
+silent. Larger moduli save more instructions
 and lose time: a row of 220 bit arrays does not stay in the first-level cache, and the cost model
 prices an AND the same whatever the modulus, which is on the list.
 
