@@ -104,10 +104,22 @@
  * offset is 3 on random curves at a height bound of 16383, 5 on point-rich
  * ones there, 9 on random curves at 200000 and 12 on point-rich ones, and
  * the pair above lands on 3, 8, 11 and 11.  A single fixed value costs 12%
- * of the point-rich half at the larger bound.  The
- * first phase needs no such correction: a phase-1 prime costs one AND per
- * word unconditionally, so the fixed part is a far smaller share of it, and
- * the best threshold indeed hardly moves with the height bound.
+ * of the point-rich half at the larger bound.
+ *
+ * The first phase has a correction of its own since 2.3 (TODO item 29).
+ * A modulus is taken while the survivors per word exceed the threshold
+ * times what the modulus costs per word -- one AND, plus its tables and
+ * its per-denominator entries spread over the run (prime_cost in
+ * find_points.c) -- with the survivors weighted by what one costs
+ * downstream relative to a long run: there the second phase's eleven
+ * moduli kill it cheaply, while in a run of a few thousand words there is
+ * no second phase and every survivor reaches the extraction, which costs
+ * several times more (RATPOINTS_COST_PHASE2 and RATPOINTS_COST_SURVIVOR
+ * below say how much).  At the height bounds the tuning runs use both
+ * factors are near one and the threshold means what it says; at a height
+ * bound of 200 the first is a hundred and the second six, the phase stops
+ * after seven moduli where it took thirteen whose tables were a fifth of
+ * the run, and the run is a quarter shorter.
  *
  * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
  * correction off and restores a flat offset. */

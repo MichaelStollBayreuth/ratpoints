@@ -111,14 +111,17 @@ extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
 
 extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
-/* A candidate modulus in the ranking: its density r and its key, the
- * modulus p, the primes it involves as a mask over their indices (a modulus
- * involving one of the primes beyond the first 64 is not offered), its
- * entry -- a prime's from examine_prime(), a composite's made by
- * make_modulus() when the ranking takes it and NULL until then -- and its
- * prime-power factors as codes: pn for the prime prime[pn],
- * RATPOINTS_NUM_PRIMES + i for the i-th prime power examined (rp_power). */
-typedef struct { double r; double key; long p; unsigned long mask;
+/* A candidate modulus in the ranking: its density r, its key and the cost
+ * the key was made from (what the modulus costs per numerator word in the
+ * first phase, one AND plus its fixed costs spread over the run; the rule
+ * that ends the first phase weighs it, see take_entries), the modulus p,
+ * the primes it involves as a mask over their indices (a modulus involving
+ * one of the primes beyond the first 64 is not offered), its entry -- a
+ * prime's from examine_prime(), a composite's made by make_modulus() when
+ * the ranking takes it and NULL until then -- and its prime-power factors
+ * as codes: pn for the prime prime[pn], RATPOINTS_NUM_PRIMES + i for the
+ * i-th prime power examined (rp_power). */
+typedef struct { double r; double key; double cost; long p; unsigned long mask;
                  ratpoints_sieve_entry *ssp; short nf; short fac[RP_MAX_FACTORS]; }
         entry;
 
@@ -1154,6 +1157,17 @@ static double prime_key(double r, long p, double per_word, int tabled,
   return(prime_cost(p, per_word, tabled, cost_table, u_words, n_denoms)/info);
 }
 
+/* Key a candidate for the first phase, and keep the cost the key was made
+ * from: the rule that ends the phase compares it with what the candidate
+ * would save (take_entries). */
+static void phase_1_key(entry *e, double cost_table, double u_words,
+                        double n_denoms)
+{ double info = -log(e->r);
+
+  e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms);
+  e->key = (info <= 0.0) ? 1.0e300 : e->cost/info;
+}
+
 /* What one exact check costs for this curve, in the units of
  * RATPOINTS_CHECK_REFERENCE.  The two third-stage constants are fractions of
  * one check, so they have to be divided by this; see the comment on
@@ -1372,22 +1386,70 @@ static void adapt_primes(ratpoints_args *args)
 #endif
 }
 
-/* How many primes the first phase would need: enough of them that the
- * expected number of surviving numerators per 64-bit word falls to the
- * target.  prec[] must be sorted by increasing key.  If the target cannot
- * be reached with the primes available, all of them are used.  Since 2.3
- * the choice itself is made by take_entries(), with the composite moduli in
- * the pool; this estimate, over the primes alone, serves the rule that
- * decides whether to look at more primes, and errs on the high side since
- * a composite modulus can only lower the count. */
+/* What a word that survives the first phase costs from there on, relative
+ * to what it costs in a long run.  It meets the extra moduli of the second
+ * phase, one AND on a surviving word each (RATPOINTS_COST_PHASE2) for as
+ * long as it survives them, and what survives those is extracted and
+ * tested, RATPOINTS_COST_SURVIVOR per survivor (about one per surviving
+ * word at these rates).  In a long run extra is eleven and the second phase
+ * kills nearly every survivor cheaply; RATPOINTS_SURVIVORS_PER_WORD was
+ * fitted there and stands for that cost.  In a run of a few thousand words
+ * extra is 0 or 1 and every surviving word reaches the extraction, which
+ * costs several times more, so the first phase should sieve harder than the
+ * target says.  The moduli the second phase would take are approximated by
+ * the next entries of the pool, and the long-run value by an endless second
+ * phase of their mean density. */
+static double downstream_factor(const entry *prec, long n, long pnp,
+                                long extra)
+{ double rate = 1.0, cost = 0.0, rho, k;
+  long j;
+
+  for(j = n + 1; j <= n + extra && j < pnp; j++)
+  { cost += RATPOINTS_COST_PHASE2*rate; rate *= prec[j].r; }
+  cost += rate*RATPOINTS_COST_SURVIVOR;
+  rho = (j > n + 1) ? pow(rate, 1.0/(double)(j - n - 1)) : prec[n].r;
+  k = cost*(1.0 - rho)/RATPOINTS_COST_PHASE2;
+  return((k < 1.0) ? 1.0 : k);
+}
+
+/* The rule that ends the first phase.  Modulus n of the pool is worth
+ * adding while the expected survivors per 64-bit word -- bits_per_word
+ * times the product rate of the densities taken so far --, weighted by
+ * what they cost downstream (above), exceed the target times what the
+ * modulus costs per word.  The target, RATPOINTS_SURVIVORS_PER_WORD, is
+ * fitted for a long run and a modulus that costs one AND per word; the
+ * fixed costs of a modulus -- its tables, its sieve_spec and bp_list
+ * entries per denominator -- are spread over the words of the run in
+ * entry.cost and raise the bar for it.  Over a long run that is by a few
+ * per cent; at a height bound of a few hundred, where the run is a few
+ * dozen words and a table has more rows than that, it is by a factor of a
+ * hundred, and the phase stops after some seven primes where it used to
+ * take a dozen whose tables were a third of the run (TODO item 29).  The
+ * first modulus is always taken: the chunked sieve writes the 2-adic
+ * pattern on its pass, so it costs nothing per word beyond that. */
+static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
+                         double bits_per_word, double rate, double target,
+                         long extra)
+{ return(taken == 0
+         || bits_per_word*rate*downstream_factor(prec, n, pnp, extra)
+              > target*prec[n].cost); }
+
+/* How many primes the first phase would need under that rule.  prec[] must
+ * be sorted by increasing key.  If the target cannot be reached with the
+ * primes available, all of them are used.  Since 2.3 the choice itself is
+ * made by take_entries(), with the composite moduli in the pool; this
+ * estimate, over the primes alone, serves the rule that decides whether to
+ * look at more primes, and errs on the high side since a composite modulus
+ * can only lower the count. */
 static long primes_for_phase_1(entry *prec, long pnp,
-                               double bits_per_word, double target)
+                               double bits_per_word, double target, long extra)
 { double rate = 1.0;
   long n;
 
   for(n = 0; n < pnp; n++)
-  { rate *= prec[n].r;
-    if(bits_per_word*rate <= target) { return(n + 1); }
+  { if(!phase_1_wants(prec, n, pnp, n, bits_per_word, rate, target, extra))
+    { return(n); }
+    rate *= prec[n].r;
   }
   return(pnp > 0 ? pnp : 1);
 }
@@ -2024,7 +2086,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
     prec[pnp].r = r; prec[pnp].p = m; prec[pnp].mask = mask;
     prec[pnp].ssp = NULL; prec[pnp].nf = (short)nf;
     for(e = 0; e < nf; e++) { prec[pnp].fac[e] = (short)fac[e]; }
-    prec[pnp].key = prime_key(r, m, 1.0, 1, cost_table, u, d);
+    phase_1_key(&prec[pnp], cost_table, u, d);
     pnp++;
   }
   *pnp_p = pnp;
@@ -2098,18 +2160,24 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * stage of the sieve: an entry sharing a prime with one taken before (used,
  * a mask of primes) is dropped from the pool, the ones taken stay where
  * they are, from prec[from] on.  With want >= 0 that many are taken; with
- * want < 0 the first-phase rule decides: entries are taken while the
- * expected survivors per word, bits_per_word times the product rate of
- * the densities so far, exceed target.  When the pool runs out first, all
- * of it is taken.  What is left of the pool has nothing in common with
- * what was taken.  Returns the number taken. */
+ * want < 0 the first-phase rule decides (phase_1_wants, with extra the
+ * number of moduli the second phase will add): entries are taken while the
+ * expected survivors per word, bits_per_word times the product rate of the
+ * densities so far, weighted by what they cost downstream, exceed target
+ * times the entry's cost per word.  When the pool runs out first, all of
+ * it is taken.  What is left of
+ * the pool has nothing in common with what was taken.  Returns the number
+ * taken. */
 static long take_entries(entry *prec, long from, long *pnp_p,
                          unsigned long *used, long want, double *rate,
-                         double bits_per_word, double target)
+                         double bits_per_word, double target, long extra)
 { long n = from, taken = 0, k;
 
   while(n < *pnp_p)
-  { if(want >= 0 ? taken >= want : bits_per_word*(*rate) <= target) { break; }
+  { if(want >= 0 ? taken >= want
+                 : !phase_1_wants(prec, n, *pnp_p, taken, bits_per_word, *rate,
+                                  target, extra))
+    { break; }
     if(prec[n].mask & *used)
     { for(k = n; k + 1 < *pnp_p; k++) { prec[k] = prec[k+1]; }
       (*pnp_p)--;
@@ -2209,8 +2277,7 @@ static long sieving_info(ratpoints_args *args,
     { return(p); /* no points mod p, hence no rational points */ }
     pinf[pn] = is_f_square[p];
     if(info > 0)
-    { prec[pnp].key = prime_key(prec[pnp].r, p, 1.0, 1, cost_table,
-                                args->run_words, args->run_denoms);
+    { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms);
       prime_se[pn] = prec[pnp].ssp;
       pnp++;
     }
@@ -2286,7 +2353,8 @@ static long sieving_info(ratpoints_args *args,
 
       qsort(prec, pnp, sizeof(entry), compare_entries);
       s1 = (args->sp1 >= 0) ? args->sp1
-                            : primes_for_phase_1(prec, pnp, bits_per_word, target);
+                            : primes_for_phase_1(prec, pnp, bits_per_word,
+                                                 target, sp2_extra);
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
       if(pnp < want) { pn_lim++; }
     }
@@ -2398,9 +2466,7 @@ static long sieving_info(ratpoints_args *args,
               &args->run_denoms, &args->run_words);
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
-    { prec[n].key = prime_key(prec[n].r, prec[n].p, 1.0, 1, cost_table,
-                              args->run_words, args->run_denoms);
-    }
+    { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms); }
     /* and the composite moduli join the candidates, keyed the same way */
     add_moduli(args, prec, &pnp, prime_se, pinf, pn_lim, &npw,
                use_c_long, c_long, cost_table);
@@ -2416,7 +2482,10 @@ static long sieving_info(ratpoints_args *args,
    * the first n moduli is the product of their r.  Multiplied by the number
    * of bits actually set in a bit-array to begin with, that is the expected
    * number of survivors per bit-array; see the comment on
-   * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h . */
+   * RATPOINTS_SURVIVORS_PER_WORD in ratpoints.h .  A modulus is taken while
+   * that, weighted by what a survivor costs downstream, exceeds the target
+   * times what the modulus costs per word, its fixed costs included
+   * (phase_1_wants). */
   /* The candidates are taken in the order of their keys, but a modulus
    * sharing a prime with one already taken is passed over: the composite
    * moduli carry their primes' information, so the prime (or another
@@ -2424,7 +2493,7 @@ static long sieving_info(ratpoints_args *args,
   { double rate = 1.0;
 
     args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, &rate,
-                             bits_per_word, target);
+                             bits_per_word, target, sp2_extra);
 
     /* Rank what is left again, for the second phase.  There a modulus is
      * applied only to the bit arrays that survived the first phase, so its
@@ -2447,7 +2516,7 @@ static long sieving_info(ratpoints_args *args,
       if(want < 0) { want = 0; }
       args->sp2 = args->sp1
                   + take_entries(prec, args->sp1, &pnp, &used, want, &rate,
-                                 0.0, 0.0);
+                                 0.0, 0.0, 0);
     }
   }
 
