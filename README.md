@@ -125,8 +125,8 @@ denominator got simpler. Worth 9% of `make test1` (7.4 to 8.8% at three code pla
 `make testhigh`, 1% of `make test1many`, 1.5% of `make testhighmany` and 3% at height bound
 4000. A run at height 1000 is 3.5% longer and one at 200 5% longer: deciding the 64 classes costs
 about 7000 instructions per curve, and the extra first-phase prime brings tables that a run of
-that length cannot use -- the rule that counts the first-phase primes knows nothing of their
-tables, which predates this change and is on the list.
+that length cannot use -- the rule that counted the first-phase primes knew nothing of their
+tables, which predated this change and is fixed two paragraphs below.
 
 The sieve can use composite moduli. A table row only has to be periodic in the bit index with the
 modulus as its period and be selected by the denominator's residue, and nothing in the sieving
@@ -147,6 +147,23 @@ fewer ANDs. Worth 7% of `make test1` (6 to 8% in two measurements), 11% of `make
 silent. Larger moduli save more instructions
 and lose time: a row of 220 bit arrays does not stay in the first-level cache, and the cost model
 prices an AND the same whatever the modulus, which is on the list.
+
+The rule that ends the first phase weighs what a modulus costs and what its survivors cost. It
+used to take moduli while the expected survivors per word exceeded a fitted constant, which stands
+for the ratio of two costs -- one more AND per word against what a surviving word costs from there
+on -- both frozen at the values of the height bound the constant was fitted at. Now the modulus's
+side carries its tables and its per-denominator entries spread over the words of the run, the
+same per-word cost the ranking already charges, and the survivor's side is weighted by what one
+costs with the second phase the run will have: in a long run eleven cheap ANDs kill it, in a run of
+a few thousand words there is no second phase and every survivor reaches the extraction, which
+costs several times more. The two factors nearly cancel at 16383, where the constant is fitted,
+and are one at 200000, so nothing was retuned or added. At height 200 the phase takes 7 moduli
+instead of 13 (a sweep of fixed counts puts the optimum at 7), the tables fall from a fifth of the
+run to a twentieth, and the run is 24% shorter; 20% at height 100, 14% at 1000 (13% on the
+point-rich curves), 1% at 4000; at 16383 the phase takes 0.4 moduli more and the two suites are
+within the noise (instructions +0.5%), at 200000 nothing moves. What is
+left at height 200 is looking at the thirty primes, a quarter of the instructions, and the exact
+checks.
 
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
