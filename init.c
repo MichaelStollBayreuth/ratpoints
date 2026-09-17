@@ -297,34 +297,51 @@ static ratpoints_bit_array *lay_out_pattern(const unsigned long *pat, long m,
 }
 
 #ifdef RP_VERIFY_MODULI
-/* Check a row against the definition: bit index N of the row for the
- * residue b of the modulus m is set exactly when F(N, b) = sum c_j N^j
- * b^(D-j) is a square mod m and, when p | b for a prime p of m, p does
- * not divide N.  Slow (m*RBA_LENGTH evaluations of F), for -DRP_VERIFY_MODULI
- * builds only; aborts on the first mismatch. */
+/* Check a row against what the program promises, factor by factor: for a
+ * prime-power factor q = p^e of m, bit index N of the row for the residue
+ * b is admissible when F(N, b) = sum c_j N^j b^(D-j) is a square mod q and
+ * not both p | N and p | b; for a prime factor p with p | b the promise is
+ * only that p does not divide N (the row is sieves0, whatever the curve:
+ * when the leading coefficient is a non-square mod p those denominators
+ * are excluded by the forbidden-divisor test, unless -F switched it off).
+ * By the Chinese remainder theorem F is a square mod m exactly when it is
+ * one mod every factor, so the row must be the AND of these.  The
+ * wrap-around copies are checked too (the pattern is periodic in N).
+ * Slow, for -DRP_VERIFY_MODULI builds only; aborts on the first mismatch. */
 #include <stdlib.h>
 static void verify_row(const ratpoints_bit_array *row, long m, long b,
-                       const long *pdiv, long npdiv, ratpoints_args *args)
+                       long nf, const long *q, const long *p, const int *power,
+                       ratpoints_args *args)
 { mpz_t *c = args->cof;
   long degree = args->degree, D = degree + (degree & 1);
-  unsigned long cm[D + 1], sq[RP_MODWORDS];
-  long N, k;
+  unsigned long cm[RP_MAX_FACTORS][D + 1], sq[RP_MAX_FACTORS][RP_MODWORDS];
+  const unsigned long *w = (const unsigned long *)row;
+  long N, k, i;
 
-  for(k = 0; k <= degree; k++) { cm[k] = mpz_fdiv_ui(c[k], m); }
-  if(degree & 1) { cm[D] = 0UL; }
-  for(k = 0; k < RP_MODWORDS; k++) { sq[k] = 0UL; }
-  for(k = 0; k < m; k++) { long s = (k*k) % m; sq[s >> LONG_SHIFT] |= 1UL << (s & LONG_MASK); }
-  for(N = 0; N < m*RBA_LENGTH; N++)
-  { unsigned long F = 0UL, bpow = 1UL;
-    long j, bit, want = 1;
-    const unsigned long *w = (const unsigned long *)row;
+  for(i = 0; i < nf; i++)
+  { for(k = 0; k <= degree; k++) { cm[i][k] = mpz_fdiv_ui(c[k], q[i]); }
+    if(degree & 1) { cm[i][D] = 0UL; }
+    for(k = 0; k < RP_MODWORDS; k++) { sq[i][k] = 0UL; }
+    for(k = 0; k < q[i]; k++)
+    { long s = (k*k) % q[i]; sq[i][s >> LONG_SHIFT] |= 1UL << (s & LONG_MASK); }
+  }
+  for(N = 0; N < (m + RATPOINTS_CHUNK-1)*RBA_LENGTH; N++)
+  { long want = 1, bit;
 
-    /* F(N, b) mod m by Horner in N with the powers of b */
-    for(j = D; j >= 0; j--) { F = (F*(unsigned long)(N % m) + cm[j]*bpow) % m; bpow = (bpow*(unsigned long)b) % m; }
-    /* the Horner above computes sum_j cm[j] b^(D-j) N^j; check */
-    want = (sq[F >> LONG_SHIFT] >> (F & LONG_MASK)) & 1UL;
-    for(j = 0; j < npdiv; j++)
-    { if(b % pdiv[j] == 0 && N % pdiv[j] == 0) { want = 0; } }
+    for(i = 0; i < nf && want; i++)
+    { if(b % p[i] == 0 && !power[i]) { want = (N % p[i] != 0); }
+      else
+      { unsigned long F = 0UL, bpow = 1UL, Nq = (unsigned long)(N % q[i]);
+        long j;
+
+        for(j = D; j >= 0; j--)
+        { F = (F*Nq + cm[i][j]*bpow) % (unsigned long)q[i];
+          bpow = (bpow*(unsigned long)b) % (unsigned long)q[i];
+        }
+        want = (sq[i][F >> LONG_SHIFT] >> (F & LONG_MASK)) & 1UL;
+        if(b % p[i] == 0 && N % p[i] == 0) { want = 0; }
+      }
+    }
     bit = (w[N >> LONG_SHIFT] >> (N & LONG_MASK)) & 1UL;
     if(bit != want)
     { fprintf(stderr, "RP_VERIFY_MODULI: modulus %ld, residue %ld, bit index %ld:"
@@ -369,7 +386,7 @@ ratpoints_bit_array *_ratpoints_sieve_init_power(void *se1, long b1, void *args1
   }
   row = lay_out_pattern(pat, m, args);
 #ifdef RP_VERIFY_MODULI
-  verify_row(row, m, b, &p, 1, args);
+  { int power = 1; verify_row(row, m, b, 1, &m, &p, &power, args); }
 #endif
   se->sieve[b] = row;
   return(row);
@@ -410,11 +427,15 @@ ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *arg
   }
   for(j = 0; j < RATPOINTS_CHUNK-1; j++) { row[m + j] = row[j]; }
 #ifdef RP_VERIFY_MODULI
-  { long pdiv[RP_MAX_FACTORS];
+  { long q[RP_MAX_FACTORS], p[RP_MAX_FACTORS];
+    int power[RP_MAX_FACTORS];
 
     for(i = 0; i < se->nf; i++)
-    { pdiv[i] = se->factor[i]->pw ? se->factor[i]->pw->p : se->factor[i]->p; }
-    verify_row(row, m, b, pdiv, se->nf, args);
+    { q[i] = se->factor[i]->p;
+      p[i] = se->factor[i]->pw ? se->factor[i]->pw->p : se->factor[i]->p;
+      power[i] = (se->factor[i]->pw != NULL);
+    }
+    verify_row(row, m, b, se->nf, q, p, power, args);
   }
 #endif
   se->sieve[b] = row;

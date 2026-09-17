@@ -45,7 +45,13 @@ offers it as a candidate when it is not a prime, every factor is
 informative, every prime involved is among the first 64, and its table
 alone would not cost more than `RP_MODULUS_TABLE_MAX` (2) first-phase ANDs
 per word -- which at height 100 rules out every modulus before any work is
-done, so a short run pays nothing for this.  A factor p keeps the prime's
+done; the first composite is taken between heights 400 and 3000 depending
+on the curve.  The selection's bookkeeping -- the candidate records the
+ranking sorts and compacts -- cost half a per cent of instructions at
+height 100 (the skeptic's measurement, before the prime's density was
+corrected); with that correction the tree uses 0.5% fewer instructions
+than the base at height 100 and 0.7% fewer at 200, the small primes
+having become more informative to the rule.  A factor p keeps the prime's
 density; a factor p^e is examined the first time a modulus needs it
 (`examine_power()`: f mod p^e at every residue for fsq, frev at every
 multiple of p for gsq, the inverses of the units, and the density r as the
@@ -97,6 +103,33 @@ residue b is set exactly when F(N, b) is a square mod m and no prime of m
 divides both N and b.  All five suites -- test1, test1many, testdegrees,
 testhigh and testhighmany -- ran under it with no mismatch and their
 outputs identical to the references.
+
+**Reviewed** by two Opus agents, no fault in the mathematics.  The sweep:
+twelve build variants warning-free and byte-identical, `-DRP_VERIFY_MODULI`
+clean at seven configurations spanning every register width, both chunk
+sizes and PRIME_SIZE 7 to 9 with the cap raised to the limit, ASan/UBSan
+silent uncapped, every number in these notes recomputed from the reports
+and the moduli histogram reproduced exactly from testdata.h.  It found
+RP_MODWORDS truncating to zero at PRIME_SIZE 5 -- the rows built into
+zero-length arrays, points lost, the harness catching it -- fixed with a
+ceiling; the reduction guard in sift.c argued with the largest prime where
+the largest modulus is now larger (fixed); the ordinary end-of-run summary
+and a dozen comments still said "primes" (fixed; test3's anchor moved with
+it); the docs' "nothing changes up to 1000" (fixed); and the prime's
+density below.  The skeptic: some 18000 rows and 570 million bits checked
+against its own derivation at four PRIME_SIZE/cap combinations including
+three-factor moduli (495, 693), no mismatch; 16600 old-against-new point
+comparisons over degrees 1 to 10, seven heights and forty option sets,
+identical; assertion builds (no composite ever in the third stage or past
+the buffers) over 1826 runs; the densities reproduced to the printed
+digit.  It found the verification harness asserting more than the prime
+machinery promises -- with `-F 0` to `-F 2` a denominator divisible by a
+prime p with a non-square leading coefficient is not excluded and its row
+is sieves0, a superset of the definition (866304 permissive bits, 0
+restrictive, over 300 runs): the harness now checks each factor against
+what the program promises, and covers the wrap-around copies too --, the
+set-up's half per cent at height 100, and the demotion guard's side effect
+(commented).  `-x` output differs by design, as with item 28.
 
 **The prime's density.**  The sweep review found that `examine_prime`
 counted the class of denominators divisible by p with density 1 where its

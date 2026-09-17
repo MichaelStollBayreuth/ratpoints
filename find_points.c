@@ -119,7 +119,7 @@ extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
  * prime-power factors as codes: pn for the prime prime[pn],
  * RATPOINTS_NUM_PRIMES + i for the i-th prime power examined (rp_power). */
 typedef struct { double r; double key; long p; unsigned long mask;
-                 ratpoints_sieve_entry *ssp; long nf; long fac[RP_MAX_FACTORS]; }
+                 ratpoints_sieve_entry *ssp; short nf; short fac[RP_MAX_FACTORS]; }
         entry;
 
 /* a bound on the number of composite moduli offered: at most the odd
@@ -1313,7 +1313,9 @@ static void adapt_primes(ratpoints_args *args)
     }
     if(want == sp2)
     { /* nothing to add: see whether the last one is still worth having --
-       * a composite modulus stays, since the third stage cannot take it */
+       * a composite modulus stays, since the third stage cannot take it,
+       * and as this walks down from the top it stops there, so the primes
+       * below a composite are not demoted either */
       for(n = sp2 - 1; n > sp1 && sieve_list[n]->nf == 0; n--)
       { double r = sieve_list[n]->r;
         double prev = level + chance*rate/r;
@@ -1963,7 +1965,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
   double u = args->run_words, d = args->run_denoms;
   long pnp = *pnp_p, m, pn, e;
 
-  for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
+  for(pn = 0; pn < pn_lim; pn++)
   { for(e = 0; e < 10; e++) { pw_idx[pn][e] = -1; } }
 
   for(m = 9; m < RATPOINTS_MAX_PRIME_EVEN && m <= RATPOINTS_COMPOSITE_MAX; m += 2)
@@ -2010,8 +2012,8 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
     if(r >= 1.0) { continue; }
     if(pnp >= RATPOINTS_NUM_PRIMES + RP_MAX_MODULI) { break; }
     prec[pnp].r = r; prec[pnp].p = m; prec[pnp].mask = mask;
-    prec[pnp].ssp = NULL; prec[pnp].nf = nf;
-    for(e = 0; e < nf; e++) { prec[pnp].fac[e] = fac[e]; }
+    prec[pnp].ssp = NULL; prec[pnp].nf = (short)nf;
+    for(e = 0; e < nf; e++) { prec[pnp].fac[e] = (short)fac[e]; }
     prec[pnp].key = prime_key(r, m, 1.0, 1, cost_table, u, d);
     pnp++;
   }
