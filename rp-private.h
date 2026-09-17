@@ -500,9 +500,9 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 /* What a prime power p^e = m says about the curve: bit x of fsq is set when
  * f(x) is a square mod m, bit t of gsq (p | t) when frev(t) is one; inv[x]
  * is x^-1 mod m for a unit x; r the mean density of admissible numerators
- * over the classes of the denominator mod m, counted as examine_prime
- * counts it for a prime (what the modulus says beyond the test for common
- * factors).  Filled by examine_power() in find_points.c. */
+ * over the classes of the denominator mod m, exact (a prime's, from
+ * examine_prime, counts the class it divides as 1: see there).  Filled by
+ * examine_power() in find_points.c. */
 typedef struct { long p; long e; long m; double r; int np;
                  unsigned long fsq[RP_MODWORDS]; unsigned long gsq[RP_MODWORDS];
                  unsigned short inv[RATPOINTS_MAX_PRIME_EVEN]; }

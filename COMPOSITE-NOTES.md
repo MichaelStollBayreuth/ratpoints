@@ -136,19 +136,28 @@ counts the class of denominators divisible by p with density 1 where its
 row (sieves0, the numerators not divisible by p) has (p-1)/p -- r is
 (np (p-1) + p)/p^2, not (np + 1)(p-1)/p^2 -- while `examine_power`'s
 density was exact, so a prime looked less informative than its row is
-against its own powers (by 0.111 for 3).  Making the prime exact was tried
-(commit 12ada9d): test1 0.941 and testhigh 0.901 as before, but
-testhighmany 1.023 against 0.973 -- the numerators that row removes are
-the ones the test for common factors removes anyway, the third stage runs
-after that test and its constants are fitted to what reaches it, so the
-"exact" density double-counts, and on the point-rich curves, where the
-small primes are nearly silent, the extra 1/p^2 of information the rule
-then saw changed the choices for the worse.  Resolved the other way
-(ee70d63 and after): the prime keeps its convention -- a modulus's
-density counts what it says beyond coprimality, nothing on the class it
-divides -- and the power's density is brought to the same one: for p | b
-the share of the numerators coprime to p that the row admits, which for
-e = 1 is the prime's formula exactly.
+against its own powers (by 0.111 for 3).  Three conventions were
+measured, all against the same base (m-base-c64, exact-prime-density-
+12ada9d/ and m-base-final in the reports):
+
+| prime | power | test1 | test1many | testhigh | testhighmany |
+|---|---|---|---|---|---|
+| approximate (as always) | exact | 0.941 | 1.008 | 0.890 | 0.973 |
+| exact | exact (12ada9d) | 0.941 | 1.001 | 0.901 | 1.023 |
+| approximate | approximate (f15365f) | 0.939 | 0.995 | 0.901 | 1.009 |
+
+The prime's approximation is one the fitted constants have absorbed: the
+numerators that row removes are the ones the test for common factors
+removes anyway, the third stage runs after that test and its constants
+are fitted to what reaches it, so making the prime exact hands the rule
+information it double-counts, and on the point-rich curves, where the
+small primes are nearly silent, that changed the choices for the worse.
+The power's exact density, on the other hand, is what gets 9, 25 and 49
+into the second phase on those curves, where their rows for denominators
+divisible by p carry real information; counting them the prime's way
+loses that.  So the mixture is kept, because it measures best on every
+suite, and the comments in examine_prime and examine_power say so.  A
+consistent treatment belongs to the tuning session with items 29 and 30.
 
 ## What it is worth
 

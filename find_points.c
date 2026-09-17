@@ -1536,13 +1536,14 @@ static int examine_prime(ratpoints_args *args, long pn,
      * denominator mod p: np/p for the p-1 unit classes, and 1 for the class
      * divisible by p, which counts only when such denominators occur.  That
      * class's row (sieves0) admits the numerators not divisible by p, so
-     * its density is (p-1)/p; but the numerators it removes are exactly the
-     * ones the test for common factors removes anyway, and the third
-     * stage's constants are fitted to survivors after that test.  So a
-     * prime's density counts what it says beyond coprimality: on the class
-     * it divides, nothing.  A prime power's density (examine_power) counts
-     * the same way, and the two compete in one ranking.  (Making both exact
-     * was measured to cost 5% of testhighmany.) */
+     * its density is (p-1)/p, and this is 1/p^2 too much -- an
+     * approximation the fitted constants have absorbed: the numerators that
+     * row removes are the ones the test for common factors removes anyway,
+     * and the third stage's constants are fitted to what reaches it.  A
+     * prime power's density (examine_power) is exact, and the two compete
+     * in one ranking.  Both other ways were measured (2.3, item 21): the
+     * prime exact as well costs 5% of testhighmany, the power brought to
+     * the prime's convention 3.5%; this mixture measures best. */
     double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
                               : (double)np/(double)p;
 
@@ -1873,16 +1874,16 @@ static long modinv(long x, long m)
 /* Look at the prime power m = p^e and record what it says (rp_power in
  * rp-private.h): f mod m at every residue, frev mod m at every multiple of
  * p, the inverses of the units, and the density r -- the mean over the
- * classes of the denominator mod m of the share of numerators admissible,
- * counted as for a prime (examine_prime): all numerators for a unit b, and
- * for p | b the share of those coprime to p, since the others go to the
- * test for common factors whatever the sieve does.  For p | b the map
- * x -> b x^-1 takes the units x onto the residues of the same valuation
- * as b, each equally often, so that share is the share of those residues
- * with frev a square.  pinf says whether denominators divisible by p occur
- * at all (is_f_square[p] of the prime): when they do not, r is the mean
- * over the unit classes alone, as it is for a prime.  Returns 1 when the
- * power says more than nothing. */
+ * classes of the denominator mod m of the share of numerators its row
+ * admits, exactly: np/m for a unit b; for p | b the map x -> b x^-1 takes
+ * the units x onto the residues of the same valuation as b, each equally
+ * often, so the row admits the share of those residues with frev a square,
+ * times the share of units among the numerators.  (For a prime,
+ * examine_prime counts the class it divides as 1 instead of (p-1)/p; see
+ * there for why that is kept.)  pinf says whether denominators divisible
+ * by p occur at all (is_f_square[p] of the prime): when they do not, r is
+ * the mean over the unit classes alone, as it is for a prime.  Returns 1
+ * when the power says more than nothing. */
 static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
                          int use_c_long, long *c_long, int pinf)
 { mpz_t *c = args->cof;
@@ -1931,15 +1932,15 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
       for(v = 1; v <= e; v++, pv *= p)
       { /* the classes with v_p(b) = v: phi(m/p^v) of them, one for v = e;
          * as many residues t with v_p(t) = v, of which good have frev(t)
-         * square; a row's share of the coprime numerators is good over
-         * that count, and the count of classes cancels against it */
+         * square; a row's density is that share times the share of units,
+         * and the count of classes cancels against the count of t */
         long good = 0, t;
 
         for(t = 0; t < m; t += pv)
         { if(v < e && ((t/pv) % p) == 0) { continue; }
           if((pw->gsq[t >> LONG_SHIFT] >> (t & LONG_MASK)) & 1UL) { good++; }
         }
-        r += (double)good;
+        r += (double)good*units/(double)m;
       }
       r /= (double)m;
     }
