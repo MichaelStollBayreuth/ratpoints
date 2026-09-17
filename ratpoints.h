@@ -106,6 +106,9 @@
  * the pair above lands on 3, 8, 11 and 11.  A single fixed value costs 12%
  * of the point-rich half at the larger bound.
  *
+ * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
+ * correction off and restores a flat offset.
+ *
  * The first phase has a correction of its own since 2.3 (TODO item 29).
  * A modulus is taken while the survivors per word exceed the threshold
  * times what the modulus costs per word -- one AND, plus its tables and
@@ -115,14 +118,14 @@
  * moduli kill it cheaply, while in a run of a few thousand words there is
  * no second phase and every survivor reaches the extraction, which costs
  * several times more (RATPOINTS_COST_PHASE2 and RATPOINTS_COST_SURVIVOR
- * below say how much).  At the height bounds the tuning runs use both
- * factors are near one and the threshold means what it says; at a height
- * bound of 200 the first is a hundred and the second six, the phase stops
- * after seven moduli where it took thirteen whose tables were a fifth of
- * the run, and the run is a quarter shorter.
- *
- * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
- * correction off and restores a flat offset. */
+ * below say how much).  At 200000 both factors are one.  At 16383, where
+ * "make tune" fits the threshold, both are about three at the modulus
+ * where the phase stops and nearly cancel; the phase takes 0.4 moduli
+ * more than before there, which the next fit will weigh.  At a height
+ * bound of 200 the cost factor is a hundred for the small primes and
+ * several hundred at the stopping modulus, the downstream factor six, the
+ * phase stops after seven moduli where it took thirteen whose tables were
+ * a fifth of the run, and the run is a quarter shorter. */
 #ifndef RATPOINTS_SP2_U0
 # define RATPOINTS_SP2_U0 1.6e6
 #endif

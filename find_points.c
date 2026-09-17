@@ -1392,22 +1392,42 @@ static void adapt_primes(ratpoints_args *args)
  * long as it survives them, and what survives those is extracted and
  * tested, RATPOINTS_COST_SURVIVOR per survivor (about one per surviving
  * word at these rates).  In a long run extra is eleven and the second phase
- * kills nearly every survivor cheaply; RATPOINTS_SURVIVORS_PER_WORD was
- * fitted there and stands for that cost.  In a run of a few thousand words
- * extra is 0 or 1 and every surviving word reaches the extraction, which
- * costs several times more, so the first phase should sieve harder than the
- * target says.  The moduli the second phase would take are approximated by
- * the next entries of the pool, and the long-run value by an endless second
- * phase of their mean density. */
+ * kills nearly every survivor cheaply, and the factor is one.  In a run of
+ * a few thousand words extra is 0 or 1 and every surviving word reaches the
+ * extraction, which costs several times more, so the first phase should
+ * sieve harder than the target says.  RATPOINTS_SURVIVORS_PER_WORD is
+ * fitted at 16383, where extra is about two: there this factor and the cost
+ * factor of phase_1_wants are both about three at the modulus where the
+ * phase stops and nearly cancel.  The moduli the second phase would take
+ * are approximated by the next entries of the pool, in key order (the phase
+ * ranks them again by a key of its own, which favours smaller moduli of
+ * higher density: the survivors modelled here die a little faster than the
+ * real ones will, so the factor errs low).  The long-run value is an
+ * endless second phase of the mean density of the next RATPOINTS_SP2_EXTRA
+ * entries -- the second phase of a long run -- whether or not this run has
+ * them; when the pool has nothing beyond the modulus in hand, its own
+ * density stands in.  The result is floored at one: a surviving word cannot
+ * cost less than the long run's, whatever the densities say. */
 static double downstream_factor(const entry *prec, long n, long pnp,
                                 long extra)
 { double rate = 1.0, cost = 0.0, rho, k;
-  long j;
+  long j, end, end_ref;
 
-  for(j = n + 1; j <= n + extra && j < pnp; j++)
+  /* the next extra entries, and the next RATPOINTS_SP2_EXTRA, as far as the
+   * pool goes; written so that a huge extra (-R) cannot overflow */
+  end = (extra >= pnp - n - 1) ? pnp : n + 1 + extra;
+  end_ref = (RATPOINTS_SP2_EXTRA >= pnp - n - 1) ? pnp
+                                                 : n + 1 + RATPOINTS_SP2_EXTRA;
+  for(j = n + 1; j < end; j++)
   { cost += RATPOINTS_COST_PHASE2*rate; rate *= prec[j].r; }
   cost += rate*RATPOINTS_COST_SURVIVOR;
-  rho = (j > n + 1) ? pow(rate, 1.0/(double)(j - n - 1)) : prec[n].r;
+  if(end_ref > n + 1)
+  { double ref = 1.0;
+
+    for(j = n + 1; j < end_ref; j++) { ref *= prec[j].r; }
+    rho = pow(ref, 1.0/(double)(end_ref - n - 1));
+  }
+  else { rho = prec[n].r; }
   k = cost*(1.0 - rho)/RATPOINTS_COST_PHASE2;
   return((k < 1.0) ? 1.0 : k);
 }
@@ -1423,10 +1443,12 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * entry.cost and raise the bar for it.  Over a long run that is by a few
  * per cent; at a height bound of a few hundred, where the run is a few
  * dozen words and a table has more rows than that, it is by a factor of a
- * hundred, and the phase stops after some seven primes where it used to
- * take a dozen whose tables were a third of the run (TODO item 29).  The
+ * hundred for the small primes and several hundred at the modulus where the
+ * phase stops, and the phase stops after some seven primes where it used to
+ * take a dozen whose tables were a fifth of the run (TODO item 29).  The
  * first modulus is always taken: the chunked sieve writes the 2-adic
- * pattern on its pass, so it costs nothing per word beyond that. */
+ * pattern on its pass, so its ANDs cost nothing beyond that (its tables do,
+ * but a sieve without a first phase is no sieve). */
 static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
                          double bits_per_word, double rate, double target,
                          long extra)
@@ -1439,8 +1461,9 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
  * primes available, all of them are used.  Since 2.3 the choice itself is
  * made by take_entries(), with the composite moduli in the pool; this
  * estimate, over the primes alone, serves the rule that decides whether to
- * look at more primes, and errs on the high side since a composite modulus
- * can only lower the count. */
+ * look at more primes.  (It used to err on the high side, a composite
+ * modulus being able only to lower the count; with the cost in the rule a
+ * composite's table can also raise it, so it is an estimate and no bound.) */
 static long primes_for_phase_1(entry *prec, long pnp,
                                double bits_per_word, double target, long extra)
 { double rate = 1.0;
@@ -2165,24 +2188,25 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * expected survivors per word, bits_per_word times the product rate of the
  * densities so far, weighted by what they cost downstream, exceed target
  * times the entry's cost per word.  When the pool runs out first, all of
- * it is taken.  What is left of
- * the pool has nothing in common with what was taken.  Returns the number
- * taken. */
+ * it is taken.  What is left of the pool has nothing in common with what
+ * was taken.  Returns the number taken. */
 static long take_entries(entry *prec, long from, long *pnp_p,
                          unsigned long *used, long want, double *rate,
                          double bits_per_word, double target, long extra)
 { long n = from, taken = 0, k;
 
   while(n < *pnp_p)
-  { if(want >= 0 ? taken >= want
-                 : !phase_1_wants(prec, n, *pnp_p, taken, bits_per_word, *rate,
-                                  target, extra))
-    { break; }
+  { /* an entry that is no candidate leaves before the rule looks at it:
+     * the rule reads the entry's own cost and density */
     if(prec[n].mask & *used)
     { for(k = n; k + 1 < *pnp_p; k++) { prec[k] = prec[k+1]; }
       (*pnp_p)--;
       continue;
     }
+    if(want >= 0 ? taken >= want
+                 : !phase_1_wants(prec, n, *pnp_p, taken, bits_per_word, *rate,
+                                  target, extra))
+    { break; }
     *used |= prec[n].mask; *rate *= prec[n].r; taken++; n++;
   }
   k = n;
@@ -2344,9 +2368,12 @@ static long sieving_info(ratpoints_args *args,
      * makes f a square modulo every residue for the smallest primes, so those
      * carry no information and are dropped above, and without this the second
      * phase can end up with nothing to sieve with at all.
-     * Adding a prime can only lower sp1 -- the n smallest of a larger set have
-     * a smaller product -- and can only raise pnp, so the shortfall shrinks
-     * with every prime added and this stops at the first one that is enough.
+     * Adding a prime can only raise pnp, and with the old stop rule could
+     * only lower sp1 (the n smallest of a larger set have a smaller
+     * product); with the cost in the rule (phase_1_wants) a new entry can
+     * also move the stop by one the other way, so the shortfall need not
+     * shrink at every step.  It shrinks on the whole, and the loop is bounded
+     * by RATPOINTS_NUM_PRIMES in any case.
      */
     if(may_extend && pn + 1 == pn_lim && pn_lim < RATPOINTS_NUM_PRIMES)
     { long s1, want;
@@ -2641,6 +2668,7 @@ static long sieving_info(ratpoints_args *args,
         /* the third stage builds no table, so its primes are ranked by what
          * they say alone, which is what the selection above does */
         prec[pnp].key = prec[pnp].r;
+        prec[pnp].cost = 0.0; /* never a first-phase candidate */
         pnp++;
         continue; /* choose again with the new prime in the pool */
       }

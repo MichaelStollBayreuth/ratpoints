@@ -156,11 +156,12 @@ side carries its tables and its per-denominator entries spread over the words of
 same per-word cost the ranking already charges, and the survivor's side is weighted by what one
 costs with the second phase the run will have: in a long run eleven cheap ANDs kill it, in a run of
 a few thousand words there is no second phase and every survivor reaches the extraction, which
-costs several times more. Both factors are near one where the constant is fitted, so nothing was
-retuned or added. At height 200 the phase takes 7 moduli instead of 13 (a sweep of fixed counts
-puts the optimum at 7), the tables fall from a fifth of the run to a twentieth, and the run is
-25% shorter; 21% at height 100, 15% at 1000 (13% on the point-rich curves), 1% at 4000; at
-16383 and 200000 the counts and the four suites do not move (instructions within 0.5%). What is
+costs several times more. The two factors nearly cancel at 16383, where the constant is fitted,
+and are one at 200000, so nothing was retuned or added. At height 200 the phase takes 7 moduli
+instead of 13 (a sweep of fixed counts puts the optimum at 7), the tables fall from a fifth of the
+run to a twentieth, and the run is 24% shorter; 20% at height 100, 14% at 1000 (13% on the
+point-rich curves), 1% at 4000; at 16383 the phase takes 0.4 moduli more and the two suites are
+within the noise (instructions +0.5%), at 200000 nothing moves. What is
 left at height 200 is looking at the thirty primes, a quarter of the instructions, and the exact
 checks.
 

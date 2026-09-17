@@ -1045,6 +1045,11 @@ point-rich ones --- and the two constants land on $3$, $8$, $11$ and $11$.
 Using the small-bound value at the large one costs $12\%$ of \texttt{make
 testhighmany}.
 
+The one thing this shape cannot fit is the point-rich curves at the small
+height bound, which want $5$ and are given $8$. Their survivor rate is twice
+the random curves', so a second-stage prime costs them twice as much per
+word, and a formula in the length of the run alone cannot see that.
+
 The first stage has a correction of its own. A modulus is taken while the
 survivors per word exceed the threshold times what the modulus costs per
 word --- one \texttt{AND}, plus its tables and its per-denominator entries
@@ -1052,17 +1057,15 @@ spread over the $U$ words of the run --- with the survivors weighted by what
 one costs downstream relative to a long run: there the second stage's eleven
 moduli kill it cheaply, while in a run of a few thousand words there is no
 second stage and every survivor reaches the extraction, which costs several
-times more. At the height bounds the tuning runs use both factors are near
-one and the threshold means what it says. At a height bound of $200$ the
-first factor is a hundred and the second six: the stage stops after seven
-moduli where it used to take thirteen, whose tables were a fifth of the run,
-and the run is a quarter shorter; at $1000$ it is a seventh shorter, at $4000$
-a per cent, and from $16383$ on nothing changes.
-
-The one thing this shape cannot fit is the point-rich curves at the small
-height bound, which want $5$ and are given $8$. Their survivor rate is twice
-the random curves', so a second-stage prime costs them twice as much per
-word, and a formula in the length of the run alone cannot see that.
+times more. At $2\cdot 10^5$ both factors are one; at $16383$, where
+\texttt{make tune} fits the threshold, both are about three at the modulus
+where the stage stops and nearly cancel, and the stage takes $0.4$ moduli
+more than before. At a height bound of $200$ the cost factor is a hundred for
+the small primes and several hundred at the stopping modulus, the downstream
+factor six: the stage stops after seven moduli where it used to take
+thirteen, whose tables were a fifth of the run, and the run is a quarter
+shorter; at $1000$ it is a seventh shorter, at $4000$ a per cent, and from
+$16383$ on the running time does not change.
 
 The same two quantities say which primes to use, not just how many. The
 sieving table for~$p$ has $p$ rows and is rebuilt for each denominator class
@@ -1947,15 +1950,17 @@ spread over the words of the run, the same per-word cost the ranking already
 charges, and the survivor's side is weighted by what one costs with the
 second stage the run will have: in a long run eleven cheap \texttt{AND}s
 kill it, in a run of a few thousand words there is no second stage and every
-survivor reaches the extraction, which costs several times more. Both factors
-are near one where the constant is fitted, so nothing was retuned or added
-(section~\ref{sec:tuning} has the rule). At a height bound of $200$ the
-stage takes $7$ moduli instead of $13$ --- a sweep of fixed counts puts the
-optimum at~$7$ --- the tables fall from a fifth of the run to a twentieth, and
-the run is $25\%$ shorter; $21\%$ at $100$, $15\%$ at $1000$ ($13\%$ on the
-point-rich curves), $1\%$ at $4000$; at $16383$ and $2\cdot 10^5$ the counts
-and the four suites do not move. What is left at $200$ is looking at the
-thirty primes, a quarter of the instructions, and the exact checks.
+survivor reaches the extraction, which costs several times more. The two
+factors nearly cancel at $16383$, where the constant is fitted, and are one
+at $2\cdot 10^5$, so nothing was retuned or added (section~\ref{sec:tuning}
+has the rule). At a height bound of $200$ the stage takes $7$ moduli instead
+of $13$ --- a sweep of fixed counts puts the optimum at~$7$ --- the tables
+fall from a fifth of the run to a twentieth, and the run is $24\%$ shorter;
+$20\%$ at $100$, $14\%$ at $1000$ ($13\%$ on the point-rich curves), $1\%$
+at $4000$; at $16383$ the stage takes $0.4$ moduli more and the two suites
+are within the noise, at $2\cdot 10^5$ nothing moves. What is left at $200$
+is looking at the thirty primes, a quarter of the instructions, and the
+exact checks.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
