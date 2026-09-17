@@ -1389,7 +1389,12 @@ number of points the curve has mod~$p$ for a number of primes~$p$ and then
 sort the primes according to the fraction of $x$-coordinates that give points.
 We then take those primes for the sieving that have the smallest fraction
 of `surviving' $x$-coordinates. In this way, we need fewer sieving primes
-to achieve a comparable reduction of point tests.
+to achieve a comparable reduction of point tests. Since version~2.3 the
+candidates are ranked by what they say per unit of what they cost rather
+than by the fraction alone, and they are not all primes: the prime powers
+and the products of small primes up to~$64$ take part, with the product of
+their factors' fractions, and a candidate sharing a prime with one already
+taken is passed over; see the changes of that version below.
 
 \subsection{Using connected components}
 
@@ -1880,6 +1885,34 @@ at~$200$ $5\%$ longer: deciding the $64$ classes costs about $7000$
 instructions per curve, and the extra first-phase prime brings tables that
 a run of that length cannot use --- the rule that counts the first-phase
 primes knows nothing of their tables, which predates this change.
+
+The sieve can use composite moduli. A table row only has to be periodic in
+the bit index with the modulus as its period and be selected by the
+denominator's residue, and nothing in the sieving loops asks for a prime;
+the program used primes only, and the small ones say little for what they
+cost: modulo~$3$ two residues in three are admissible on a random curve, so
+that \texttt{AND} removes a third of the candidates where a large prime's
+removes half. Modulo~$9$ the admissible residues are those with $f(x)$ a
+square mod~$9$, and the squares are $4$ of the $9$ residues: over the
+thousand random test curves that carries twice what $3$ does, for a table
+of nine rows, and $25$, $27$ and $49$ do the like for $5$, $3$ and~$7$; for
+$p \mid b$ the row is built from the reversed polynomial, as the mod-$64$
+one is. The row of a product of coprime moduli is the \texttt{AND} of its
+factors' rows, so one \texttt{AND} per word carries them all, and by the
+Chinese remainder theorem its density is the product of theirs: $45 = 9
+\cdot 5$ carries what two large primes do. Every odd composite up to~$64$
+is now a candidate in the ranking that chooses the primes, with that
+density and its own table cost, and moduli sharing a prime exclude one
+another; the third stage keeps to primes, and at height bounds up to
+$1000$ no table pays and nothing changes. The first phase of a random
+curve at height~$16383$ uses $10$ moduli instead of $11.7$ primes and
+performs $14\%$ fewer \texttt{AND}s. Worth $6\%$ of \texttt{make test1},
+$11\%$ of \texttt{make testhigh} and $2.5\%$ of \texttt{make testhighmany},
+at a loss of $1\%$ on \texttt{make test1many}, where the small moduli are
+nearly silent. Larger moduli save more instructions and lose time: a row
+of $220$ bit arrays does not stay in the first-level cache, and the cost
+model prices an \texttt{AND} the same whatever the modulus; the bound is
+\texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind

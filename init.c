@@ -383,7 +383,8 @@ ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *arg
 { ratpoints_sieve_entry *se = se1;
   ratpoints_args *args = args1;
   long m = se->p, b = b1, i, x, j;
-  const ratpoints_bit_array *frow[RP_MAX_FACTORS];
+  const ratpoints_bit_array *frow[RP_MAX_FACTORS] = {0}; /* nf >= 2 fills
+                                                          * what is read */
   ratpoints_bit_array *row;
 
   for(i = 0; i < se->nf; i++)

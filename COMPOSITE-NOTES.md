@@ -149,3 +149,49 @@ powers 9, 25, 27, 49 and the products 15, 21, 33, 35, 39, 45, 51, 55, 57,
 63: rows of at most 64 bit arrays, 2 KB at 256 bits, and tables of at
 most 64 rows, which is where the model's assumption that an AND costs the
 same whatever the modulus holds.
+
+**Counters at cap 64** (new/base; prelim-c64.txt in the reports):
+
+| suite | phase-1 ANDs | survivors of phase 1 | phase-2 ANDs | exact checks | table rows | mean sp1 base -> new |
+|---|---|---|---|---|---|---|
+| test1 | 0.864 | 0.968 | 0.906 | 1.100 | 0.854 | 11.68 -> 9.97 |
+| test1many | 0.999 | 0.985 | 0.972 | 1.100 | 0.999 | 17.03 -> 16.97 |
+| testdegrees | 0.837 | 1.006 | 0.964 | 1.127 | 0.848 | 13.12 -> 11.76 |
+| test1 at 1000 | 0.967 | 0.972 | | 1.101 | 0.934 | 13.61 -> 13.34 |
+| testhigh | 0.866 | 1.030 | 0.973 | 0.893 | 0.913 | 10.65 -> 9.01 |
+| testhighmany | 1.000 | 1.000 | 0.992 | 1.226 | 1.003 | 19.13 -> 19.13 |
+
+What is taken (cap 64): on test1 a composite in the first phase on 874 of
+879 curves -- 25 on 286, 49 on 202, 45 on 137, 9 on 134, 27 on 128, 35 on
+127, 55 on 121, 63 on 105, 33, 39, 21, 51, 57, 15 -- and in the second on
+49; at 200000 55 on 294, 63 on 293, 49 on 202, 25 on 178, 45 on 171; at
+1000 only 9 (on 286 curves), the table gate leaving nothing else; on the
+point-rich suites the first phase takes a composite on 18 of 98 and 0 of
+30 curves, the second phase 9, 25, 27, 49 on 42 of 98 and 26 of 30.  The
+exact checks rise where the composites take primes out of the pool: the
+third stage has fewer informative primes left and takes two fewer on test1
+(sp3 16.2 -> 14.3); the cycles absorb it.  On the point-rich curves a
+composite in the second phase lowers the model's S more than the actual
+survivors fall (they sit on the floor of non-reduced points), so the stage
+takes fewer primes there too (checks +23% on testhighmany, 2.7% faster
+regardless).
+
+## Not done, and why
+
+* A footprint term in the cost model (a per-AND cost rising with the
+  modulus, or a budget on the first phase's rows), which would let the
+  large products in where they pay -- at 200000 they save 45% of the ANDs
+  on some curves -- and keep them out where they do not.  It wants a
+  cache-size constant and it concerns the primes too (the point-rich
+  curves run the first phase on 20 primes' rows, 67 KB): TODO item 30, for
+  the tuning session.
+* Prime powers above 64 (81, 125, 121, 169, 243) and products above it
+  (77, 91, 99, 105, 117 ...): excluded by the cap; 105 was the verdict's
+  wheel.  Cap 128, which admits them, measured worse than 64 on every
+  suite.
+* Composite moduli in the third stage: it indexes is_f_square by
+  (a b^-1) mod p, and a composite has no such table; the stage keeps to
+  primes.
+* Mod 3 information in the 2-adic style for every curve (the analogue of
+  item 26 for 3-adic): that is what the prime power 9 or 27 in the
+  ranking does, when it pays.
