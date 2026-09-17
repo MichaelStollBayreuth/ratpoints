@@ -500,8 +500,8 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
 
 /* b is the denominator;
  * the bit-arrays to be dealt with are indexed w_low..w_high-1,
- * where index 0 is the array whose zeroth bit corresponds to 0
- * (or to 1 when using only odd numerators, as specified by which_bits).
+ * where index 0 is the array whose zeroth bit corresponds to the numerator
+ * cls->a0 (bit t of it to a0 + 2^k t, see rp_num_class in rp-private.h).
  * survivors points to space to be used for the sieving.
  * sieves points to the sieving information.
  * quit will be set when the search is stopped (because a point was found).
@@ -509,13 +509,14 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
  * it is passed the pointer info, which can be used for data that
  * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
-           ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, ratpoints_bit_array bits64,
+           ratpoints_args *args, const rp_num_class *cls,
+           ratpoints_bit_array *survivors,
            long mask_low, long mask_high, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
+  ratpoints_bit_array bits64 = cls->bits; /* the 2-adic pattern, packed */
   long sp1 = args->sp1; /* number of primes in first stage */
   long sp2 = args->sp2; /* number of primes in first and second stage combined */
   long nchecks = args->sp3 - sp2; /* further primes, for the third stage */
@@ -1127,12 +1128,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
        * phases-by-register-width branch. */
       { long a0, da, d, k;
 
-        if(which_bits == num_all)
-        { d = 1; a0 = i * RBA_LENGTH; da = LONG_LENGTH; }
-        else
-        { d = 2; a0 = i * (2*RBA_LENGTH); da = 2*LONG_LENGTH;
-          if(which_bits == num_odd) { a0++; }
-        }
+        /* bit t of word number i is the numerator a0 + d t, see
+         * rp_num_class */
+        d = 1L << cls->k; a0 = cls->a0 + i * (RBA_LENGTH << cls->k);
+        da = LONG_LENGTH << cls->k;
 
         for(k = 0; k < RBA_PACK; k++)
         { unsigned long numsk = EXT(nums, k);
@@ -1221,13 +1220,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
          * d  := step size in numerators from one bit to the next
          * da := step size in numerators from one word to the next */
 
-        /* Set d, a0, da according to which_bits. */
-        if(which_bits == num_all)
-        { d = 1; a0 = i * RBA_LENGTH; da = LONG_LENGTH; }
-        else
-        { d = 2; a0 = i * (2*RBA_LENGTH); da = 2*LONG_LENGTH;
-          if(which_bits == num_odd) { a0++; }
-        }
+        /* Set d, a0, da from the packing of the class (rp_num_class). */
+        d = 1L << cls->k; a0 = cls->a0 + i * (RBA_LENGTH << cls->k);
+        da = LONG_LENGTH << cls->k;
 
         { /* extract the first word */
           unsigned long nums0 = EXT0(nums);

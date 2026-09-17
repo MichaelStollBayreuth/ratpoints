@@ -77,7 +77,8 @@ INSTALL_DIR = /usr/local
 #  invariant test inside it twice, once per outcome, was measured and is not
 #  used.  It removes 1 to 3% of the instructions -- the "which reduction" test
 #  in the per-call start loop and in the second-phase loop of sift.c, and the
-#  which_bits tests in the per-denominator loops of find_points.c -- and
+#  tests on the numerator packing (which_bits, as it then was) in the
+#  per-denominator loops of find_points.c -- and
 #  gains nothing in cycles: a
 #  wash on the two suites at height 16383 and 0 to 2% slower on the two at
 #  200000, measured at three code alignments (TRIO-NOTES.md on the sieve-trio

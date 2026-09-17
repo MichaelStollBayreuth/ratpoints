@@ -105,10 +105,28 @@ no third stage at all and 250000 exact checks instead of 7900. Now the stage loo
 prime whenever none in hand pays but a prime of the density the curve has been offering would (the
 same test now also decides whether an empty pool is refilled at all; a fixed number of primes is
 taken as before). And
-the estimate of the run's length counts the numerators of even denominators at half width, which is
-what the sieve sweeps for them: it was too large by up to a third on such curves, and its spread
+the estimate of the run's length counts the numerators of even denominators at half width, which was
+what the sieve then swept for them: it was too large by up to a third on such curves, and its spread
 over the random curves halves. Worth 1% of `make test1many`, half a per cent of `make testhighmany`
 and nothing measurable elsewhere; the exact checks of `make testhighmany` fall 4.6 times.
+
+The bit arrays hold only the numerators a denominator can have modulo a power of two. The
+paragraph before last says which numerators mod 64 each class of the denominator mod 64 admits;
+on two fifths of the random test curves those of the odd denominators lie in a single class
+modulo 4 or 8, and those of the even denominators often do as well. The program used to notice
+only whether they were all odd or all even and pack every second numerator; now every class gets
+the largest stride `2^k` with all its admissible numerators congruent modulo `2^k`, and a bit of
+its arrays stands for every `2^k`-th integer. The sieve tables serve unchanged: the denominator's
+residue is multiplied by the inverse of `2^k` and the row is read at a shift that depends on the
+class, which is what the two-fold packing already did, and the sieving loops do not change. On
+the random curves the first phase sweeps 15% fewer bit arrays and does 12% fewer ANDs (the rule
+then wants three quarters of a prime more in the first phase), and the work done once per
+denominator got simpler. Worth 9% of `make test1` (7.4 to 8.8% at three code placements), 12.5% of
+`make testhigh`, 1% of `make test1many`, 1.5% of `make testhighmany` and 3% at height bound
+4000. A run at height 1000 is 3.5% longer and one at 200 5% longer: deciding the 64 classes costs
+about 7000 instructions per curve, and the extra first-phase prime brings tables that a run of
+that length cannot use -- the rule that counts the first-phase primes knows nothing of their
+tables, which predates this change and is on the list.
 
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the

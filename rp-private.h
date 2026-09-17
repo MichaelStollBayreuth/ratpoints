@@ -346,12 +346,13 @@ typedef unsigned long ratpoints_bit_array;
 /* This is used to hold the preliminary sieving information for one prime p.
  * The table at ptr has p bit arrays (and a few more repeating the first
  * ones, for the first phase to run past the end), and the one for word
- * number i is at index (i + offset) mod p.  Besides the shift that odd
- * numerators need, offset carries a multiple of p of at least RP_ROW_BIAS,
- * so that i + offset is never negative for a word number the program
- * handles and the reduction needs no sign fix; sift() in find_points.c
- * adds it.  start and end serve the first phase, which walks the table
- * with a pointer; the second phase computes the row from i directly. */
+ * number i is at index (i + offset) mod p.  Besides the shift that the
+ * packing of the numerators needs (see rp_num_class), offset carries a
+ * multiple of p of at least RP_ROW_BIAS, so that i + offset is never
+ * negative for a word number the program handles and the reduction needs
+ * no sign fix; the per-class table it is copied from in sift() (find_points.c)
+ * has it built in.  start and end serve the first phase, which walks the
+ * table with a pointer; the second phase computes the row from i directly. */
 typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                  ratpoints_bit_array *start; ratpoints_bit_array *end; } sieve_spec;
 
@@ -443,9 +444,28 @@ typedef struct { long p; long binv; long bias; unsigned long magic;
  * can be compiled in, that is a height of several million. */
 #define RP_STAGE3_LIMIT 4294967296.0
 
-/* this is used to record whether all / only even / only odd / no numerators
- * need to be considered */
-typedef enum { num_all, num_even, num_odd, num_none } bit_selection;
+/* The strides the numerators can be packed with are the powers of two up
+ * to 64, the modulus of the 2-adic information: 2^k for 0 <= k < this. */
+#define RP_NUM_STRIDES 7
+
+/* What the sieve knows about the denominators of one residue class b mod
+ * 64.  Their admissible numerators (those for which b^D f(a/b) is a square
+ * mod 64, see get_2adic_info in find_points.c) lie in a single class a0 mod
+ * 2^k, with k as large as that allows, so the bit arrays hold only those:
+ * bit t of a bit array with word number 0 stands for the numerator
+ * a0 + 2^k t, and a bit array sweeps 2^k times as many numerators as it has
+ * bits.  bits is the 2-adic pattern in that packing -- the admissible ones
+ * among a0 + 2^k t, of period 64/2^k in t and so one word repeated -- which
+ * the first prime ANDs into every bit array.  offset[n], for the n-th prime
+ * of sieve_list, is the shift of the table row that the packing needs, with
+ * the multiple of p of sieve_spec built in: bit t wants the pattern for the
+ * residue (a0 + 2^k t) b^-1 = (t + a0 2^-k) (b 2^-k)^-1 mod p, so the row for
+ * the denominator is the one for b 2^-k mod p, read a0 2^-k bits further on,
+ * that is a0 (2^k RBA_LENGTH)^-1 mod p bit arrays further on.  Classes with
+ * the same k and a0 share one row of offsets.  A class without admissible
+ * numerators has bits == 0 and is never sieved. */
+typedef struct { ratpoints_bit_array bits; long k; long a0; const long *offset; }
+        rp_num_class;
 
 /* the type of the functions used for initializing the sieve */
 typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
@@ -454,8 +474,12 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 typedef struct
         { ratpoints_init_fun init; long p; int *is_f_square;
           const long *inverses; unsigned long magic; double r;
-          long offset;  /* the shift of the table row for odd numerators */
-          long bias;    /* the multiple of p added to it; see RP_ROW_BIAS */
+          long bias;    /* the multiple of p in a row shift; see RP_ROW_BIAS */
+          long dinv[RP_NUM_STRIDES]; /* 2^-k mod p: the denominator is
+                                      * reduced to b 2^-k mod p for the
+                                      * table row, see rp_num_class; filled
+                                      * by class_offsets() for the strides
+                                      * in use */
           ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME]; }
         ratpoints_sieve_entry;
 
@@ -464,18 +488,19 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
                  int process(long, long, const mpz_t, void*, int*), void *info);
 
 /* The following function is provided in sift.c : */
-/* bits64 is the 2-adic pattern every bit array starts from; the first phase
- * ANDs it in as it sieves rather than having it written into the array
- * beforehand.  mask_low and mask_high say how many bits to clear at the two
- * ends of the numerator interval (zero for an end that is not a boundary);
- * both are applied after the first phase, which gives the same result
- * because AND is commutative.  The range w_high - w_low can be any length:
- * the first phase takes it in chunks of RATPOINTS_CHUNK bit arrays and
- * sieves what is left over in narrower legs (the arm for RATPOINTS_CHUNK 1
- * takes any length as it always did). */
+/* cls is the numerator class of the denominator: its packing, which says
+ * what numerator a bit stands for, and the 2-adic pattern every bit array
+ * starts from, which the first phase ANDs in as it sieves rather than having
+ * it written into the array beforehand.  mask_low and mask_high say how many
+ * bits to clear at the two ends of the numerator interval (zero for an end
+ * that is not a boundary); both are applied after the first phase, which
+ * gives the same result because AND is commutative.  The range
+ * w_high - w_low can be any length: the first phase takes it in chunks of
+ * RATPOINTS_CHUNK bit arrays and sieves what is left over in narrower legs
+ * (the arm for RATPOINTS_CHUNK 1 takes any length as it always did). */
 long _ratpoints_sift0(long b, long w_low, long w_high,
-           ratpoints_args *args, bit_selection which_bits,
-           ratpoints_bit_array *survivors, ratpoints_bit_array bits64,
+           ratpoints_args *args, const rp_num_class *cls,
+           ratpoints_bit_array *survivors,
            long mask_low, long mask_high, sieve_spec *sieves,
            check_spec *checks, int *quit,
            int process(long, long, const mpz_t, void*, int*), void *info);

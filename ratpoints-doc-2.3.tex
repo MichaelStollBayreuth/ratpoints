@@ -1414,9 +1414,14 @@ version~2.3; the modulus is discussed with the other changes of that
 version below). Then for every
 residue class mod~$64$ of the denominator~$b$, we can find the residue
 classes mod~$64$ of potential numerators~$a$. If there are none, then we
-can eliminate $b$ as a denominator altogether. If all potential $a$'s are
-even or odd (this will always be the case for even denominators), we can
-restrict the sieving to such numerators.
+can eliminate $b$ as a denominator altogether. If all potential $a$'s lie
+in one residue class modulo a power of two --- they are all odd for an even
+denominator, and on many curves those of the odd denominators lie in one
+class modulo $4$ or~$8$ --- we can restrict the sieving to such numerators:
+a bit of the bit arrays then stands for every $2^k$-th integer, for the
+largest such~$k$ ($2$, $4$ and $8$ occur on the test curves), and the arrays
+are that much shorter. Before version~2.3 only the
+restriction to one parity was made; see the changes of that version below.
 
 \subsection{Elimination of denominators}
 
@@ -1844,11 +1849,37 @@ checks in place of $7900$. Now the stage looks at a further prime whenever
 none in hand pays but a prime of the density the curve has been offering
 would; the same test decides whether an empty pool is refilled at all, and
 a number of primes fixed with \verb+-P+ is taken as before. And the estimate of the run's length counts the numerators of even
-denominators at half width, which is what the sieve sweeps for them: it was
+denominators at half width, which was what the sieve then swept for them: it was
 too large by up to a third on such curves, and its spread over the random
 curves halves. Worth $1\%$ of \texttt{make test1many}, half a per cent of
 \texttt{make testhighmany} and nothing measurable elsewhere; the exact
 checks of \texttt{make testhighmany} fall by a factor of~$4.6$.
+
+The bit arrays hold only the numerators a denominator can have modulo a
+power of two. For each class of the denominator mod~$64$ the admissible
+numerators mod~$64$ are known (the paragraph before last); on two fifths of
+the random test curves those of the odd denominators lie in a single class
+modulo $4$ or~$8$, and those of the even denominators often do as well. The
+program used to notice only whether they were all odd or all even, and pack
+every second numerator; now every class gets the largest stride $2^k$ such
+that all its admissible numerators are congruent modulo~$2^k$, and a bit of
+its arrays stands for every $2^k$-th integer, $a_0 + 2^k t$. The sieve
+tables serve unchanged: bit~$t$ wants the residue $(a_0 + 2^k t)\, b^{-1} =
+(t + a_0 2^{-k})\, (b\, 2^{-k})^{-1} \bmod p$, so the row is the one for
+$b\, 2^{-k} \bmod p$, read $a_0 (2^k R)^{-1} \bmod p$ bit arrays further on,
+with $R$ the number of bits in a bit array --- which is what the two-fold
+packing already did with $k = 1$ --- and the sieving loops do not change.
+On the random curves the first phase sweeps $15\%$ fewer bit arrays and
+performs $12\%$ fewer \texttt{AND}s (the rule then takes three quarters of
+a prime more into the first phase), and the work done once per denominator
+got simpler. Worth $9\%$ of \texttt{make test1} ($7.4$ to $8.8\%$ at three
+placements of the code), $12.5\%$ of \texttt{make testhigh}, $1\%$ of
+\texttt{make test1many}, $1.5\%$ of \texttt{make testhighmany} and $3\%$ at
+the height bound~$4000$. A run at height~$1000$ is $3.5\%$ longer and one
+at~$200$ $5\%$ longer: deciding the $64$ classes costs about $7000$
+instructions per curve, and the extra first-phase prime brings tables that
+a run of that length cannot use --- the rule that counts the first-phase
+primes knows nothing of their tables, which predates this change.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
