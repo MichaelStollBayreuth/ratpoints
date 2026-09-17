@@ -181,16 +181,24 @@
 #ifndef RATPOINTS_COST_TABLE
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
-/* The largest composite modulus offered to the ranking (TODO item 21).  A
- * composite modulus carries the information of its prime-power factors for
- * one AND per word, but its row is m bit arrays and its table m rows of
- * them, and the cost model charges an AND the same whatever the modulus:
- * on this machine the first phase's cycles per AND double when rows of
- * some 200 arrays replace the small primes' rows, which live in the first-
- * level cache.  Below this bound the rows and tables are small enough for
- * the model's assumption to hold. */
+/* The largest composite modulus offered to the ranking (2.3, TODO item
+ * 21).  A composite modulus -- a prime power, or a product of primes and
+ * prime powers -- carries the information of all its factors for one AND
+ * per word; but its row is m bit arrays and its table m rows of them, and
+ * the cost model charges an AND the same whatever the modulus.  That holds
+ * while the rows are small: measured here, the first phase's cycles per
+ * AND double when rows of some 200 bit arrays (7 KB) take the place of the
+ * small primes' rows, which live in the first-level cache and whose tables
+ * fit the second, and the products of two mid-size primes then save a
+ * fifth of the instructions and a tenth of the time on random curves at
+ * height 200000 while losing 7% on the point-rich ones.  With the moduli
+ * bounded by 64 -- the powers 9, 25, 27, 49 and the products of the primes
+ * up to 21 -- the cycles follow the instructions on every test set (32 and
+ * 128 were measured too; 64 is the best of them).  A per-AND cost that
+ * rises with the modulus would let the model use the larger products
+ * where they pay; that wants a cache-size constant, see TODO item 30. */
 #ifndef RATPOINTS_COMPOSITE_MAX
-# define RATPOINTS_COMPOSITE_MAX 255
+# define RATPOINTS_COMPOSITE_MAX 64
 #endif
 #ifndef RATPOINTS_COST_BP
 # define RATPOINTS_COST_BP 8.0       /* one entry of bp_list, per denominator:
