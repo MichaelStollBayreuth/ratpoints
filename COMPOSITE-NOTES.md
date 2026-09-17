@@ -132,12 +132,23 @@ set-up's half per cent at height 100, and the demotion guard's side effect
 (commented).  `-x` output differs by design, as with item 28.
 
 **The prime's density.**  The sweep review found that `examine_prime`
-counted the class of denominators divisible by p with density 1 where its
-row (sieves0, the numerators not divisible by p) has (p-1)/p: r was
-(np (p-1) + p)/p^2 instead of (np + 1)(p-1)/p^2, 1/p^2 too much, which made
-a prime look less informative than it is against the exact density of its
-powers (0.111 for 3).  Corrected on this branch (the fix is one line); the
-primes' ranking shifts slightly for 3, 5 and 7, measured below.
+counts the class of denominators divisible by p with density 1 where its
+row (sieves0, the numerators not divisible by p) has (p-1)/p -- r is
+(np (p-1) + p)/p^2, not (np + 1)(p-1)/p^2 -- while `examine_power`'s
+density was exact, so a prime looked less informative than its row is
+against its own powers (by 0.111 for 3).  Making the prime exact was tried
+(commit 12ada9d): test1 0.941 and testhigh 0.901 as before, but
+testhighmany 1.023 against 0.973 -- the numerators that row removes are
+the ones the test for common factors removes anyway, the third stage runs
+after that test and its constants are fitted to what reaches it, so the
+"exact" density double-counts, and on the point-rich curves, where the
+small primes are nearly silent, the extra 1/p^2 of information the rule
+then saw changed the choices for the worse.  Resolved the other way
+(ee70d63 and after): the prime keeps its convention -- a modulus's
+density counts what it says beyond coprimality, nothing on the class it
+divides -- and the power's density is brought to the same one: for p | b
+the share of the numerators coprime to p that the row admits, which for
+e = 1 is the prime's formula exactly.
 
 ## What it is worth
 
