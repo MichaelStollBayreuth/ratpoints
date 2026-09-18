@@ -1980,6 +1980,30 @@ meets; the factor $1-r$ for the ones it removes, a cost per call of the sieve
 and the fetch of its table row came later, with the estimate corrections of
 the tuning session, and the threshold was refitted for the group.)
 
+The estimates the rules run on were corrected as one group at the end, and
+the constants refitted with them, because each correction alone looks worse:
+the constants had been fitted with the old estimates and absorbed their
+errors. The run shape counts the words the sieve sweeps, each interval of
+each denominator rounded outwards to whole bit arrays with the ends the
+height bound cuts placed exactly (it had counted numerators, a third too few
+at height $1000$ and a tenth at $4000$); the Jacobi test keeps $0.53$ of the
+denominators, not half; the bits set per word are averaged over the classes a
+run visits, weighted by the words each sweeps; a prime's density counts the
+class of denominators it divides at what its row admits; the rule that ends
+the first stage weighs the survivors a modulus removes, not the ones it
+meets; and a first-stage modulus is charged for each call of the sieve and
+for fetching its table row once per denominator, two costs the model had none
+of and the run at height $1000$ pays five times over for every \texttt{AND}.
+With the estimates right to a few per cent at every height, the threshold
+\texttt{make tune} fits at $16383$ moved from $0.0075$ to $0.003$ and holds
+at $2\cdot 10^5$ and at $200$ to $4000$ alike, where before the corrections
+the group wanted a different threshold at every height. The suites are where
+they were, within $2\%$ either way; what changed is under the hood: at a
+fixed count of ten moduli the corrected ranking runs the point-rich curves at
+height $1000$ in $0.62$ of the time, since the old table term, spread over a
+third too few words, had kept nearly silent small primes in the first stage
+there.
+
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
 a guard that asked for the leading coefficient to be a non-square modulo~$p$
