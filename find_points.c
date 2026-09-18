@@ -1694,17 +1694,19 @@ static int examine_prime(ratpoints_args *args, long pn,
  * b*domain that lies within the height bound.  Used both to size the run
  * (run_shape below) and to estimate how many survivors a denominator brings
  * to the third stage. */
-static double numerators_for(const ratpoints_args *args, double b, double H)
+static double numerators_for(const ratpoints_args *args, double b, double H,
+                             double *n_inter)
 { double sum = 0.0;
-  long k;
+  long k, n = 0;
 
   for(k = 0; k < args->num_inter; k++)
   { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
 
     if(lo < -H) { lo = -H; }
     if(up > H) { up = H; }
-    if(up > lo) { sum += up - lo; }
+    if(up > lo) { sum += up - lo; n++; }
   }
+  if(n_inter) { *n_inter = (double)n; }  /* the intervals that were not empty */
   return(sum);
 }
 
@@ -1725,7 +1727,14 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * through 0.53 of what is left.  The numerators of one
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
- * cent.
+ * cent.  What the sieve sweeps is more than the numerators: each interval
+ * of each denominator is rounded outwards to whole bit arrays (find_points_work),
+ * which is one bit array more than its length on average, whatever the
+ * packing -- a third of the words at a height bound of 1000, where a
+ * denominator has a few bit arrays, a tenth at 4000, two per cent at 16383.
+ * u_words counts the words swept, padding included, since that is what the
+ * per-word costs are spread over; u_pad says how many of them are padding,
+ * for the estimates that want the numerators themselves.
  *
  * The result is an estimate, and a biased one -- the Jacobi factor is an
  * average, and the valuation test of the use_squares1 path is not modelled
@@ -1753,11 +1762,13 @@ static double forbidden_fraction(long p, unsigned long mask)
 static void run_shape(ratpoints_args *args, unsigned long den_bits,
                       const rp_num_class *cls,
                       long fba, long fdc,
-                      double *n_denom, double *u_words)
+                      double *n_denom, double *u_words, double *u_pad)
 { double H = (double)args->height;
   double keep = 1.0;    /* fraction of the candidates that reach sift() */
   double count = 0.0;   /* candidate denominators */
   double nums = 0.0;    /* numerators they sweep, before that fraction */
+  double inters = 0.0;  /* the non-empty intervals they sweep them in */
+  double ni;
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
   double packed = 0.0;  /* the sum over them of 1/stride: the share of their
                          * numerators the bit arrays hold */
@@ -1774,9 +1785,9 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = khi - klo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, k*k, H);
+        nums += numerators_for(args, k*k, H, &ni); inters += ni;
       }
-      nums *= count/RUN_SHAPE_SAMPLES;
+      nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
     }
     /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
      * in k */
@@ -1804,7 +1815,8 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
         for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
         { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-          nums += c*numerators_for(args, d*k*k, H)/RUN_SHAPE_SAMPLES;
+          nums += c*numerators_for(args, d*k*k, H, &ni)/RUN_SHAPE_SAMPLES;
+          inters += c*ni/RUN_SHAPE_SAMPLES;
         }
         count += c;
       }
@@ -1827,9 +1839,9 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = bhi - blo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double b = blo + (bhi - blo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, b, H);
+        nums += numerators_for(args, b, H, &ni); inters += ni;
       }
-      nums *= count/RUN_SHAPE_SAMPLES;
+      nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
     }
     /* bit j of den_bits is set exactly when the denominators congruent to j
      * modulo 64 have a numerator pattern (the word for the denominators
@@ -1868,8 +1880,18 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * over-estimated U by up to a third.) */
   if(good > 0) { nums *= packed/(double)good; }
 
-  *n_denom = keep*count;
-  *u_words = keep*nums/(double)LONG_LENGTH;
+  /* The rounding to whole bit arrays: the bits of an interval run from
+   * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays, which for an
+   * interval placed at random is one bit array longer than the interval on
+   * average, at every packing.  (Until 2.3 the ranges were padded to whole
+   * chunks of RATPOINTS_CHUNK bit arrays on top of that; the tail legs of
+   * item 25 took that away, this is what is left.) */
+  { double pad = inters*(double)RBA_LENGTH;
+
+    *n_denom = keep*count;
+    *u_words = keep*(nums + pad)/(double)LONG_LENGTH;
+    *u_pad = keep*pad/(double)LONG_LENGTH;
+  }
   if(*n_denom < 1.0) { *n_denom = 1.0; }
   if(*u_words < 1.0) { *u_words = 1.0; }
 }
@@ -2259,6 +2281,7 @@ static long sieving_info(ratpoints_args *args,
   int pinf[RATPOINTS_NUM_PRIMES];
   long npw = 0; /* prime powers examined so far */
   unsigned long used = 0UL; /* the primes the moduli taken involve */
+  double u_pad = 0.0; /* of run_words, the padding to whole bit arrays */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -2293,7 +2316,7 @@ static long sieving_info(ratpoints_args *args,
    * again below, once the forbidden divisors are known and the estimate can
    * take them into account. */
   run_shape(args, den_bits, cls, 0, 0,
-            &args->run_denoms, &args->run_words);
+            &args->run_denoms, &args->run_words, &u_pad);
   sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
@@ -2501,7 +2524,7 @@ static long sieving_info(ratpoints_args *args,
     long n;
 
     run_shape(args, den_bits, cls, fba, fdc,
-              &args->run_denoms, &args->run_words);
+              &args->run_denoms, &args->run_words, &u_pad);
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
     { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms); }
@@ -2617,9 +2640,11 @@ static long sieving_info(ratpoints_args *args,
 
     /* The average number of numerators a denominator has to consider.  The
      * run shape already has the total in words, so this is just the mean per
-     * denominator; run_shape counts only the numerators that are actually
-     * looked at, so no further halving is wanted here. */
-    S = args->run_words*(double)LONG_LENGTH/args->run_denoms;
+     * denominator, less the padding to whole bit arrays, which holds no
+     * numerators (the boundary masks clear it); run_shape counts only the
+     * numerators that are actually looked at, so no further halving is
+     * wanted here. */
+    S = (args->run_words - u_pad)*(double)LONG_LENGTH/args->run_denoms;
     { long n;
 
       S *= bits_per_word/(double)LONG_LENGTH;
