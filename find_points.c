@@ -1712,19 +1712,42 @@ static int examine_prime(ratpoints_args *args, long pn,
  * (run_shape below) and to estimate how many survivors a denominator brings
  * to the third stage. */
 static double numerators_for(const ratpoints_args *args, double b, double H,
-                             double *n_inter)
+                             double *n_inter, double *n_clip_lo,
+                             double *n_clip_hi)
 { double sum = 0.0;
-  long k, n = 0;
+  long k, n = 0, clo = 0, chi = 0;
 
   for(k = 0; k < args->num_inter; k++)
   { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
+    int cl = 0, ch = 0;
 
-    if(lo < -H) { lo = -H; }
-    if(up > H) { up = H; }
-    if(up > lo) { sum += up - lo; n++; }
+    if(lo <= -H) { lo = -H; cl = 1; }
+    if(up >= H) { up = H; ch = 1; }
+    if(up > lo) { sum += up - lo; n++; clo += cl; chi += ch; }
   }
-  if(n_inter) { *n_inter = (double)n; }  /* the intervals that were not empty */
+  /* the intervals that were not empty, and how many of their ends the
+   * height bound cut (find_points_work clips them the same way) */
+  *n_inter = (double)n; *n_clip_lo = (double)clo; *n_clip_hi = (double)chi;
   return(sum);
+}
+
+/* What the rounding of an interval to whole bit arrays adds at an end the
+ * height bound cut, for the numerator class cl: the bits of the class run
+ * from ceil((-H - a0)/2^k) to floor((H - a0)/2^k) (find_points_work), and
+ * the padding is what floor and ceil to a multiple of RBA_LENGTH add below
+ * the first and above the last.  Fixed for the class, since every such end
+ * sits at the same bit; an end the bound did not cut sits anywhere in its
+ * bit array and pads half of one on average. */
+static void clipped_padding(const rp_num_class *cl, long H,
+                            double *pad_lo, double *pad_hi)
+{ long k = cl->k, a0 = cl->a0;
+  long lo_bit = (-H - a0 + (1L << k) - 1) >> k;
+  long hi_bit = ((H - a0) >> k) + 1;
+
+  /* x & (RBA_LENGTH - 1) is x mod RBA_LENGTH, non-negative, for negative
+   * x as well (two's complement) */
+  *pad_lo += (double)(lo_bit & (RBA_LENGTH - 1));
+  *pad_hi += (double)((-hi_bit) & (RBA_LENGTH - 1));
 }
 
 /* How big the run is: the number of denominators that will actually be
@@ -1745,10 +1768,15 @@ static double numerators_for(const ratpoints_args *args, double b, double H,
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
  * cent.  What the sieve sweeps is more than the numerators: each interval
- * of each denominator is rounded outwards to whole bit arrays (find_points_work),
- * which is one bit array more than its length on average, whatever the
- * packing -- a third of the words at a height bound of 1000, where a
- * denominator has a few bit arrays, a tenth at 4000, two per cent at 16383.
+ * of each denominator is rounded outwards to whole bit arrays
+ * (find_points_work), whatever the packing -- a third of the words at a
+ * height bound of 1000, where a denominator has a few bit arrays, a tenth
+ * at 4000, two per cent at 16383.  An end the height bound cut sits at the
+ * same bit for every denominator of a class, so its padding is exact
+ * (clipped_padding); an end inside the bound pads half a bit array on
+ * average.  (One whole bit array per interval, the first version of this,
+ * was a fifth too much at 1000: most ends are cut, and at a height bound of
+ * 2^n - 1 the cut ends pad nothing at all.)
  * u_words counts the words swept, padding included, since that is what the
  * per-word costs are spread over; u_pad says how many of them are padding,
  * for the estimates that want the numerators themselves; n_calls is the
@@ -1793,10 +1821,14 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   double count = 0.0;   /* candidate denominators */
   double nums = 0.0;    /* numerators they sweep, before that fraction */
   double inters = 0.0;  /* the non-empty intervals they sweep them in */
-  double ni;
+  double clo = 0.0, chi = 0.0; /* how many of their ends the bound cut */
+  double ni, nlo, nhi;
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
   double packed = 0.0;  /* the sum over them of 1/stride: the share of their
                          * numerators the bit arrays hold */
+  double pad_lo = 0.0, pad_hi = 0.0; /* the sum over them of what a cut end
+                                      * pads (clipped_padding) */
+  long Hl = args->height;
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
@@ -1808,16 +1840,21 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = khi - klo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, k*k, H, &ni); inters += ni;
+        nums += numerators_for(args, k*k, H, &ni, &nlo, &nhi);
+        inters += ni; clo += nlo; chi += nhi;
       }
       nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
+      clo *= count/RUN_SHAPE_SAMPLES; chi *= count/RUN_SHAPE_SAMPLES;
     }
     /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
      * in k */
     for(j = 0; j < 32; j++)
     { const rp_num_class *cl = &cls[(j*j) & 0x3f];
 
-      if(EXT0(cl->bits)) { good++; packed += rp_inv_stride[cl->k]; }
+      if(EXT0(cl->bits))
+      { good++; packed += rp_inv_stride[cl->k];
+        clipped_padding(cl, Hl, &pad_lo, &pad_hi);
+      }
     }
     keep = (double)good/32.0;
   }
@@ -1838,8 +1875,10 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
         for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
         { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-          nums += c*numerators_for(args, d*k*k, H, &ni)/RUN_SHAPE_SAMPLES;
+          nums += c*numerators_for(args, d*k*k, H, &ni, &nlo, &nhi)
+                   /RUN_SHAPE_SAMPLES;
           inters += c*ni/RUN_SHAPE_SAMPLES;
+          clo += c*nlo/RUN_SHAPE_SAMPLES; chi += c*nhi/RUN_SHAPE_SAMPLES;
         }
         count += c;
       }
@@ -1849,7 +1888,10 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       { const rp_num_class *cl
           = &cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f];
 
-        if(EXT0(cl->bits)) { good++; packed += rp_inv_stride[cl->k]; }
+        if(EXT0(cl->bits))
+        { good++; packed += rp_inv_stride[cl->k];
+          clipped_padding(cl, Hl, &pad_lo, &pad_hi);
+        }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -1862,9 +1904,11 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = bhi - blo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double b = blo + (bhi - blo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, b, H, &ni); inters += ni;
+        nums += numerators_for(args, b, H, &ni, &nlo, &nhi);
+        inters += ni; clo += nlo; chi += nhi;
       }
       nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
+      clo *= count/RUN_SHAPE_SAMPLES; chi *= count/RUN_SHAPE_SAMPLES;
     }
     /* bit j of den_bits is set exactly when the denominators congruent to j
      * modulo 64 have a numerator pattern (the word for the denominators
@@ -1874,6 +1918,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       while(w)
       { j = RP_CTZL(w); w &= w - 1UL;
         good++; packed += rp_inv_stride[cls[j].k];
+        clipped_padding(&cls[j], Hl, &pad_lo, &pad_hi);
       }
     }
     keep = (double)good/64.0;
@@ -1904,12 +1949,16 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   if(good > 0) { nums *= packed/(double)good; }
 
   /* The rounding to whole bit arrays: the bits of an interval run from
-   * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays, which for an
-   * interval placed at random is one bit array longer than the interval on
-   * average, at every packing.  (Until 2.3 the ranges were padded to whole
-   * chunks of RATPOINTS_CHUNK bit arrays on top of that; the tail legs of
-   * item 25 took that away, this is what is left.) */
-  { double pad = inters*(double)RBA_LENGTH;
+   * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays.  An end the
+   * height bound cut pads what clipped_padding says for its class, the
+   * mean over the classes kept; an end inside the bound pads half a bit
+   * array on average.  (Until 2.3 the ranges were padded to whole chunks of
+   * RATPOINTS_CHUNK bit arrays on top of that; the tail legs of item 25
+   * took that away, this is what is left.) */
+  { double pad = (good > 0)
+                   ? clo*pad_lo/(double)good + chi*pad_hi/(double)good
+                       + (2.0*inters - clo - chi)*0.5*(double)RBA_LENGTH
+                   : 0.0;
     /* and the calls of the sieve: one per interval and denominator while
      * an interval fits array_size bit arrays, which it does below a height
      * bound of some 30000; beyond that as many as it takes (the mean
@@ -1924,8 +1973,11 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     *u_pad = keep*pad/(double)LONG_LENGTH;
     *n_calls = keep*inters*ceil(per/asz);
   }
+  /* the floors, for a run too small to estimate: one denominator, one word
+   * of numerators (no padding), one call */
   if(*n_denom < 1.0) { *n_denom = 1.0; }
-  if(*u_words < 1.0) { *u_words = 1.0; }
+  if(*u_words < 1.0) { *u_words = 1.0; *u_pad = 0.0; }
+  if(*n_calls < 1.0) { *n_calls = 1.0; }
 }
 
 /* The mean number of bits set per 64-bit word of a bit array on entry to
@@ -1938,9 +1990,15 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
  * of the leading coefficient with squares times divisors), each as often
  * as it comes up, and each weighted by the words it sweeps -- one in 2^k of
  * its numerators.  Until 2.3 the mean was over all 64 classes unweighted,
- * which on the square paths counted the 52 classes never visited: a monic
- * curve of odd degree sieves the twelve square classes only, where the mean
- * is a fifth higher (item 26's review).
+ * which on the square paths counted the 52 classes never visited; a monic
+ * curve of odd degree sieves the twelve square classes only, where the
+ * unweighted mean is higher (item 26's review; by 16 to 61% on the curves
+ * probed in the tuning session).  The weighting by words takes more away
+ * than that, on the square paths and on the plain one alike: the classes
+ * with the larger strides pack their admissible numerators densely and
+ * sweep few words, so per word swept the mean comes out below the old
+ * one, by 3 to 11% on the square paths.  What the value is for is the
+ * survivors per word swept, and that is what it now is.
  * Per word rather than per bit-array on purpose: measurements across
  * register widths show that the survivor rate at the best sp1 is constant
  * per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD in
@@ -2878,8 +2936,9 @@ static long sieving_info(ratpoints_args *args,
   { long n;
 
     fprintf(stderr, "[primestats] pn_lim=%ld pnp=%ld sp1=%ld sp2=%ld sp3=%ld"
-            " bpw=%.2f U=%.6g D=%.6g", pn_lim, pnp, args->sp1, args->sp2,
-            args->sp3, bits_per_word, args->run_words, args->run_denoms);
+            " bpw=%.2f bpws=%.2f U=%.6g D=%.6g pad=%.6g calls=%.6g", pn_lim,
+            pnp, args->sp1, args->sp2, args->sp3, bits_per_word, bpw_swept,
+            args->run_words, args->run_denoms, u_pad, n_calls);
     for(n = 0; n < pnp; n++)
     { fprintf(stderr, " %ld:%.4f", prec[n].p, prec[n].r); }
     fprintf(stderr, "\n");

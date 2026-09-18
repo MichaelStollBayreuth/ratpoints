@@ -196,7 +196,9 @@
  * rdtsc cycles on the machine they were measured on; they are properties of
  * the machine, measured rather than fitted, by building with
  * -DRP_PHASE_TIMING and dividing the cycles of each part by the number of
- * times it ran and by that unit.
+ * times it ran and by that unit.  (At another register width one AND
+ * covers another number of words and the unit changes with it, so these
+ * constants want measuring again there; see tune.sh on the table cost.)
  *
  * They are here because the primes are not equally expensive and the rule
  * that picks them used to act as though they were.  The sieve table for p
