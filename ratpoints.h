@@ -57,7 +57,13 @@
  * 128, 256 and 512 bits) while the per-bit-array one doubles with each
  * doubling of the width.  The measurements behind this are in
  * PARAMETER-MODEL.md on the phases-by-register-width branch of the git
- * repository.
+ * repository.  (Those figures were 0.0075 for the rule as it then was; the
+ * tuning session of 2.3 made the rule count the survivors a modulus
+ * removes rather than the ones it meets, a factor 1 - r of about a half,
+ * and charge the modulus its per-call cost and its row fetch, so the same
+ * measurements put the constant at 0.003 -- a sweep of the threshold on
+ * the corrected model at 200 to 200000 has a flat basin from 0.002 to
+ * 0.004 at 16383, and "make tune" confirmed it.)
  *
  * The constant is a property of the machine, not of the curve: it is where
  * one more first-phase prime stops paying for itself against the cost of a
@@ -80,7 +86,7 @@
  * (a negative value there means "use the compiled-in one"), and on the
  * command line with -r and -R. */
 #ifndef RATPOINTS_SURVIVORS_PER_WORD
-# define RATPOINTS_SURVIVORS_PER_WORD 0.0075 /* when to stop the first phase */
+# define RATPOINTS_SURVIVORS_PER_WORD 0.003 /* when to stop the first phase */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
 # define RATPOINTS_SP2_EXTRA 11             /* sp2 = sp1 + this, capped */

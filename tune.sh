@@ -1,9 +1,9 @@
 #!/bin/sh
-# Find good values for the four machine-dependent constants that decide how
+# Find good values for the five machine-dependent constants that decide how
 # many primes each sieving stage uses and which ones --
-# RATPOINTS_SURVIVORS_PER_WORD, RATPOINTS_SP2_EXTRA, RATPOINTS_SP2_U0 and
-# RATPOINTS_COST_TABLE in ratpoints.h -- and write them to tuning.mk, which
-# the Makefile includes.  Run it as "make tune"; it needs ./rptest and
+# RATPOINTS_SURVIVORS_PER_WORD, RATPOINTS_SP2_EXTRA, RATPOINTS_SP2_U0,
+# RATPOINTS_COST_TABLE and RATPOINTS_SP3_PER_DENOM in ratpoints.h -- and write
+# them to tuning.mk, which the Makefile includes.  Run it as "make tune"; it needs ./rptest and
 # ./rptest-many, and it modifies no source file.
 #
 # Both tests are used throughout: they cover the two regimes that occur in
@@ -45,13 +45,14 @@ NOISE=${NOISE:-0.02}       # ... and the baseline's self-ratio is within this
 WARMUP=${WARMUP:-20}       # seconds of load before measuring
 
 # The candidates for each constant.  There are two ways to say what they are.
-# R_VALUES, E_VALUES, U_VALUES and C_VALUES are an absolute ladder, bracketing
-# the compiled-in values either way; a factor of two in the threshold is worth
-# about one prime in the first phase.  R_FACTORS, E_DELTAS, U_FACTORS and
-# C_FACTORS instead describe a neighbourhood of the settings being measured
-# against -- multiples of the threshold, of the run length and of the table
-# cost, and offsets added to the number of primes -- and take precedence when
-# they are set.
+# R_VALUES, E_VALUES, U_VALUES, C_VALUES and Q_VALUES are an absolute ladder,
+# bracketing the compiled-in values either way; a factor of two in the
+# threshold is worth about one prime in the first phase.  R_FACTORS, E_DELTAS,
+# U_FACTORS, C_FACTORS and Q_FACTORS instead describe a neighbourhood of the
+# settings being measured against -- multiples of the threshold, of the run
+# length, of the table cost and of the third stage's per-denominator cost, and
+# offsets added to the number of primes -- and take precedence when they are
+# set.
 #
 # Which to use depends on what a run costs.  "make tune" sweeps the ladder,
 # since one timing there is three seconds.  "make tunehigh" costs two minutes a
@@ -81,14 +82,23 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # work, a scalar table build against a vector AND, and that ratio is the one
 # most likely to differ between machines; it also depends on the register
 # width, since the AND handles more words at once as the registers grow.
-R_VALUES=${R_VALUES:-"0.003 0.005 0.012 0.02"}
+#
+# The fifth constant is what carrying one third-stage prime costs per
+# denominator, as a fraction of one exact check.  It decides whether the third
+# stage runs at all on a curve (ratpoints.h, RATPOINTS_SP3_PER_DENOM); since
+# 2.3 the stage's set-up is done on demand, for the denominators that bring a
+# survivor that far, so the cost is smaller than it was when the constant was
+# first fitted, and the ladder reaches down accordingly.
+R_VALUES=${R_VALUES:-"0.0015 0.002 0.0045 0.0075"}
 E_VALUES=${E_VALUES:-"4 6 9 13 18"}
 U_VALUES=${U_VALUES:-"3e5 6e5 2.4e6 5e6"}
 C_VALUES=${C_VALUES:-"10 20 70 140"}
+Q_VALUES=${Q_VALUES:-"0.003 0.006 0.025 0.05"}
 R_FACTORS=${R_FACTORS:-}
 E_DELTAS=${E_DELTAS:-}
 U_FACTORS=${U_FACTORS:-}
 C_FACTORS=${C_FACTORS:-}
+Q_FACTORS=${Q_FACTORS:-}
 
 # The suites to tune on, as "program:reference" pairs, and the height bound to
 # run them at (empty: each test's own default).  Set by "make tune" and
@@ -113,7 +123,8 @@ DEF_R=`sed -n 's/^# *define  *RATPOINTS_SURVIVORS_PER_WORD  *\([0-9.eE+-]*\).*/\
 DEF_E=`sed -n 's/^# *define  *RATPOINTS_SP2_EXTRA  *\([0-9]*\).*/\1/p' ratpoints.h`
 DEF_U=`sed -n 's/^# *define  *RATPOINTS_SP2_U0  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
 DEF_C=`sed -n 's/^# *define  *RATPOINTS_COST_TABLE  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
-[ -n "$DEF_R" ] && [ -n "$DEF_E" ] && [ -n "$DEF_U" ] && [ -n "$DEF_C" ] \
+DEF_Q=`sed -n 's/^# *define  *RATPOINTS_SP3_PER_DENOM  *\([0-9.eE+-]*\).*/\1/p' ratpoints.h`
+[ -n "$DEF_R" ] && [ -n "$DEF_E" ] && [ -n "$DEF_U" ] && [ -n "$DEF_C" ] && [ -n "$DEF_Q" ] \
   || { echo "tune.sh: cannot read the defaults from ratpoints.h" >&2; exit 1; }
 if [ -f tuning.mk ] && [ "`sed -n 's/^TUNED_FOR *= *//p' tuning.mk`" = "${TUNE_CONFIG:-}" ]
 then
@@ -125,9 +136,11 @@ then
   [ -n "$v" ] && DEF_U=$v
   v=`sed -n 's/.*RATPOINTS_COST_TABLE=\([^ 	]*\).*/\1/p' tuning.mk`
   [ -n "$v" ] && DEF_C=$v
-  echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E / $DEF_U / $DEF_C"
+  v=`sed -n 's/.*RATPOINTS_SP3_PER_DENOM=\([^ 	]*\).*/\1/p' tuning.mk`
+  [ -n "$v" ] && DEF_Q=$v
+  echo "tuning.mk is already in effect; measuring against its $DEF_R / $DEF_E / $DEF_U / $DEF_C / $DEF_Q"
 fi
-BASE="-r $DEF_R -R $DEF_E -U $DEF_U -C $DEF_C"
+BASE="-r $DEF_R -R $DEF_E -U $DEF_U -C $DEF_C -Q $DEF_Q"
 
 # a neighbourhood of those, if that is what was asked for
 if [ -n "$R_FACTORS" ]; then
@@ -151,6 +164,11 @@ if [ -n "$C_FACTORS" ]; then
     'BEGIN { n = split(f, a, " ")
              for (i = 1; i <= n; i++) printf "%.4g ", c*a[i] }'`
 fi
+if [ -n "$Q_FACTORS" ]; then
+  Q_VALUES=`awk -v q="$DEF_Q" -v f="$Q_FACTORS" \
+    'BEGIN { n = split(f, a, " ")
+             for (i = 1; i <= n; i++) printf "%.4g ", q*a[i] }'`
+fi
 
 # Each stage carries the winners of the stages before it into every one of
 # its candidates, so the constant it sweeps must have its current value among
@@ -161,8 +179,9 @@ fi
 case " $E_VALUES " in *" $DEF_E "*) ;; *) E_VALUES="$DEF_E $E_VALUES" ;; esac
 case " $U_VALUES " in *" $DEF_U "*) ;; *) U_VALUES="$DEF_U $U_VALUES" ;; esac
 case " $C_VALUES " in *" $DEF_C "*) ;; *) C_VALUES="$DEF_C $C_VALUES" ;; esac
-[ -n "$R_FACTORS$E_DELTAS$U_FACTORS$C_FACTORS" ] \
-  && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES/ $C_VALUES"
+case " $Q_VALUES " in *" $DEF_Q "*) ;; *) Q_VALUES="$DEF_Q $Q_VALUES" ;; esac
+[ -n "$R_FACTORS$E_DELTAS$U_FACTORS$C_FACTORS$Q_FACTORS" ] \
+  && echo "candidates: $R_VALUES/ $E_VALUES/ $U_VALUES/ $C_VALUES/ $Q_VALUES"
 
 if command -v taskset >/dev/null 2>&1; then PIN="taskset -c 0"; else PIN=""; fi
 
@@ -237,7 +256,7 @@ echo "stage 1: the threshold, against the current $DEF_R (offset stays at $DEF_E
 printf 'current\t%s\n' "$BASE" >> "$TMP/c1"
 for v in $R_VALUES; do
   [ "$v" = "$DEF_R" ] && continue
-  printf 'r=%s\t-r %s -R %s -U %s -C %s\n' "$v" "$v" "$DEF_E" "$DEF_U" "$DEF_C" >> "$TMP/c1"
+  printf 'r=%s\t-r %s -R %s -U %s -C %s -Q %s\n' "$v" "$v" "$DEF_E" "$DEF_U" "$DEF_C" "$DEF_Q" >> "$TMP/c1"
 done
 measure "$TMP/c1" "$TMP/r1"
 report "$TMP/r1"
@@ -250,7 +269,7 @@ echo "stage 2: the offset, with the threshold at $BEST_R"
 : > "$TMP/c2"
 printf 'current\t%s\n' "$BASE" >> "$TMP/c2"
 for v in $E_VALUES; do
-  printf 'e=%s\t-r %s -R %s -U %s -C %s\n' "$v" "$BEST_R" "$v" "$DEF_U" "$DEF_C" >> "$TMP/c2"
+  printf 'e=%s\t-r %s -R %s -U %s -C %s -Q %s\n' "$v" "$BEST_R" "$v" "$DEF_U" "$DEF_C" "$DEF_Q" >> "$TMP/c2"
 done
 measure "$TMP/c2" "$TMP/r2"
 report "$TMP/r2"
@@ -264,7 +283,7 @@ echo "         with the threshold at $BEST_R and the offset at $BEST_E"
 : > "$TMP/c3"
 printf 'current\t%s\n' "$BASE" >> "$TMP/c3"
 for v in $U_VALUES; do
-  printf 'u=%s\t-r %s -R %s -U %s -C %s\n' "$v" "$BEST_R" "$BEST_E" "$v" "$DEF_C" >> "$TMP/c3"
+  printf 'u=%s\t-r %s -R %s -U %s -C %s -Q %s\n' "$v" "$BEST_R" "$BEST_E" "$v" "$DEF_C" "$DEF_Q" >> "$TMP/c3"
 done
 measure "$TMP/c3" "$TMP/r3"
 report "$TMP/r3"
@@ -278,19 +297,34 @@ echo "         the offset at $BEST_E and the run length at $BEST_U"
 : > "$TMP/c4"
 printf 'current\t%s\n' "$BASE" >> "$TMP/c4"
 for v in $C_VALUES; do
-  printf 'c=%s\t-r %s -R %s -U %s -C %s\n' "$v" "$BEST_R" "$BEST_E" "$BEST_U" "$v" >> "$TMP/c4"
+  printf 'c=%s\t-r %s -R %s -U %s -C %s -Q %s\n' "$v" "$BEST_R" "$BEST_E" "$BEST_U" "$v" "$DEF_Q" >> "$TMP/c4"
 done
 measure "$TMP/c4" "$TMP/r4"
 report "$TMP/r4"
 
-BEST_LBL=`best_of "$TMP/r4" current`
-BEST_C=`echo "$BEST_LBL" | sed 's/^c=//'`
-BEST=`awk -v k="$BEST_LBL" '$1==k{print $2}' "$TMP/r4"`
+BEST_C=`best_of "$TMP/r4"`
+case $BEST_C in current) BEST_C=$DEF_C ;; c=*) BEST_C=`echo "$BEST_C" | sed 's/^c=//'` ;; esac
+
+echo
+echo "stage 5: what carrying a third-stage prime costs per denominator, with the"
+echo "         threshold at $BEST_R, the offset at $BEST_E, the run length at $BEST_U"
+echo "         and the table cost at $BEST_C"
+: > "$TMP/c5"
+printf 'current\t%s\n' "$BASE" >> "$TMP/c5"
+for v in $Q_VALUES; do
+  printf 'q=%s\t-r %s -R %s -U %s -C %s -Q %s\n' "$v" "$BEST_R" "$BEST_E" "$BEST_U" "$BEST_C" "$v" >> "$TMP/c5"
+done
+measure "$TMP/c5" "$TMP/r5"
+report "$TMP/r5"
+
+BEST_LBL=`best_of "$TMP/r5" current`
+BEST_Q=`echo "$BEST_LBL" | sed 's/^q=//'`
+BEST=`awk -v k="$BEST_LBL" '$1==k{print $2}' "$TMP/r5"`
 # how far the current settings measured from themselves, in any stage: all
 # are the same comparison of a binary with itself, so any one being far from
 # 1 means the machine could not be measured on
 SELF=`awk '$1=="current"{ d = $2 - 1; if (d < 0) d = -d; if (d > w) w = d }
-           END { printf "%.5f", 1 + w }' "$TMP/r1" "$TMP/r2" "$TMP/r3" "$TMP/r4"`
+           END { printf "%.5f", 1 + w }' "$TMP/r1" "$TMP/r2" "$TMP/r3" "$TMP/r4" "$TMP/r5"`
 
 echo
 verdict=`awk -v b="$BEST" -v s="$SELF" -v m="$MARGIN" -v z="$NOISE" \
@@ -301,7 +335,8 @@ verdict=`awk -v b="$BEST" -v s="$SELF" -v m="$MARGIN" -v z="$NOISE" \
 # settings measured a second time; if noise puts that row past the margin, it
 # is not an improvement and must not be announced as one.
 [ "$verdict" = accept ] && [ "$BEST_R" = "$DEF_R" ] && [ "$BEST_E" = "$DEF_E" ] \
-  && [ "$BEST_U" = "$DEF_U" ] && [ "$BEST_C" = "$DEF_C" ] && verdict=keep
+  && [ "$BEST_U" = "$DEF_U" ] && [ "$BEST_C" = "$DEF_C" ] && [ "$BEST_Q" = "$DEF_Q" ] \
+  && verdict=keep
 
 case $verdict in
   noisy)
@@ -310,7 +345,7 @@ case $verdict in
     echo "written.  Try again when it is idle, or with 'ROUNDS=6 make tune'."
     ;;
   keep)
-    echo "Nothing beat the current settings ($DEF_R, $DEF_E, $DEF_U, $DEF_C) by the required"
+    echo "Nothing beat the current settings ($DEF_R, $DEF_E, $DEF_U, $DEF_C, $DEF_Q) by the required"
     echo "`awk -v m=$MARGIN 'BEGIN{printf "%.0f", 100*(1-m)}'`%, so they are kept and nothing is written."
     ;;
   accept)
@@ -320,15 +355,15 @@ case $verdict in
 # TUNED_FOR records the configuration it was measured for; the Makefile
 # ignores this file if the configuration has changed since.
 # Measured on $TUNE_TESTS${TUNE_HEIGHT:+ at height $TUNE_HEIGHT}, starting
-# from $DEF_R / $DEF_E / $DEF_U / $DEF_C.  That is a note to the reader, not
-# something the Makefile looks at: "make tune" and "make tunehigh" write the
-# same file and each takes the other's result as its starting point.
+# from $DEF_R / $DEF_E / $DEF_U / $DEF_C / $DEF_Q.  That is a note to the reader,
+# not something the Makefile looks at: "make tune" and "make tunehigh" write
+# the same file and each takes the other's result as its starting point.
 TUNED_FOR = ${TUNE_CONFIG:-unknown}
-TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E -DRATPOINTS_SP2_U0=$BEST_U -DRATPOINTS_COST_TABLE=$BEST_C
+TUNEFLAGS = -DRATPOINTS_SURVIVORS_PER_WORD=$BEST_R -DRATPOINTS_SP2_EXTRA=$BEST_E -DRATPOINTS_SP2_U0=$BEST_U -DRATPOINTS_COST_TABLE=$BEST_C -DRATPOINTS_SP3_PER_DENOM=$BEST_Q
 EOF
     echo "Wrote tuning.mk: threshold $BEST_R, offset $BEST_E, run length $BEST_U,"
-    echo "table cost $BEST_C: `awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current"
-    echo "$DEF_R / $DEF_E / $DEF_U / $DEF_C."
+    echo "table cost $BEST_C, third-stage cost $BEST_Q: `awk -v b=$BEST 'BEGIN{printf "%.1f", 100*(1-b)}'`% better than the current"
+    echo "$DEF_R / $DEF_E / $DEF_U / $DEF_C / $DEF_Q."
     echo "Run 'make all' to rebuild with it; delete tuning.mk to discard it."
     ;;
 esac
