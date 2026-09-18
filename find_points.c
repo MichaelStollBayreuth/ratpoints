@@ -1625,18 +1625,18 @@ static int examine_prime(ratpoints_args *args, long pn,
   if(np >= p) { return(0); } /* the prime carries no information */
 
   { /* The mean density of admissible numerators over the classes of the
-     * denominator mod p: np/p for the p-1 unit classes, and 1 for the class
-     * divisible by p, which counts only when such denominators occur.  That
-     * class's row (sieves0) admits the numerators not divisible by p, so
-     * its density is (p-1)/p, and this is 1/p^2 too much -- an
-     * approximation the fitted constants have absorbed: the numerators that
-     * row removes are the ones the test for common factors removes anyway,
-     * and the third stage's constants are fitted to what reaches it.  A
-     * prime power's density (examine_power) is exact, and the two compete
-     * in one ranking.  Both other ways were measured (2.3, item 21): the
-     * prime exact as well costs 5% of testhighmany, the power brought to
-     * the prime's convention 3.5%; this mixture measures best. */
-    double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
+     * denominator mod p: np/p for the p-1 unit classes, and (p-1)/p for the
+     * class divisible by p, whose row (sieves0) admits the numerators not
+     * divisible by p; that class counts only when such denominators occur.
+     * A prime power's density (examine_power) is computed the same way, and
+     * the two compete in one ranking.  Until the tuning session of 2.3 the
+     * last class counted as 1, which is 1/p^2 too much -- the numerators
+     * that row removes are the ones the test for common factors removes
+     * anyway, and the constants had been fitted to the mixture (item 21
+     * measured the exact convention at 5% of testhighmany under those
+     * constants); it is one of the estimate corrections refitted as a
+     * group. */
+    double r = is_f_square[p] ? ((double)((np + 1)*(p-1)))/((double)(p*p))
                               : (double)np/(double)p;
 
     prec_entry->r = r;
