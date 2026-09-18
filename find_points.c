@@ -2365,6 +2365,13 @@ static long sieving_info(ratpoints_args *args,
   double u_pad = 0.0; /* of run_words, the padding to whole bit arrays */
   double n_calls = 0.0; /* calls of the sieve the run will make */
   double call_cost = 0.0; /* what they cost a first-phase modulus, per word */
+  /* The survivors per word the two rules of the first phase and the key of
+   * the second compare with the costs per word: bits_per_word is per word
+   * of numerators, the costs are spread over every word swept, and the
+   * padding to whole bit arrays (u_pad) is swept and masked, so it
+   * carries none.  (The third stage's S counts per denominator and takes
+   * the padding off itself.) */
+  double bpw_swept = bits_per_word;
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -2401,6 +2408,7 @@ static long sieving_info(ratpoints_args *args,
   run_shape(args, den_bits, cls, 0, 0,
             &args->run_denoms, &args->run_words, &u_pad, &n_calls);
   call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
+  bpw_swept = bits_per_word*(args->run_words - u_pad)/args->run_words;
   sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
@@ -2499,7 +2507,7 @@ static long sieving_info(ratpoints_args *args,
 
       qsort(prec, pnp, sizeof(entry), compare_entries);
       s1 = (args->sp1 >= 0) ? args->sp1
-                            : primes_for_phase_1(prec, pnp, bits_per_word,
+                            : primes_for_phase_1(prec, pnp, bpw_swept,
                                                  target, sp2_extra);
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
       if(pnp < want) { pn_lim++; }
@@ -2611,6 +2619,7 @@ static long sieving_info(ratpoints_args *args,
     run_shape(args, den_bits, cls, fba, fdc,
               &args->run_denoms, &args->run_words, &u_pad, &n_calls);
     call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
+    bpw_swept = bits_per_word*(args->run_words - u_pad)/args->run_words;
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
     { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms,
@@ -2642,7 +2651,7 @@ static long sieving_info(ratpoints_args *args,
   { double rate = 1.0;
 
     args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, &rate,
-                             bits_per_word, target, sp2_extra);
+                             bpw_swept, target, sp2_extra);
 
     /* Rank what is left again, for the second phase.  There a modulus is
      * applied only to the bit arrays that survived the first phase, so its
@@ -2652,7 +2661,7 @@ static long sieving_info(ratpoints_args *args,
     if(args->sp1 < pnp)
     { long n;
 
-      rate *= bits_per_word;
+      rate *= bpw_swept;
       for(n = args->sp1; n < pnp; n++)
       { prec[n].key = prime_key(prec[n].r, prec[n].p,
                                 RATPOINTS_COST_PHASE2*rate, 1, cost_table,

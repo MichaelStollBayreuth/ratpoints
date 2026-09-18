@@ -1051,10 +1051,11 @@ the random curves', so a second-stage prime costs them twice as much per
 word, and a formula in the length of the run alone cannot see that.
 
 The first stage has a correction of its own. A modulus is taken while the
-survivors per word exceed the threshold times what the modulus costs per
-word --- one \texttt{AND}, plus its tables and its per-denominator entries
-spread over the $U$ words of the run --- with the survivors weighted by what
-one costs downstream relative to a long run: there the second stage's eleven
+survivors per word it removes --- the survivors it meets times $1-r$, $r$ its
+density --- exceed the threshold times what the modulus costs per word ---
+one \texttt{AND}, plus its tables, its per-denominator and per-call entries
+and the fetch of its table row, spread over the $U$ words of the run --- with
+the survivors weighted by what one costs downstream relative to a long run: there the second stage's eleven
 moduli kill it cheaply, while in a run of a few thousand words there is no
 second stage and every survivor reaches the extraction, which costs several
 times more. At $2\cdot 10^5$ both factors are one; at $16383$, where
@@ -1065,7 +1066,10 @@ the small primes and several hundred at the stopping modulus, the downstream
 factor six: the stage stops after seven moduli where it used to take
 thirteen, whose tables were a fifth of the run, and the run is a quarter
 shorter; at $1000$ it is a seventh shorter, at $4000$ a per cent, and from
-$16383$ on the running time does not change.
+$16383$ on the running time does not change. (Those figures are for the rule
+with the survivors it meets; the factor $1-r$, the per-call cost and the row
+fetch came later, with the estimate corrections of the tuning session, and
+the threshold was refitted for the group.)
 
 The same two quantities say which primes to use, not just how many. The
 sieving table for~$p$ has $p$ rows and is rebuilt for each denominator class
@@ -1938,7 +1942,16 @@ small moduli are nearly silent. Larger moduli save more instructions and
 lose time: a row
 of $220$ bit arrays does not stay in the first-level cache, and the cost
 model prices an \texttt{AND} the same whatever the modulus; the bound is
-\texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}.
+\texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}. The measurement
+behind that bound was made afterwards, one curve at a time: an \texttt{AND}
+costs one cycle while the first stage's rows together fit in some $25$~KB and
+about $0.8\%$ more per further KB; the automatic count sits at the optimum a
+sweep of fixed counts finds on every suite and height, so the bound is what
+keeps the row set small on the point-rich curves, whose informative primes
+are large, and the larger products pay only on random curves at
+$2\cdot 10^5$ ($3.7\%$ of \texttt{testhigh}) while costing $4.5\%$ of
+\texttt{testhighmany}. Telling the two apart would take a model of the row
+set with several cache constants; the bound stays.
 
 The rule that ends the first stage weighs what a modulus costs and what its
 survivors cost. It used to take moduli while the expected survivors per word

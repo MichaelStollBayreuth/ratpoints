@@ -110,10 +110,12 @@
  * correction off and restores a flat offset.
  *
  * The first phase has a correction of its own since 2.3 (TODO item 29).
- * A modulus is taken while the survivors per word exceed the threshold
- * times what the modulus costs per word -- one AND, plus its tables and
- * its per-denominator entries spread over the run (prime_cost in
- * find_points.c) -- with the survivors weighted by what one costs
+ * A modulus is taken while the survivors per word it removes -- the
+ * survivors it meets times 1 - r, r its density -- exceed the threshold
+ * times what the modulus costs per word -- one AND, plus its tables, its
+ * per-denominator and per-call entries and the fetch of its row spread
+ * over the run (prime_cost and phase_1_key in find_points.c) -- with the
+ * survivors weighted by what one costs
  * downstream relative to a long run: there the second phase's eleven
  * moduli kill it cheaply, while in a run of a few thousand words there is
  * no second phase and every survivor reaches the extraction, which costs
@@ -125,7 +127,10 @@
  * bound of 200 the cost factor is a hundred for the small primes and
  * several hundred at the stopping modulus, the downstream factor six, the
  * phase stops after seven moduli where it took thirteen whose tables were
- * a fifth of the run, and the run is a quarter shorter. */
+ * a fifth of the run, and the run is a quarter shorter.  (The factor
+ * 1 - r, the per-call cost and the row fetch came with the tuning
+ * session's estimate corrections, refitted as one group with the other
+ * corrections of that session; see the manual.) */
 #ifndef RATPOINTS_SP2_U0
 # define RATPOINTS_SP2_U0 1.6e6
 #endif
@@ -177,11 +182,12 @@
 # define RATPOINTS_SP3_COPRIME 0.7
 #endif
 
-/* What the sieve's operations cost, relative to each other.  All three are
- * per numerator word and in units of what one first-phase prime costs there,
- * which is one AND per word; they are properties of the machine, measured
- * rather than fitted, by building with -DRP_PHASE_TIMING and dividing the
- * cycles of each part by the number of times it ran.
+/* What the sieve's operations cost, relative to each other.  All of the
+ * constants from here to RATPOINTS_COST_CHECK are per numerator word and in
+ * units of what one first-phase prime costs there, which is one AND per
+ * word; they are properties of the machine, measured rather than fitted, by
+ * building with -DRP_PHASE_TIMING and dividing the cycles of each part by
+ * the number of times it ran.
  *
  * They are here because the primes are not equally expensive and the rule
  * that picks them used to act as though they were.  The sieve table for p
@@ -210,9 +216,14 @@
  * bounded by 64 -- the powers 9, 25, 27, 49 and the products of the primes
  * up to 21 -- the cycles follow the instructions on the random curves (32,
  * 128 and 255 were measured too; 64 wins on test1, testhigh and
- * testhighmany and loses a point to 32 on test1many).  A per-AND cost that
- * rises with the modulus would let the model use the larger products
- * where they pay; that wants a cache-size constant, see TODO item 30. */
+ * testhighmany and loses a point to 32 on test1many).  Item 30 measured
+ * what a per-AND cost rising with the modulus would buy: the count rule
+ * is at the fixed-count optimum already, and the larger products pay only
+ * on random curves at 200000 (3.7% of testhigh) while costing 4.5% of the
+ * point-rich suite, which a set-aware model with several cache constants
+ * would be needed to tell apart; so the bound stays, and the row fetch a
+ * modulus above the bit arrays of a denominator pays for is charged by
+ * RATPOINTS_COST_LINE below. */
 #ifndef RATPOINTS_COMPOSITE_MAX
 # define RATPOINTS_COMPOSITE_MAX 64
 #endif
