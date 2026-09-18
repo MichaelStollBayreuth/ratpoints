@@ -1744,6 +1744,11 @@ static double numerators_for(const ratpoints_args *args, double b, double H,
  */
 #define RUN_SHAPE_SAMPLES 64
 
+/* the share of a class's numerators its bit arrays hold: one in 2^k, k the
+ * stride of the class (rp_num_class) */
+static const double rp_inv_stride[RP_NUM_STRIDES]
+  = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625};
+
 /* The fraction of all integers b with v_p(b) in the set the mask describes
  * (bit m set <==> v_p(b) = m); the density of v_p(b) = m is (p-1)/p^(m+1). */
 static double forbidden_fraction(long p, unsigned long mask)
@@ -1772,8 +1777,6 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
   double packed = 0.0;  /* the sum over them of 1/stride: the share of their
                          * numerators the bit arrays hold */
-  static const double inv_stride[RP_NUM_STRIDES]
-    = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625};
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
@@ -1794,7 +1797,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     for(j = 0; j < 32; j++)
     { const rp_num_class *cl = &cls[(j*j) & 0x3f];
 
-      if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
+      if(EXT0(cl->bits)) { good++; packed += rp_inv_stride[cl->k]; }
     }
     keep = (double)good/32.0;
   }
@@ -1826,7 +1829,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       { const rp_num_class *cl
           = &cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f];
 
-        if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
+        if(EXT0(cl->bits)) { good++; packed += rp_inv_stride[cl->k]; }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -1850,7 +1853,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
       while(w)
       { j = RP_CTZL(w); w &= w - 1UL;
-        good++; packed += inv_stride[cls[j].k];
+        good++; packed += rp_inv_stride[cls[j].k];
       }
     }
     keep = (double)good/64.0;
@@ -1894,6 +1897,56 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   }
   if(*n_denom < 1.0) { *n_denom = 1.0; }
   if(*u_words < 1.0) { *u_words = 1.0; }
+}
+
+/* The mean number of bits set per 64-bit word of a bit array on entry to
+ * the sieve, over the words the run sweeps.  cls[b].bits holds the
+ * admissible numerators of the denominators b mod 64 in their packing, as
+ * one word repeated through the bit array, so the population count of that
+ * word is the bits per word of the class; the classes are those the run
+ * visits (run_shape: every class with a pattern on the plain path, k^2 mod
+ * 64 for k = 0..31 with squares as denominators, d k^2 for each divisor d
+ * of the leading coefficient with squares times divisors), each as often
+ * as it comes up, and each weighted by the words it sweeps -- one in 2^k of
+ * its numerators.  Until 2.3 the mean was over all 64 classes unweighted,
+ * which on the square paths counted the 52 classes never visited: a monic
+ * curve of odd degree sieves the twelve square classes only, where the mean
+ * is a fifth higher (item 26's review).
+ * Per word rather than per bit-array on purpose: measurements across
+ * register widths show that the survivor rate at the best sp1 is constant
+ * per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD in
+ * ratpoints.h). */
+static void bpw_add(const rp_num_class *cl, double *tot, double *wsum)
+{ long c = __builtin_popcountl(EXT0(cl->bits));
+
+  if(c) { *tot += rp_inv_stride[cl->k]*(double)c; *wsum += rp_inv_stride[cl->k]; }
+}
+
+static double mean_bits_per_word(const ratpoints_args *args,
+                                 const rp_num_class *cls,
+                                 unsigned long den_bits)
+{ double tot = 0.0, wsum = 0.0;
+  long j;
+
+  if(args->flags & RATPOINTS_USE_SQUARES)
+  { for(j = 0; j < 32; j++) { bpw_add(&cls[(j*j) & 0x3f], &tot, &wsum); } }
+  else if(args->flags & RATPOINTS_USE_SQUARES1)
+  { long *divisors = (long *)args->divisors;
+    long n;
+
+    for(n = 0; divisors[n]; n++)
+    { for(j = 0; j < 32; j++)
+      { bpw_add(&cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f],
+                &tot, &wsum);
+      }
+    }
+  }
+  else
+  { unsigned long w = den_bits;
+
+    while(w) { j = RP_CTZL(w); w &= w - 1UL; bpw_add(&cls[j], &tot, &wsum); }
+  }
+  return((wsum > 0.0) ? tot/wsum : 0.0);
 }
 
 /**************************************************************************
@@ -3504,25 +3557,9 @@ static long find_points_work_1(ratpoints_args *args,
            args->num_primes);
   }
   { /* The mean number of bits set in one word of a bit-array on entry to
-     * the sieve.  cls[b].bits holds the admissible numerators for the
-     * denominators b mod 64, in their packing, as one word repeated through
-     * the bit-array, so the population count of that word is what is
-     * wanted; the denominators with no admissible numerator at all are
-     * skipped, so the mean is taken over the non-zero entries only.
-     * Per word rather than per bit-array on purpose: measurements across
-     * register widths show that the survivor rate at the best sp1 is
-     * constant per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD
-     * in ratpoints.h). */
-    double bits_per_word = 0.0;
-    { long i, nz = 0, tot = 0;
-
-      for(i = 0; i < 64; i++)
-      { long c = __builtin_popcountl(EXT0(cls[i].bits));
-
-        if(c) { tot += c; nz++; }
-      }
-      if(nz) { bits_per_word = (double)tot/(double)nz; }
-    }
+     * the sieve, over the classes of denominators the run visits and the
+     * words they sweep; see mean_bits_per_word. */
+    double bits_per_word = mean_bits_per_word(args, cls, den_bits);
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
                               bits_per_word, np_is_default,
                               den_bits, &cls[0]);
