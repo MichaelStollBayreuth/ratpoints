@@ -119,7 +119,7 @@ extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
 extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
 /* A candidate modulus in the ranking: its density r, its key and the cost
- * the key was made from (what the modulus costs per numerator word in the
+ * the key was made from (what the modulus costs per word swept in the
  * first phase, one AND plus its fixed costs spread over the run; the rule
  * that ends the first phase weighs it, see take_entries), the modulus p,
  * the primes it involves as a mask over their indices (a modulus involving
@@ -1124,7 +1124,7 @@ static int compare_by_r(const void *a, const void *b)
 }
 
 /* What one more modulus -- a prime, or a composite modulus -- costs the
- * sieve, per numerator word, in units of what a first-phase AND costs there.
+ * sieve, per word swept, in units of what a first-phase AND costs there.
  *
  * per_word is the part that is paid for every word (or for every surviving
  * bit array, which comes to the same thing once multiplied by the survival
@@ -1461,7 +1461,8 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * folded in.)  The target, RATPOINTS_SURVIVORS_PER_WORD, is
  * fitted for a long run and a modulus that costs one AND per word; the
  * fixed costs of a modulus -- its tables, its sieve_spec and bp_list
- * entries per denominator -- are spread over the words of the run in
+ * entries per denominator, its row pointer per call and the fetch of its
+ * row per denominator -- are spread over the words of the run in
  * entry.cost and raise the bar for it.  Over a long run that is by a few
  * per cent; at a height bound of a few hundred, where the run is a few
  * dozen words and a table has more rows than that, it is by a factor of a
@@ -1727,8 +1728,8 @@ static double numerators_for(const ratpoints_args *args, double b, double H,
 }
 
 /* How big the run is: the number of denominators that will actually be
- * sifted, and the number of 64-bit words of numerators they sweep between
- * them.  Both are wanted by the rule that picks the sieving primes, because
+ * sifted, and the number of 64-bit words they sweep between them, padding
+ * included.  Both are wanted by the rule that picks the sieving primes, because
  * two of the costs of a prime are paid once and then spread over the whole
  * run -- its sieve table, built for at most p denominator classes, and its
  * entry in bp_list, computed once per denominator.  Per word of numerators
@@ -2077,9 +2078,9 @@ static long modinv(long x, long m)
  * admits, exactly: np/m for a unit b; for p | b the map x -> b x^-1 takes
  * the units x onto the residues of the same valuation as b, each equally
  * often, so the row admits the share of those residues with frev a square,
- * times the share of units among the numerators.  (For a prime,
- * examine_prime counts the class it divides as 1 instead of (p-1)/p; see
- * there for why that is kept.)  pinf says whether denominators divisible
+ * times the share of units among the numerators.  (A prime's density,
+ * examine_prime, is the case e = 1 of this: (np+1)(p-1)/p^2 with the class
+ * it divides.)  pinf says whether denominators divisible
  * by p occur at all (is_f_square[p] of the prime): when they do not, r is
  * the mean over the unit classes alone, as it is for a prime.  Returns 1
  * when the power says more than nothing. */
@@ -2299,9 +2300,11 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * they are, from prec[from] on.  With want >= 0 that many are taken; with
  * want < 0 the first-phase rule decides (phase_1_wants, with extra the
  * number of moduli the second phase will add): entries are taken while the
- * expected survivors per word, bits_per_word times the product rate of the
- * densities so far, weighted by what they cost downstream, exceed target
- * times the entry's cost per word.  When the pool runs out first, all of
+ * expected survivors per word swept that the entry removes -- bits_per_word
+ * (per word swept, see bpw_swept in sieving_info) times the product rate of
+ * the densities so far, times 1 - r --, weighted by what they cost
+ * downstream, exceed target times the entry's cost per word.  When the pool
+ * runs out first, all of
  * it is taken.  What is left of the pool has nothing in common with what
  * was taken.  Returns the number taken. */
 static long take_entries(entry *prec, long from, long *pnp_p,

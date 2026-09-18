@@ -188,12 +188,15 @@
 # define RATPOINTS_SP3_COPRIME 0.7
 #endif
 
-/* What the sieve's operations cost, relative to each other.  All of the
- * constants from here to RATPOINTS_COST_CHECK are per numerator word and in
- * units of what one first-phase prime costs there, which is one AND per
- * word; they are properties of the machine, measured rather than fitted, by
- * building with -DRP_PHASE_TIMING and dividing the cycles of each part by
- * the number of times it ran.
+/* What the sieve's operations cost, relative to each other.  The cost
+ * constants from here to RATPOINTS_COST_CHECK (RATPOINTS_COMPOSITE_MAX
+ * between them is a bound, not a cost) are per numerator word and in units
+ * of what one first-phase prime costs there, which is one AND per word --
+ * a quarter of one AND on a 256-bit array, about 0.26 core cycles or 0.2
+ * rdtsc cycles on the machine they were measured on; they are properties of
+ * the machine, measured rather than fitted, by building with
+ * -DRP_PHASE_TIMING and dividing the cycles of each part by the number of
+ * times it ran and by that unit.
  *
  * They are here because the primes are not equally expensive and the rule
  * that picks them used to act as though they were.  The sieve table for p
@@ -255,28 +258,37 @@
  * whole chunk (sift.c).  A call handles at most array_size bit arrays of
  * one denominator's interval, so below a height bound of some 30000 it is
  * one call per interval and denominator, and the cost is of COST_SETUP's
- * kind at half its size.  Measured in September 2026 (item 30) from the
- * cycles per first-phase AND of the counter build against the bit arrays
- * per call: 1.03 at 200 of them, 1.40 at 56, 5 to 40 at 1 to 3, which is
- * 15 to 20 cycles per call and modulus; in units of one first-phase AND,
- * which is one cycle. */
+ * kind.  Measured in September 2026 (item 30) from the counter build's
+ * core cycles per first-phase AND on a 256-bit array against the bit
+ * arrays per call: 1.03 at 200 of them, 1.40 at 56, 3.0-3.4 at 10, 5 to 40
+ * at 1 to 3.  The excess over 1.03 times the arrays per call is 20-22
+ * cycles per call and modulus, of which the row fetch (COST_LINE below)
+ * accounts for 7-8 at the sizes of the primes the random curves use,
+ * leaving some 12-13 core cycles; in the units of this block that is 50.
+ * At 16383 (512 words per call) it is a tenth of an AND per word, at
+ * 200000 (three calls per denominator of 2000 words) 7%. */
 #ifndef RATPOINTS_COST_CALL
-# define RATPOINTS_COST_CALL 16.0
+# define RATPOINTS_COST_CALL 50.0
 #endif
 /* and the fetch of a first-phase modulus's table row for each denominator.
  * The row is p bit arrays, a denominator walks min(p, A) of them (A its
  * bit arrays), and they come from beyond the first-level cache, the
  * previous denominator's row having been another one; per word that is
  * COST_LINE*min(p,A)*(bytes per bit array / 64)*D/U.  Measured in
- * September 2026 (item 30) at 1 to 5 cycles per line depending on where
- * the tables sit -- about 1 at 16383 with them in the second-level cache,
- * about 5 at 200000 with them in the third -- in units of one first-phase
- * AND.  At 16383 (A = 128 at full width) a modulus above 128 costs a third
- * more than its ANDs, at 200000 (A = 1500) every modulus costs within 3%
- * of them: this is the cost that item 21's bound on the composite moduli
- * stood in for at the smaller bound. */
+ * September 2026 (item 30): the fit of the counter build's cycles per
+ * first-phase AND at 16383 gives 1.2 core cycles per 64-byte line on the
+ * random curves, and the point-rich curves there (primes of 60-127 with
+ * 128 bit arrays per denominator) run at 1.85 cycles per AND against
+ * 1.40, the same 1.2 per line; at 200000 the tables sit in the
+ * third-level cache and the fit gives 2-4, but there the term is a few per
+ * cent of an AND whatever the value.  In the units of this block 1.2
+ * cycles per line is 4.5.  At 16383 (A = 128 at full width) a modulus
+ * above 128 costs half again as much as its ANDs (4.5/8 per word), at
+ * 200000 (A = 1500) every modulus costs within 5% of them: this is the
+ * cost that item 21's bound on the composite moduli stood in for at the
+ * smaller bound. */
 #ifndef RATPOINTS_COST_LINE
-# define RATPOINTS_COST_LINE 2.5
+# define RATPOINTS_COST_LINE 4.5
 #endif
 #ifndef RATPOINTS_COST_PHASE2
 # define RATPOINTS_COST_PHASE2 110.0 /* one AND on a surviving bit-array */

@@ -350,10 +350,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(sscanf(argv[i], " %ld", &(args->sp2)) != 1) { error(6); }
           i++;
           break;
-        case 'r': /* target number of survivors of the first stage per
-                   * 64-bit word, for a modulus that costs one AND per word;
-                   * decides sp1 when -n is absent (ratpoints.h,
-                   * RATPOINTS_SURVIVORS_PER_WORD) */
+        case 'r': /* the survivors of the first stage per 64-bit word swept
+                   * that one more modulus has to remove, for a modulus that
+                   * costs one AND per word; decides sp1 when -n is absent
+                   * (ratpoints.h, RATPOINTS_SURVIVORS_PER_WORD) */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->survivors_per_word)) != 1)
