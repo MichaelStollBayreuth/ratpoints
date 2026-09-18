@@ -191,6 +191,27 @@ either way (test1 -0.5%, test1many -1.5%, testhigh -0.7%, testhighmany -1.9%, he
 runs the point-rich curves at height 1000 in 0.62 of the time, since the old table term, spread
 over a third too few words, had kept nearly silent small primes in the first phase there.
 
+What all of it comes to, against the released 2.2.4 on the same curves and the same laptop
+(cycles pinned to one core, medians of three interleaved rounds; 2.2.4 at its own defaults, which
+sieve with the primes below 128 where this version uses those below 256; both find the same
+points on every suite):
+
+| suite                                  | 2.2.4, Gcycles | this version | ratio | faster by |
+|----------------------------------------|------:|------:|------:|------:|
+| `make test1` (random curves, 16383)    |   8.45 |   2.89 | 0.34 |  2.9x |
+| `make test1many` (point-rich, 16383)   |  11.27 |   4.80 | 0.43 |  2.3x |
+| `make testhigh` (random, 200000)       | 412.7  | 190.8  | 0.46 |  2.2x |
+| `make testhighmany` (point-rich, 200000) | 764.4 | 138.3 | 0.18 |  5.5x |
+| random curves at height 4000           |   3.06 |   0.54 | 0.18 |  5.6x |
+| random curves at height 1000           |   2.06 |   0.21 | 0.10 | 10.1x |
+| point-rich curves at height 1000       |   0.44 |   0.15 | 0.34 |  3.0x |
+| random curves at height 200            |   0.96 |   0.12 | 0.13 |  8.0x |
+
+Instructions fell to between 0.16 and 0.47 of 2.2.4's and mispredicted branches to between 0.03
+and 0.40: at the small height bounds 2.2.4 was bound by its branches (the Jacobi symbols, the test
+for common factors, the padding to whole chunks), and cycles fall two to three times more than
+instructions there.
+
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
 valuation does: for each valuation the denominator can have at `p`, the program asks whether a single

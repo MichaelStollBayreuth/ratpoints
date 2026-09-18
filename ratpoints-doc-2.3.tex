@@ -2004,6 +2004,31 @@ height $1000$ in $0.62$ of the time, since the old table term, spread over a
 third too few words, had kept nearly silent small primes in the first stage
 there.
 
+What all of it comes to, against the released 2.2.4 on the same curves and
+the same laptop (cycles pinned to one core, medians of three interleaved
+rounds; 2.2.4 at its own defaults, which sieve with the primes below $128$
+where this version uses those below $256$; both find the same points on every
+suite):
+\begin{center}
+\begin{tabular}{lrrrr}
+suite & 2.2.4, Gcycles & this version & ratio & faster by \\
+\hline
+\texttt{make test1} (random curves, $16383$)      &   8.45 &   2.89 & 0.34 &  2.9 \\
+\texttt{make test1many} (point-rich, $16383$)     &  11.27 &   4.80 & 0.43 &  2.3 \\
+\texttt{make testhigh} (random, $2\cdot 10^5$)    & 412.7  & 190.8  & 0.46 &  2.2 \\
+\texttt{make testhighmany} (point-rich, $2\cdot 10^5$) & 764.4 & 138.3 & 0.18 & 5.5 \\
+random curves at height $4000$                  &   3.06 &   0.54 & 0.18 &  5.6 \\
+random curves at height $1000$                  &   2.06 &   0.21 & 0.10 & 10.1 \\
+point-rich curves at height $1000$              &   0.44 &   0.15 & 0.34 &  3.0 \\
+random curves at height $200$                   &   0.96 &   0.12 & 0.13 &  8.0 \\
+\end{tabular}
+\end{center}
+Instructions fell to between $0.16$ and $0.47$ of 2.2.4's and mispredicted
+branches to between $0.03$ and $0.40$: at the small height bounds 2.2.4 was
+bound by its branches (the Jacobi symbols, the test for common factors, the
+padding to whole chunks), and cycles fall two to three times more than
+instructions there.
+
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
 a guard that asked for the leading coefficient to be a non-square modulo~$p$
