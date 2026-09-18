@@ -240,9 +240,10 @@ tune: rptest rptest-many
 # sweep the whole ladder of candidates.  It starts from the settings in force
 # -- which is to say from what "make tune" found, since it reads the same
 # tuning.mk -- and asks only whether a factor of two in the threshold, in the
-# run length or in the table cost either way, or two more or fewer primes in
-# the second stage, is better.  That is fifteen settings a round rather than
-# twenty-four, and it rests on the two regimes not wanting wildly different
+# run length, in the table cost or in the third stage's per-denominator cost
+# either way, or two more or fewer primes in the second stage, is better.
+# That is eighteen settings a round rather than twenty-nine, and it rests on
+# the two regimes not wanting wildly different
 # values.  If it moves a value, run it again from there.
 #
 # Running this after "make tune" is what pins RATPOINTS_SP2_U0, the third
@@ -257,6 +258,7 @@ tunehigh: rptest rptest-high-many
 	 TUNE_TESTS='./rptest:testbase ./rptest-high-many:testbase-high-many' \
 	 TUNE_HEIGHT='${TESTHEIGHT}' \
 	 R_FACTORS='0.5 2' E_DELTAS='-2 0 2' U_FACTORS='0.5 2' C_FACTORS='0.5 2' \
+	 Q_FACTORS='0.5 2' \
 	 ./tune.sh
 
 # The timed test targets time their runs with the shell's "time".  That is a

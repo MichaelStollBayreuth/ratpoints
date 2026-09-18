@@ -119,7 +119,7 @@ extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
 extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
 /* A candidate modulus in the ranking: its density r, its key and the cost
- * the key was made from (what the modulus costs per numerator word in the
+ * the key was made from (what the modulus costs per word swept in the
  * first phase, one AND plus its fixed costs spread over the run; the rule
  * that ends the first phase weighs it, see take_entries), the modulus p,
  * the primes it involves as a mask over their indices (a modulus involving
@@ -1124,7 +1124,7 @@ static int compare_by_r(const void *a, const void *b)
 }
 
 /* What one more modulus -- a prime, or a composite modulus -- costs the
- * sieve, per numerator word, in units of what a first-phase AND costs there.
+ * sieve, per word swept, in units of what a first-phase AND costs there.
  *
  * per_word is the part that is paid for every word (or for every surviving
  * bit array, which comes to the same thing once multiplied by the survival
@@ -1166,12 +1166,24 @@ static double prime_key(double r, long p, double per_word, int tabled,
 
 /* Key a candidate for the first phase, and keep the cost the key was made
  * from: the rule that ends the phase compares it with what the candidate
- * would save (take_entries). */
+ * would save (take_entries).  call_cost is what a first-phase modulus pays
+ * per word for the calls of the sieve, RATPOINTS_COST_CALL per call spread
+ * over the run (the row pointer's reduction at the head of every call and
+ * the narrower legs past the last whole chunk; the second phase has
+ * neither, it finds its rows directly). */
 static void phase_1_key(entry *e, double cost_table, double u_words,
-                        double n_denoms)
+                        double n_denoms, double call_cost)
 { double info = -log(e->r);
+  /* the bit arrays a denominator sweeps, and the part of the row it walks
+   * and has to fetch from beyond the first-level cache (RATPOINTS_COST_LINE
+   * per line of 64 bytes, once per denominator) */
+  double arrays = u_words/(n_denoms*(double)RBA_PACK);
+  double walk = ((double)e->p < arrays) ? (double)e->p : arrays;
 
-  e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms);
+  e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms)
+            + call_cost
+            + RATPOINTS_COST_LINE*walk
+                *((double)sizeof(ratpoints_bit_array)/64.0)*n_denoms/u_words;
   e->key = (info <= 0.0) ? 1.0e300 : e->cost/info;
 }
 
@@ -1440,13 +1452,17 @@ static double downstream_factor(const entry *prec, long n, long pnp,
 }
 
 /* The rule that ends the first phase.  Modulus n of the pool is worth
- * adding while the expected survivors per 64-bit word -- bits_per_word
- * times the product rate of the densities taken so far --, weighted by
- * what they cost downstream (above), exceed the target times what the
- * modulus costs per word.  The target, RATPOINTS_SURVIVORS_PER_WORD, is
+ * adding while the expected survivors per 64-bit word it removes --
+ * bits_per_word times the product rate of the densities taken so far,
+ * times 1 - r_n --, weighted by what they cost downstream (above), exceed
+ * the target times what the modulus costs per word.  (Until the tuning
+ * session of 2.3 the rule compared the survivors the modulus meets, not
+ * the ones it removes, and the target had the typical 1 - r of a half
+ * folded in.)  The target, RATPOINTS_SURVIVORS_PER_WORD, is
  * fitted for a long run and a modulus that costs one AND per word; the
  * fixed costs of a modulus -- its tables, its sieve_spec and bp_list
- * entries per denominator -- are spread over the words of the run in
+ * entries per denominator, its row pointer per call and the fetch of its
+ * row per denominator -- are spread over the words of the run in
  * entry.cost and raise the bar for it.  Over a long run that is by a few
  * per cent; at a height bound of a few hundred, where the run is a few
  * dozen words and a table has more rows than that, it is by a factor of a
@@ -1460,7 +1476,8 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
                          double bits_per_word, double rate, double target,
                          long extra)
 { return(taken == 0
-         || bits_per_word*rate*downstream_factor(prec, n, pnp, extra)
+         || bits_per_word*rate*(1.0 - prec[n].r)
+              *downstream_factor(prec, n, pnp, extra)
               > target*prec[n].cost); }
 
 /* How many primes the first phase would need under that rule.  prec[] must
@@ -1625,18 +1642,18 @@ static int examine_prime(ratpoints_args *args, long pn,
   if(np >= p) { return(0); } /* the prime carries no information */
 
   { /* The mean density of admissible numerators over the classes of the
-     * denominator mod p: np/p for the p-1 unit classes, and 1 for the class
-     * divisible by p, which counts only when such denominators occur.  That
-     * class's row (sieves0) admits the numerators not divisible by p, so
-     * its density is (p-1)/p, and this is 1/p^2 too much -- an
-     * approximation the fitted constants have absorbed: the numerators that
-     * row removes are the ones the test for common factors removes anyway,
-     * and the third stage's constants are fitted to what reaches it.  A
-     * prime power's density (examine_power) is exact, and the two compete
-     * in one ranking.  Both other ways were measured (2.3, item 21): the
-     * prime exact as well costs 5% of testhighmany, the power brought to
-     * the prime's convention 3.5%; this mixture measures best. */
-    double r = is_f_square[p] ? ((double)(np*(p-1) + p))/((double)(p*p))
+     * denominator mod p: np/p for the p-1 unit classes, and (p-1)/p for the
+     * class divisible by p, whose row (sieves0) admits the numerators not
+     * divisible by p; that class counts only when such denominators occur.
+     * A prime power's density (examine_power) is computed the same way, and
+     * the two compete in one ranking.  Until the tuning session of 2.3 the
+     * last class counted as 1, which is 1/p^2 too much -- the numerators
+     * that row removes are the ones the test for common factors removes
+     * anyway, and the constants had been fitted to the mixture (item 21
+     * measured the exact convention at 5% of testhighmany under those
+     * constants); it is one of the estimate corrections refitted as a
+     * group. */
+    double r = is_f_square[p] ? ((double)((np + 1)*(p-1)))/((double)(p*p))
                               : (double)np/(double)p;
 
     prec_entry->r = r;
@@ -1694,23 +1711,48 @@ static int examine_prime(ratpoints_args *args, long pn,
  * b*domain that lies within the height bound.  Used both to size the run
  * (run_shape below) and to estimate how many survivors a denominator brings
  * to the third stage. */
-static double numerators_for(const ratpoints_args *args, double b, double H)
+static double numerators_for(const ratpoints_args *args, double b, double H,
+                             double *n_inter, double *n_clip_lo,
+                             double *n_clip_hi)
 { double sum = 0.0;
-  long k;
+  long k, n = 0, clo = 0, chi = 0;
 
   for(k = 0; k < args->num_inter; k++)
   { double lo = b*args->domain[k].low, up = b*args->domain[k].up;
+    int cl = 0, ch = 0;
 
-    if(lo < -H) { lo = -H; }
-    if(up > H) { up = H; }
-    if(up > lo) { sum += up - lo; }
+    if(lo <= -H) { lo = -H; cl = 1; }
+    if(up >= H) { up = H; ch = 1; }
+    if(up > lo) { sum += up - lo; n++; clo += cl; chi += ch; }
   }
+  /* the intervals that were not empty, and how many of their ends the
+   * height bound cut (find_points_work clips them the same way) */
+  *n_inter = (double)n; *n_clip_lo = (double)clo; *n_clip_hi = (double)chi;
   return(sum);
 }
 
+/* What the rounding of an interval to whole bit arrays adds at an end the
+ * height bound cut, for the numerator class cl: the bits of the class run
+ * from ceil((-H - a0)/2^k) to floor((H - a0)/2^k) (find_points_work), and
+ * the padding is what floor and ceil to a multiple of RBA_LENGTH add below
+ * the first and above the last.  Fixed for the class, since every such end
+ * sits at the same bit; an end the bound did not cut sits anywhere in its
+ * bit array and pads half of one on average. */
+static void clipped_padding(const rp_num_class *cl, long H,
+                            double *pad_lo, double *pad_hi)
+{ long k = cl->k, a0 = cl->a0;
+  long lo_bit = (-H - a0 + (1L << k) - 1) >> k;
+  long hi_bit = ((H - a0) >> k) + 1;
+
+  /* x & (RBA_LENGTH - 1) is x mod RBA_LENGTH, non-negative, for negative
+   * x as well (two's complement) */
+  *pad_lo += (double)(lo_bit & (RBA_LENGTH - 1));
+  *pad_hi += (double)((-hi_bit) & (RBA_LENGTH - 1));
+}
+
 /* How big the run is: the number of denominators that will actually be
- * sifted, and the number of 64-bit words of numerators they sweep between
- * them.  Both are wanted by the rule that picks the sieving primes, because
+ * sifted, and the number of 64-bit words they sweep between them, padding
+ * included.  Both are wanted by the rule that picks the sieving primes, because
  * two of the costs of a prime are paid once and then spread over the whole
  * run -- its sieve table, built for at most p denominator classes, and its
  * entry in bp_list, computed once per denominator.  Per word of numerators
@@ -1722,10 +1764,24 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * those whose class mod 64 admits a numerator, that are not divisible by a
  * forbidden divisor and that pass the Jacobi symbol test where it applies;
  * the first two are periodic and are counted exactly, and the third lets
- * through half of what is left.  The numerators of one
+ * through 0.53 of what is left.  The numerators of one
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
- * cent.
+ * cent.  What the sieve sweeps is more than the numerators: each interval
+ * of each denominator is rounded outwards to whole bit arrays
+ * (find_points_work), whatever the packing -- a third of the words at a
+ * height bound of 1000, where a denominator has a few bit arrays, a tenth
+ * at 4000, two per cent at 16383.  An end the height bound cut sits at the
+ * same bit for every denominator of a class, so its padding is exact
+ * (clipped_padding); an end inside the bound pads half a bit array on
+ * average.  (One whole bit array per interval, the first version of this,
+ * was a fifth too much at 1000: most ends are cut, and at a height bound of
+ * 2^n - 1 the cut ends pad nothing at all.)
+ * u_words counts the words swept, padding included, since that is what the
+ * per-word costs are spread over; u_pad says how many of them are padding,
+ * for the estimates that want the numerators themselves; n_calls is the
+ * number of calls of the sieve, which a first-phase modulus pays a fixed
+ * cost for (RATPOINTS_COST_CALL).
  *
  * The result is an estimate, and a biased one -- the Jacobi factor is an
  * average, and the valuation test of the use_squares1 path is not modelled
@@ -1734,6 +1790,11 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * chosen number of primes by less than one.
  */
 #define RUN_SHAPE_SAMPLES 64
+
+/* the share of a class's numerators its bit arrays hold: one in 2^k, k the
+ * stride of the class (rp_num_class) */
+static const double rp_inv_stride[RP_NUM_STRIDES]
+  = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625};
 
 /* The fraction of all integers b with v_p(b) in the set the mask describes
  * (bit m set <==> v_p(b) = m); the density of v_p(b) = m is (p-1)/p^(m+1). */
@@ -1753,16 +1814,21 @@ static double forbidden_fraction(long p, unsigned long mask)
 static void run_shape(ratpoints_args *args, unsigned long den_bits,
                       const rp_num_class *cls,
                       long fba, long fdc,
-                      double *n_denom, double *u_words)
+                      double *n_denom, double *u_words, double *u_pad,
+                      double *n_calls)
 { double H = (double)args->height;
   double keep = 1.0;    /* fraction of the candidates that reach sift() */
   double count = 0.0;   /* candidate denominators */
   double nums = 0.0;    /* numerators they sweep, before that fraction */
+  double inters = 0.0;  /* the non-empty intervals they sweep them in */
+  double clo = 0.0, chi = 0.0; /* how many of their ends the bound cut */
+  double ni, nlo, nhi;
   long good = 0;        /* classes of b (mod 64, or of k for b = k^2) kept */
   double packed = 0.0;  /* the sum over them of 1/stride: the share of their
                          * numerators the bit arrays hold */
-  static const double inv_stride[RP_NUM_STRIDES]
-    = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625};
+  double pad_lo = 0.0, pad_hi = 0.0; /* the sum over them of what a cut end
+                                      * pads (clipped_padding) */
+  long Hl = args->height;
   long i, j;
 
   if(args->flags & RATPOINTS_USE_SQUARES)
@@ -1774,16 +1840,21 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = khi - klo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, k*k, H);
+        nums += numerators_for(args, k*k, H, &ni, &nlo, &nhi);
+        inters += ni; clo += nlo; chi += nhi;
       }
-      nums *= count/RUN_SHAPE_SAMPLES;
+      nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
+      clo *= count/RUN_SHAPE_SAMPLES; chi *= count/RUN_SHAPE_SAMPLES;
     }
     /* only the pattern for b mod 64 applies, and k^2 mod 64 has period 32
      * in k */
     for(j = 0; j < 32; j++)
     { const rp_num_class *cl = &cls[(j*j) & 0x3f];
 
-      if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
+      if(EXT0(cl->bits))
+      { good++; packed += rp_inv_stride[cl->k];
+        clipped_padding(cl, Hl, &pad_lo, &pad_hi);
+      }
     }
     keep = (double)good/32.0;
   }
@@ -1804,7 +1875,10 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
         for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
         { double k = klo + (khi - klo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-          nums += c*numerators_for(args, d*k*k, H)/RUN_SHAPE_SAMPLES;
+          nums += c*numerators_for(args, d*k*k, H, &ni, &nlo, &nhi)
+                   /RUN_SHAPE_SAMPLES;
+          inters += c*ni/RUN_SHAPE_SAMPLES;
+          clo += c*nlo/RUN_SHAPE_SAMPLES; chi += c*nhi/RUN_SHAPE_SAMPLES;
         }
         count += c;
       }
@@ -1814,7 +1888,10 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       { const rp_num_class *cl
           = &cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f];
 
-        if(EXT0(cl->bits)) { good++; packed += inv_stride[cl->k]; }
+        if(EXT0(cl->bits))
+        { good++; packed += rp_inv_stride[cl->k];
+          clipped_padding(cl, Hl, &pad_lo, &pad_hi);
+        }
       }
     }
     if(tried) { keep = (double)good/(double)tried; }
@@ -1827,9 +1904,11 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
     { count = bhi - blo + 1.0;
       for(i = 0; i < RUN_SHAPE_SAMPLES; i++)
       { double b = blo + (bhi - blo)*((double)i + 0.5)/RUN_SHAPE_SAMPLES;
-        nums += numerators_for(args, b, H);
+        nums += numerators_for(args, b, H, &ni, &nlo, &nhi);
+        inters += ni; clo += nlo; chi += nhi;
       }
-      nums *= count/RUN_SHAPE_SAMPLES;
+      nums *= count/RUN_SHAPE_SAMPLES; inters *= count/RUN_SHAPE_SAMPLES;
+      clo *= count/RUN_SHAPE_SAMPLES; chi *= count/RUN_SHAPE_SAMPLES;
     }
     /* bit j of den_bits is set exactly when the denominators congruent to j
      * modulo 64 have a numerator pattern (the word for the denominators
@@ -1838,7 +1917,8 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
 
       while(w)
       { j = RP_CTZL(w); w &= w - 1UL;
-        good++; packed += inv_stride[cls[j].k];
+        good++; packed += rp_inv_stride[cls[j].k];
+        clipped_padding(&cls[j], Hl, &pad_lo, &pad_hi);
       }
     }
     keep = (double)good/64.0;
@@ -1850,8 +1930,12 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       for(i = 0; i < fba; i++) { keep *= 1.0 - 1.0/(double)fb[i].p; }
       for(i = 0; i < fdc; i++)
       { keep *= 1.0 - forbidden_fraction(fd[i].p, fd[i].mask); }
-      /* the Jacobi symbol lets through half of the rest */
-      if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.5; }
+      /* the Jacobi symbol lets through half of the rest -- a little more
+       * than half, since the denominators whose odd part divides into the
+       * leading coefficient pass unconditionally: the count is 0.53 (item
+       * 24's review; the runs of 2026-09-18 put Dact/Dpred at 1.07 on nine
+       * tenths of the random curves at 16383 and 200000, which is 0.535) */
+      if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.53; }
     }
   }
 
@@ -1864,10 +1948,92 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * over-estimated U by up to a third.) */
   if(good > 0) { nums *= packed/(double)good; }
 
-  *n_denom = keep*count;
-  *u_words = keep*nums/(double)LONG_LENGTH;
+  /* The rounding to whole bit arrays: the bits of an interval run from
+   * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays.  An end the
+   * height bound cut pads what clipped_padding says for its class, the
+   * mean over the classes kept; an end inside the bound pads half a bit
+   * array on average.  (Until 2.3 the ranges were padded to whole chunks of
+   * RATPOINTS_CHUNK bit arrays on top of that; the tail legs of item 25
+   * took that away, this is what is left.) */
+  { double pad = (good > 0)
+                   ? clo*pad_lo/(double)good + chi*pad_hi/(double)good
+                       + (2.0*inters - clo - chi)*0.5*(double)RBA_LENGTH
+                   : 0.0;
+    /* and the calls of the sieve: one per interval and denominator while
+     * an interval fits array_size bit arrays, which it does below a height
+     * bound of some 30000; beyond that as many as it takes (the mean
+     * interval stands for all of them) */
+    double asz = (args->array_size > 0) ? (double)args->array_size
+                                        : (double)RATPOINTS_ARRAY_SIZE;
+    double per = (inters > 0.0) ? (nums + pad)/inters/(double)RBA_LENGTH
+                                : 0.0;  /* bit arrays per interval */
+
+    *n_denom = keep*count;
+    *u_words = keep*(nums + pad)/(double)LONG_LENGTH;
+    *u_pad = keep*pad/(double)LONG_LENGTH;
+    *n_calls = keep*inters*ceil(per/asz);
+  }
+  /* the floors, for a run too small to estimate: one denominator, one word
+   * of numerators (no padding), one call */
   if(*n_denom < 1.0) { *n_denom = 1.0; }
-  if(*u_words < 1.0) { *u_words = 1.0; }
+  if(*u_words < 1.0) { *u_words = 1.0; *u_pad = 0.0; }
+  if(*n_calls < 1.0) { *n_calls = 1.0; }
+}
+
+/* The mean number of bits set per 64-bit word of a bit array on entry to
+ * the sieve, over the words the run sweeps.  cls[b].bits holds the
+ * admissible numerators of the denominators b mod 64 in their packing, as
+ * one word repeated through the bit array, so the population count of that
+ * word is the bits per word of the class; the classes are those the run
+ * visits (run_shape: every class with a pattern on the plain path, k^2 mod
+ * 64 for k = 0..31 with squares as denominators, d k^2 for each divisor d
+ * of the leading coefficient with squares times divisors), each as often
+ * as it comes up, and each weighted by the words it sweeps -- one in 2^k of
+ * its numerators.  Until 2.3 the mean was over all 64 classes unweighted,
+ * which on the square paths counted the 52 classes never visited; a monic
+ * curve of odd degree sieves the twelve square classes only, where the
+ * unweighted mean is higher (item 26's review; by 16 to 61% on the curves
+ * probed in the tuning session).  The weighting by words takes more away
+ * than that, on the square paths and on the plain one alike: the classes
+ * with the larger strides pack their admissible numerators densely and
+ * sweep few words, so per word swept the mean comes out below the old
+ * one, by 3 to 11% on the square paths.  What the value is for is the
+ * survivors per word swept, and that is what it now is.
+ * Per word rather than per bit-array on purpose: measurements across
+ * register widths show that the survivor rate at the best sp1 is constant
+ * per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD in
+ * ratpoints.h). */
+static void bpw_add(const rp_num_class *cl, double *tot, double *wsum)
+{ long c = __builtin_popcountl(EXT0(cl->bits));
+
+  if(c) { *tot += rp_inv_stride[cl->k]*(double)c; *wsum += rp_inv_stride[cl->k]; }
+}
+
+static double mean_bits_per_word(const ratpoints_args *args,
+                                 const rp_num_class *cls,
+                                 unsigned long den_bits)
+{ double tot = 0.0, wsum = 0.0;
+  long j;
+
+  if(args->flags & RATPOINTS_USE_SQUARES)
+  { for(j = 0; j < 32; j++) { bpw_add(&cls[(j*j) & 0x3f], &tot, &wsum); } }
+  else if(args->flags & RATPOINTS_USE_SQUARES1)
+  { long *divisors = (long *)args->divisors;
+    long n;
+
+    for(n = 0; divisors[n]; n++)
+    { for(j = 0; j < 32; j++)
+      { bpw_add(&cls[((unsigned long)divisors[n]*(unsigned long)(j*j)) & 0x3f],
+                &tot, &wsum);
+      }
+    }
+  }
+  else
+  { unsigned long w = den_bits;
+
+    while(w) { j = RP_CTZL(w); w &= w - 1UL; bpw_add(&cls[j], &tot, &wsum); }
+  }
+  return((wsum > 0.0) ? tot/wsum : 0.0);
 }
 
 /**************************************************************************
@@ -1970,9 +2136,9 @@ static long modinv(long x, long m)
  * admits, exactly: np/m for a unit b; for p | b the map x -> b x^-1 takes
  * the units x onto the residues of the same valuation as b, each equally
  * often, so the row admits the share of those residues with frev a square,
- * times the share of units among the numerators.  (For a prime,
- * examine_prime counts the class it divides as 1 instead of (p-1)/p; see
- * there for why that is kept.)  pinf says whether denominators divisible
+ * times the share of units among the numerators.  (A prime's density,
+ * examine_prime, is the case e = 1 of this: (np+1)(p-1)/p^2 with the class
+ * it divides.)  pinf says whether denominators divisible
  * by p occur at all (is_f_square[p] of the prime): when they do not, r is
  * the mean over the unit classes alone, as it is for a prime.  Returns 1
  * when the power says more than nothing. */
@@ -2058,7 +2224,7 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
 static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
                        ratpoints_sieve_entry **prime_se, const int *pinf,
                        long pn_lim, long *npw_p, int use_c_long, long *c_long,
-                       double cost_table)
+                       double cost_table, double call_cost)
 { rp_power *pws = (rp_power *)args->pw_buffer;
   long npw_max = num_powers();
   /* the power p^e of prime[pn] as an index into pws: -1 not examined, -2
@@ -2116,7 +2282,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
     prec[pnp].r = r; prec[pnp].p = m; prec[pnp].mask = mask;
     prec[pnp].ssp = NULL; prec[pnp].nf = (short)nf;
     for(e = 0; e < nf; e++) { prec[pnp].fac[e] = (short)fac[e]; }
-    phase_1_key(&prec[pnp], cost_table, u, d);
+    phase_1_key(&prec[pnp], cost_table, u, d, call_cost);
     pnp++;
   }
   *pnp_p = pnp;
@@ -2192,9 +2358,11 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * they are, from prec[from] on.  With want >= 0 that many are taken; with
  * want < 0 the first-phase rule decides (phase_1_wants, with extra the
  * number of moduli the second phase will add): entries are taken while the
- * expected survivors per word, bits_per_word times the product rate of the
- * densities so far, weighted by what they cost downstream, exceed target
- * times the entry's cost per word.  When the pool runs out first, all of
+ * expected survivors per word swept that the entry removes -- bits_per_word
+ * (per word swept, see bpw_swept in sieving_info) times the product rate of
+ * the densities so far, times 1 - r --, weighted by what they cost
+ * downstream, exceed target times the entry's cost per word.  When the pool
+ * runs out first, all of
  * it is taken.  What is left of the pool has nothing in common with what
  * was taken.  Returns the number taken. */
 static long take_entries(entry *prec, long from, long *pnp_p,
@@ -2255,6 +2423,16 @@ static long sieving_info(ratpoints_args *args,
   int pinf[RATPOINTS_NUM_PRIMES];
   long npw = 0; /* prime powers examined so far */
   unsigned long used = 0UL; /* the primes the moduli taken involve */
+  double u_pad = 0.0; /* of run_words, the padding to whole bit arrays */
+  double n_calls = 0.0; /* calls of the sieve the run will make */
+  double call_cost = 0.0; /* what they cost a first-phase modulus, per word */
+  /* The survivors per word the two rules of the first phase and the key of
+   * the second compare with the costs per word: bits_per_word is per word
+   * of numerators, the costs are spread over every word swept, and the
+   * padding to whole bit arrays (u_pad) is swept and masked, so it
+   * carries none.  (The third stage's S counts per denominator and takes
+   * the padding off itself.) */
+  double bpw_swept = bits_per_word;
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -2289,7 +2467,9 @@ static long sieving_info(ratpoints_args *args,
    * again below, once the forbidden divisors are known and the estimate can
    * take them into account. */
   run_shape(args, den_bits, cls, 0, 0,
-            &args->run_denoms, &args->run_words);
+            &args->run_denoms, &args->run_words, &u_pad, &n_calls);
+  call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
+  bpw_swept = bits_per_word*(args->run_words - u_pad)/args->run_words;
   sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
@@ -2308,7 +2488,8 @@ static long sieving_info(ratpoints_args *args,
     { return(p); /* no points mod p, hence no rational points */ }
     pinf[pn] = is_f_square[p];
     if(info > 0)
-    { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms);
+    { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms,
+                  call_cost);
       prime_se[pn] = prec[pnp].ssp;
       pnp++;
     }
@@ -2387,7 +2568,7 @@ static long sieving_info(ratpoints_args *args,
 
       qsort(prec, pnp, sizeof(entry), compare_entries);
       s1 = (args->sp1 >= 0) ? args->sp1
-                            : primes_for_phase_1(prec, pnp, bits_per_word,
+                            : primes_for_phase_1(prec, pnp, bpw_swept,
                                                  target, sp2_extra);
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
       if(pnp < want) { pn_lim++; }
@@ -2497,13 +2678,17 @@ static long sieving_info(ratpoints_args *args,
     long n;
 
     run_shape(args, den_bits, cls, fba, fdc,
-              &args->run_denoms, &args->run_words);
+              &args->run_denoms, &args->run_words, &u_pad, &n_calls);
+    call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
+    bpw_swept = bits_per_word*(args->run_words - u_pad)/args->run_words;
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
-    { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms); }
+    { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms,
+                  call_cost);
+    }
     /* and the composite moduli join the candidates, keyed the same way */
     add_moduli(args, prec, &pnp, prime_se, pinf, pn_lim, &npw,
-               use_c_long, c_long, cost_table);
+               use_c_long, c_long, cost_table, call_cost);
   }
 
   /* sort the array to get at the best moduli */
@@ -2527,7 +2712,7 @@ static long sieving_info(ratpoints_args *args,
   { double rate = 1.0;
 
     args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, &rate,
-                             bits_per_word, target, sp2_extra);
+                             bpw_swept, target, sp2_extra);
 
     /* Rank what is left again, for the second phase.  There a modulus is
      * applied only to the bit arrays that survived the first phase, so its
@@ -2537,7 +2722,7 @@ static long sieving_info(ratpoints_args *args,
     if(args->sp1 < pnp)
     { long n;
 
-      rate *= bits_per_word;
+      rate *= bpw_swept;
       for(n = args->sp1; n < pnp; n++)
       { prec[n].key = prime_key(prec[n].r, prec[n].p,
                                 RATPOINTS_COST_PHASE2*rate, 1, cost_table,
@@ -2613,9 +2798,11 @@ static long sieving_info(ratpoints_args *args,
 
     /* The average number of numerators a denominator has to consider.  The
      * run shape already has the total in words, so this is just the mean per
-     * denominator; run_shape counts only the numerators that are actually
-     * looked at, so no further halving is wanted here. */
-    S = args->run_words*(double)LONG_LENGTH/args->run_denoms;
+     * denominator, less the padding to whole bit arrays, which holds no
+     * numerators (the boundary masks clear it); run_shape counts only the
+     * numerators that are actually looked at, so no further halving is
+     * wanted here. */
+    S = (args->run_words - u_pad)*(double)LONG_LENGTH/args->run_denoms;
     { long n;
 
       S *= bits_per_word/(double)LONG_LENGTH;
@@ -2749,8 +2936,9 @@ static long sieving_info(ratpoints_args *args,
   { long n;
 
     fprintf(stderr, "[primestats] pn_lim=%ld pnp=%ld sp1=%ld sp2=%ld sp3=%ld"
-            " bpw=%.2f U=%.6g D=%.6g", pn_lim, pnp, args->sp1, args->sp2,
-            args->sp3, bits_per_word, args->run_words, args->run_denoms);
+            " bpw=%.2f bpws=%.2f U=%.6g D=%.6g pad=%.6g calls=%.6g", pn_lim,
+            pnp, args->sp1, args->sp2, args->sp3, bits_per_word, bpw_swept,
+            args->run_words, args->run_denoms, u_pad, n_calls);
     for(n = 0; n < pnp; n++)
     { fprintf(stderr, " %ld:%.4f", prec[n].p, prec[n].r); }
     fprintf(stderr, "\n");
@@ -3475,25 +3663,9 @@ static long find_points_work_1(ratpoints_args *args,
            args->num_primes);
   }
   { /* The mean number of bits set in one word of a bit-array on entry to
-     * the sieve.  cls[b].bits holds the admissible numerators for the
-     * denominators b mod 64, in their packing, as one word repeated through
-     * the bit-array, so the population count of that word is what is
-     * wanted; the denominators with no admissible numerator at all are
-     * skipped, so the mean is taken over the non-zero entries only.
-     * Per word rather than per bit-array on purpose: measurements across
-     * register widths show that the survivor rate at the best sp1 is
-     * constant per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD
-     * in ratpoints.h). */
-    double bits_per_word = 0.0;
-    { long i, nz = 0, tot = 0;
-
-      for(i = 0; i < 64; i++)
-      { long c = __builtin_popcountl(EXT0(cls[i].bits));
-
-        if(c) { tot += c; nz++; }
-      }
-      if(nz) { bits_per_word = (double)tot/(double)nz; }
-    }
+     * the sieve, over the classes of denominators the run visits and the
+     * words they sweep; see mean_bits_per_word. */
+    double bits_per_word = mean_bits_per_word(args, cls, den_bits);
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
                               bits_per_word, np_is_default,
                               den_bits, &cls[0]);

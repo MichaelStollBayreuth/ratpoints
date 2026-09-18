@@ -1051,10 +1051,11 @@ the random curves', so a second-stage prime costs them twice as much per
 word, and a formula in the length of the run alone cannot see that.
 
 The first stage has a correction of its own. A modulus is taken while the
-survivors per word exceed the threshold times what the modulus costs per
-word --- one \texttt{AND}, plus its tables and its per-denominator entries
-spread over the $U$ words of the run --- with the survivors weighted by what
-one costs downstream relative to a long run: there the second stage's eleven
+survivors per word it removes --- the survivors it meets times $1-r$, $r$ its
+density --- exceed the threshold times what the modulus costs per word ---
+one \texttt{AND}, plus its tables, its per-denominator and per-call entries
+and the fetch of its table row, spread over the $U$ words of the run --- with
+the survivors weighted by what one costs downstream relative to a long run: there the second stage's eleven
 moduli kill it cheaply, while in a run of a few thousand words there is no
 second stage and every survivor reaches the extraction, which costs several
 times more. At $2\cdot 10^5$ both factors are one; at $16383$, where
@@ -1065,7 +1066,10 @@ the small primes and several hundred at the stopping modulus, the downstream
 factor six: the stage stops after seven moduli where it used to take
 thirteen, whose tables were a fifth of the run, and the run is a quarter
 shorter; at $1000$ it is a seventh shorter, at $4000$ a per cent, and from
-$16383$ on the running time does not change.
+$16383$ on the running time does not change. (Those figures are for the rule
+with the survivors it meets; the factor $1-r$, the per-call cost and the row
+fetch came later, with the estimate corrections of the tuning session, and
+the threshold was refitted for the group.)
 
 The same two quantities say which primes to use, not just how many. The
 sieving table for~$p$ has $p$ rows and is rebuilt for each denominator class
@@ -1233,17 +1237,19 @@ alone.
 
 For large computations, it may be a good idea to try to find the best
 (or at least, a good) combination of parameters for the given kind of data.
-The four constants above --- the threshold, the offset, the run length at
-which a second-stage prime pays for setting itself up, and what one row of a
-sieving table costs --- were tuned on my current laptop by minimising the
+The five constants above --- the threshold, the offset, the run length at
+which a second-stage prime pays for setting itself up, what one row of a
+sieving table costs, and what carrying a third-stage prime costs per
+denominator --- were tuned on my current laptop by minimising the
 sum of the times of \texttt{make test1} and \texttt{make test1many}. To repeat
 that on your machine, run
 \begin{verbatim}
 > make tune
 \end{verbatim}
 which does the whole thing: it sweeps the threshold, then the offset, then
-the run length at which a second-stage prime pays for setting itself up, and
-last what one row of a sieving table costs, over both test sets, and writes
+the run length at which a second-stage prime pays for setting itself up, then
+what one row of a sieving table costs, and last the third stage's cost per
+denominator, over both test sets, and writes
 the values it finds to a file
 \texttt{tuning.mk} that the \texttt{Makefile} includes, so that a subsequent
 \texttt{make all} builds with them. No source file is touched; deleting
@@ -1330,8 +1336,8 @@ is then the remedy.
 
 Should you prefer to do it by hand, the constants can be set directly:
 \begin{verbatim}
-> ./rptest -r 0.0075 -R 11 -U 1.6e6 -C 38 -z
-> ./rptest-many -r 0.0075 -R 11 -U 1.6e6 -C 38 -z
+> ./rptest -r 0.003 -R 11 -U 1.6e6 -C 38 -Q 0.013 -z
+> ./rptest-many -r 0.003 -R 11 -U 1.6e6 -C 38 -Q 0.013 -z
 \end{verbatim}
 for a few values of each, minimising the sum of the two times; then put the
 values you found into \texttt{ratpoints.h}. The option \verb+-T+ makes the
@@ -1938,7 +1944,16 @@ small moduli are nearly silent. Larger moduli save more instructions and
 lose time: a row
 of $220$ bit arrays does not stay in the first-level cache, and the cost
 model prices an \texttt{AND} the same whatever the modulus; the bound is
-\texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}.
+\texttt{RATPOINTS\_COMPOSITE\_MAX} in \texttt{ratpoints.h}. The measurement
+behind that bound was made afterwards, one curve at a time: an \texttt{AND}
+costs one cycle while the first stage's rows together fit in some $25$~KB and
+about $0.8\%$ more per further KB; the automatic count sits at the optimum a
+sweep of fixed counts finds on every suite and height, so the bound is what
+keeps the row set small on the point-rich curves, whose informative primes
+are large, and the larger products pay only on random curves at
+$2\cdot 10^5$ ($3.7\%$ of \texttt{testhigh}) while costing $4.5\%$ of
+\texttt{testhighmany}. Telling the two apart would take a model of the row
+set with several cache constants; the bound stays.
 
 The rule that ends the first stage weighs what a modulus costs and what its
 survivors cost. It used to take moduli while the expected survivors per word
@@ -1960,7 +1975,34 @@ $20\%$ at $100$, $14\%$ at $1000$ ($13\%$ on the point-rich curves), $1\%$
 at $4000$; at $16383$ the stage takes $0.4$ moduli more and the two suites
 are within the noise, at $2\cdot 10^5$ nothing moves. What is left at $200$
 is looking at the thirty primes, a quarter of the instructions, and the
-exact checks.
+exact checks. (Those figures are for the rule with the survivors a modulus
+meets; the factor $1-r$ for the ones it removes, a cost per call of the sieve
+and the fetch of its table row came later, with the estimate corrections of
+the tuning session, and the threshold was refitted for the group.)
+
+The estimates the rules run on were corrected as one group at the end, and
+the constants refitted with them, because each correction alone looks worse:
+the constants had been fitted with the old estimates and absorbed their
+errors. The run shape counts the words the sieve sweeps, each interval of
+each denominator rounded outwards to whole bit arrays with the ends the
+height bound cuts placed exactly (it had counted numerators, a third too few
+at height $1000$ and a tenth at $4000$); the Jacobi test keeps $0.53$ of the
+denominators, not half; the bits set per word are averaged over the classes a
+run visits, weighted by the words each sweeps; a prime's density counts the
+class of denominators it divides at what its row admits; the rule that ends
+the first stage weighs the survivors a modulus removes, not the ones it
+meets; and a first-stage modulus is charged for each call of the sieve and
+for fetching its table row once per denominator, two costs the model had none
+of and the run at height $1000$ pays five times over for every \texttt{AND}.
+With the estimates right to a few per cent at every height, the threshold
+\texttt{make tune} fits at $16383$ moved from $0.0075$ to $0.003$ and holds
+at $2\cdot 10^5$ and at $200$ to $4000$ alike, where before the corrections
+the group wanted a different threshold at every height. The suites are where
+they were, within $2\%$ either way; what changed is under the hood: at a
+fixed count of ten moduli the corrected ranking runs the point-rich curves at
+height $1000$ in $0.62$ of the time, since the old table term, spread over a
+third too few words, had kept nearly silent small primes in the first stage
+there.
 
 The test on the denominators at a prime~$p$ dividing the leading coefficient
 now runs, and is right. It had been unreachable since it was written, behind
@@ -2057,7 +2099,10 @@ row of a sieving table costs, which is what decides how strongly the program
 prefers a smaller prime to a larger one at a small height bound. It could be
 set with \verb+-C+ since the rule was introduced, but nothing had measured
 it, and of the four constants it is the one most likely to differ between
-machines, being the ratio of two different kinds of work.
+machines, being the ratio of two different kinds of work. The tuning session
+at the end of 2.3 added a fifth stage for the third stage's cost per
+denominator (\verb+-Q+), which had been fitted when that stage was set up
+for every denominator and is set up on demand since.
 
 The loop over the denominators, and what is done once per denominator, have
 been reworked, six changes together. The Jacobi symbol test on the

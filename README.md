@@ -146,7 +146,12 @@ fewer ANDs. Worth 7% of `make test1` (6 to 8% in two measurements), 11% of `make
 4% of `make testhighmany`, and nothing measurable on `make test1many`, where the small moduli are nearly
 silent. Larger moduli save more instructions
 and lose time: a row of 220 bit arrays does not stay in the first-level cache, and the cost model
-prices an AND the same whatever the modulus, which is on the list.
+prices an AND the same whatever the modulus. The measurement behind the bound came afterwards,
+one curve at a time: an AND costs one cycle while the first phase's rows together fit in some
+25 KB and 0.8% more per further KB; the automatic count sits at the optimum a sweep of fixed
+counts finds on every suite and height; the larger products pay only on random curves at 200000
+(3.7% of testhigh) while costing 4.5% of the point-rich suite, and telling the two apart would
+take a model of the row set with several cache constants, so the bound stays.
 
 The rule that ends the first phase weighs what a modulus costs and what its survivors cost. It
 used to take moduli while the expected survivors per word exceeded a fitted constant, which stands
@@ -163,7 +168,28 @@ run to a twentieth, and the run is 24% shorter; 20% at height 100, 14% at 1000 (
 point-rich curves), 1% at 4000; at 16383 the phase takes 0.4 moduli more and the two suites are
 within the noise (instructions +0.5%), at 200000 nothing moves. What is
 left at height 200 is looking at the thirty primes, a quarter of the instructions, and the exact
-checks.
+checks. (Those figures are for the rule with the survivors a modulus meets; the factor 1 - r for
+the ones it removes, a cost per call of the sieve and the fetch of its table row came later, with
+the estimate corrections of the tuning session, and the threshold was refitted for the group.)
+
+The estimates the rules run on were corrected as one group at the end, and the constants refitted
+with them, because each correction alone looks worse: the constants had been fitted with the old
+estimates and absorbed their errors. The run shape counts the words the sieve sweeps, each
+interval of each denominator rounded outwards to whole bit arrays with the ends the height bound
+cuts placed exactly (it had counted numerators, a third too few at height 1000 and a tenth at
+4000); the Jacobi test keeps 0.53 of the denominators, not half; the bits set per word are averaged
+over the classes a run visits, weighted by the words each sweeps; a prime's density counts the
+class of denominators it divides at what its row admits; the rule that ends the first phase weighs
+the survivors a modulus removes, not the ones it meets; and a first-phase modulus is charged for
+each call of the sieve and for fetching its table row once per denominator, two costs the model
+had none of and the run at height 1000 pays five times over for every AND. With the estimates
+right to a few per cent at every height, the threshold that "make tune" fits at 16383 moved from
+0.0075 to 0.003 and holds at 200000 and at 200 to 4000 alike, where before the corrections the
+group wanted a different threshold at every height. The suites are where they were, within 2%
+either way (test1 -0.5%, test1many -1.5%, testhigh -0.7%, testhighmany -1.9%, heights 200 to 4000
+0 to +3%); what changed is under the hood: at a fixed count of ten moduli the corrected ranking
+runs the point-rich curves at height 1000 in 0.62 of the time, since the old table term, spread
+over a third too few words, had kept nearly silent small primes in the first phase there.
 
 A test on the denominators that had never run now does. When a prime `p` divides the leading
 coefficient, the congruence modulo `p` says nothing about a denominator divisible by `p`, but the
@@ -188,8 +214,8 @@ running time by as much as half a per cent on any test set, because the rule it 
 own optimum; what it buys is that the constants mean what they are documented to mean for curves
 outside the ones they were tuned on.
 
-Four machine-dependent constants govern the choice. They can be set with the `-r`, `-R`, `-U` and
-`-C` options; reasonable values are compiled in, and `make tune` will measure better ones for your
+Five machine-dependent constants govern the choice. They can be set with the `-r`, `-R`, `-U`, `-C`
+and `-Q` options; reasonable values are compiled in, and `make tune` will measure better ones for your
 machine if you want it to: it minimises the sum of the times of `make test1` (random curves) and
 `make test1many` (curves with many points), and writes what it finds to `tuning.mk`, which the
 Makefile picks up. No source file is touched, and deleting that file restores the compiled-in
