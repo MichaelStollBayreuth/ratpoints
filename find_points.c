@@ -75,6 +75,13 @@ extern unsigned long long _rp_arrays_swept;
  * earn back over the run; see run_shape */
 extern unsigned long long _rp_init_cycles, _rp_init_calls, _rp_init_rows;
 extern unsigned long long _rp_setup_cycles, _rp_setup_dens;
+/* and the phase counters themselves, for the per-curve line at the end of
+ * find_points_work */
+extern unsigned long long _rp_phase1_cycles, _rp_phase2_cycles;
+extern unsigned long long _rp_check_cycles, _rp_sift0_calls;
+#ifdef RP_PHASE_COUNTS
+extern unsigned long long _rp_and2;
+#endif
 # define RP_SETUP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_SETUP_TOC(t) do { _rp_setup_cycles += __rdtsc() - (t); \
                               _rp_setup_dens++; } while(0)
@@ -3882,16 +3889,39 @@ static long find_points_work_1(ratpoints_args *args,
    * against what the run actually did.  Needs both switches, since the
    * counters it reads belong to the phase timing. */
   { static unsigned long long last_arrays = 0, last_dens = 0;
+    static unsigned long long last_cyc1 = 0, last_cyc2 = 0, last_cyc3 = 0;
+    static unsigned long long last_and2 = 0, last_rows = 0, last_calls = 0;
 
     fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
-            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu kodd=%ld\n",
+            " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu kodd=%ld"
+            /* and this curve's share of the phase counters (TODO item 30:
+             * the cost of an AND against the footprint of the rows; rdtsc,
+             * so scale by a pinned cycle count over the process before
+             * comparing runs); and2 is 0 without RP_PHASE_COUNTS */
+            " sp1=%ld sp2=%ld calls=%llu cyc1=%llu cyc2=%llu cyc3=%llu"
+            " and2=%llu rows=%llu\n",
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
             args->n_words, args->n_arrays, args->n_bits,
             args->n_coprime, args->n_checks,
-            EXT0(cls[1].bits) ? cls[1].k : -1L);
+            EXT0(cls[1].bits) ? cls[1].k : -1L,
+            args->sp1, args->sp2, _rp_sift0_calls - last_calls,
+            _rp_phase1_cycles - last_cyc1, _rp_phase2_cycles - last_cyc2,
+            _rp_check_cycles - last_cyc3,
+#ifdef RP_PHASE_COUNTS
+            _rp_and2 - last_and2,
+#else
+            0ULL,
+#endif
+            _rp_init_rows - last_rows);
     last_arrays = _rp_arrays_swept; last_dens = _rp_bp_dens;
+    last_cyc1 = _rp_phase1_cycles; last_cyc2 = _rp_phase2_cycles;
+    last_cyc3 = _rp_check_cycles; last_rows = _rp_init_rows;
+    last_calls = _rp_sift0_calls;
+#ifdef RP_PHASE_COUNTS
+    last_and2 = _rp_and2;
+#endif
   }
 #endif
 
