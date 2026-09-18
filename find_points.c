@@ -1174,9 +1174,16 @@ static double prime_key(double r, long p, double per_word, int tabled,
 static void phase_1_key(entry *e, double cost_table, double u_words,
                         double n_denoms, double call_cost)
 { double info = -log(e->r);
+  /* the bit arrays a denominator sweeps, and the part of the row it walks
+   * and has to fetch from beyond the first-level cache (RATPOINTS_COST_LINE
+   * per line of 64 bytes, once per denominator) */
+  double arrays = u_words/(n_denoms*(double)RBA_PACK);
+  double walk = ((double)e->p < arrays) ? (double)e->p : arrays;
 
   e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms)
-            + call_cost;
+            + call_cost
+            + RATPOINTS_COST_LINE*walk
+                *((double)sizeof(ratpoints_bit_array)/64.0)*n_denoms/u_words;
   e->key = (info <= 0.0) ? 1.0e300 : e->cost/info;
 }
 

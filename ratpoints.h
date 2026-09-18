@@ -246,6 +246,21 @@
 #ifndef RATPOINTS_COST_CALL
 # define RATPOINTS_COST_CALL 16.0
 #endif
+/* and the fetch of a first-phase modulus's table row for each denominator.
+ * The row is p bit arrays, a denominator walks min(p, A) of them (A its
+ * bit arrays), and they come from beyond the first-level cache, the
+ * previous denominator's row having been another one; per word that is
+ * COST_LINE*min(p,A)*(bytes per bit array / 64)*D/U.  Measured in
+ * September 2026 (item 30) at 1 to 5 cycles per line depending on where
+ * the tables sit -- about 1 at 16383 with them in the second-level cache,
+ * about 5 at 200000 with them in the third -- in units of one first-phase
+ * AND.  At 16383 (A = 128 at full width) a modulus above 128 costs a third
+ * more than its ANDs, at 200000 (A = 1500) every modulus costs within 3%
+ * of them: this is the cost that item 21's bound on the composite moduli
+ * stood in for at the smaller bound. */
+#ifndef RATPOINTS_COST_LINE
+# define RATPOINTS_COST_LINE 2.5
+#endif
 #ifndef RATPOINTS_COST_PHASE2
 # define RATPOINTS_COST_PHASE2 110.0 /* one AND on a surviving bit-array */
 #endif
