@@ -1722,7 +1722,7 @@ static double numerators_for(const ratpoints_args *args, double b, double H)
  * those whose class mod 64 admits a numerator, that are not divisible by a
  * forbidden divisor and that pass the Jacobi symbol test where it applies;
  * the first two are periodic and are counted exactly, and the third lets
- * through half of what is left.  The numerators of one
+ * through 0.53 of what is left.  The numerators of one
  * denominator are piecewise linear in b with a handful of breakpoints, so a
  * midpoint sample over the range of b is accurate to a fraction of a per
  * cent.
@@ -1850,8 +1850,12 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       for(i = 0; i < fba; i++) { keep *= 1.0 - 1.0/(double)fb[i].p; }
       for(i = 0; i < fdc; i++)
       { keep *= 1.0 - forbidden_fraction(fd[i].p, fd[i].mask); }
-      /* the Jacobi symbol lets through half of the rest */
-      if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.5; }
+      /* the Jacobi symbol lets through half of the rest -- a little more
+       * than half, since the denominators whose odd part divides into the
+       * leading coefficient pass unconditionally: the count is 0.53 (item
+       * 24's review; the runs of 2026-09-18 put Dact/Dpred at 1.07 on nine
+       * tenths of the random curves at 16383 and 200000, which is 0.535) */
+      if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.53; }
     }
   }
 
