@@ -1440,10 +1440,13 @@ static double downstream_factor(const entry *prec, long n, long pnp,
 }
 
 /* The rule that ends the first phase.  Modulus n of the pool is worth
- * adding while the expected survivors per 64-bit word -- bits_per_word
- * times the product rate of the densities taken so far --, weighted by
- * what they cost downstream (above), exceed the target times what the
- * modulus costs per word.  The target, RATPOINTS_SURVIVORS_PER_WORD, is
+ * adding while the expected survivors per 64-bit word it removes --
+ * bits_per_word times the product rate of the densities taken so far,
+ * times 1 - r_n --, weighted by what they cost downstream (above), exceed
+ * the target times what the modulus costs per word.  (Until the tuning
+ * session of 2.3 the rule compared the survivors the modulus meets, not
+ * the ones it removes, and the target had the typical 1 - r of a half
+ * folded in.)  The target, RATPOINTS_SURVIVORS_PER_WORD, is
  * fitted for a long run and a modulus that costs one AND per word; the
  * fixed costs of a modulus -- its tables, its sieve_spec and bp_list
  * entries per denominator -- are spread over the words of the run in
@@ -1460,7 +1463,8 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
                          double bits_per_word, double rate, double target,
                          long extra)
 { return(taken == 0
-         || bits_per_word*rate*downstream_factor(prec, n, pnp, extra)
+         || bits_per_word*rate*(1.0 - prec[n].r)
+              *downstream_factor(prec, n, pnp, extra)
               > target*prec[n].cost); }
 
 /* How many primes the first phase would need under that rule.  prec[] must
