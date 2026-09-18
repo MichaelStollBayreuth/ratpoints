@@ -1166,12 +1166,17 @@ static double prime_key(double r, long p, double per_word, int tabled,
 
 /* Key a candidate for the first phase, and keep the cost the key was made
  * from: the rule that ends the phase compares it with what the candidate
- * would save (take_entries). */
+ * would save (take_entries).  call_cost is what a first-phase modulus pays
+ * per word for the calls of the sieve, RATPOINTS_COST_CALL per call spread
+ * over the run (the row pointer's reduction at the head of every call and
+ * the narrower legs past the last whole chunk; the second phase has
+ * neither, it finds its rows directly). */
 static void phase_1_key(entry *e, double cost_table, double u_words,
-                        double n_denoms)
+                        double n_denoms, double call_cost)
 { double info = -log(e->r);
 
-  e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms);
+  e->cost = prime_cost(e->p, 1.0, 1, cost_table, u_words, n_denoms)
+            + call_cost;
   e->key = (info <= 0.0) ? 1.0e300 : e->cost/info;
 }
 
@@ -1738,7 +1743,9 @@ static double numerators_for(const ratpoints_args *args, double b, double H,
  * denominator has a few bit arrays, a tenth at 4000, two per cent at 16383.
  * u_words counts the words swept, padding included, since that is what the
  * per-word costs are spread over; u_pad says how many of them are padding,
- * for the estimates that want the numerators themselves.
+ * for the estimates that want the numerators themselves; n_calls is the
+ * number of calls of the sieve, which a first-phase modulus pays a fixed
+ * cost for (RATPOINTS_COST_CALL).
  *
  * The result is an estimate, and a biased one -- the Jacobi factor is an
  * average, and the valuation test of the use_squares1 path is not modelled
@@ -1771,7 +1778,8 @@ static double forbidden_fraction(long p, unsigned long mask)
 static void run_shape(ratpoints_args *args, unsigned long den_bits,
                       const rp_num_class *cls,
                       long fba, long fdc,
-                      double *n_denom, double *u_words, double *u_pad)
+                      double *n_denom, double *u_words, double *u_pad,
+                      double *n_calls)
 { double H = (double)args->height;
   double keep = 1.0;    /* fraction of the candidates that reach sift() */
   double count = 0.0;   /* candidate denominators */
@@ -1894,10 +1902,19 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * chunks of RATPOINTS_CHUNK bit arrays on top of that; the tail legs of
    * item 25 took that away, this is what is left.) */
   { double pad = inters*(double)RBA_LENGTH;
+    /* and the calls of the sieve: one per interval and denominator while
+     * an interval fits array_size bit arrays, which it does below a height
+     * bound of some 30000; beyond that as many as it takes (the mean
+     * interval stands for all of them) */
+    double asz = (args->array_size > 0) ? (double)args->array_size
+                                        : (double)RATPOINTS_ARRAY_SIZE;
+    double per = (inters > 0.0) ? (nums + pad)/inters/(double)RBA_LENGTH
+                                : 0.0;  /* bit arrays per interval */
 
     *n_denom = keep*count;
     *u_words = keep*(nums + pad)/(double)LONG_LENGTH;
     *u_pad = keep*pad/(double)LONG_LENGTH;
+    *n_calls = keep*inters*ceil(per/asz);
   }
   if(*n_denom < 1.0) { *n_denom = 1.0; }
   if(*u_words < 1.0) { *u_words = 1.0; }
@@ -2141,7 +2158,7 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
 static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
                        ratpoints_sieve_entry **prime_se, const int *pinf,
                        long pn_lim, long *npw_p, int use_c_long, long *c_long,
-                       double cost_table)
+                       double cost_table, double call_cost)
 { rp_power *pws = (rp_power *)args->pw_buffer;
   long npw_max = num_powers();
   /* the power p^e of prime[pn] as an index into pws: -1 not examined, -2
@@ -2199,7 +2216,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
     prec[pnp].r = r; prec[pnp].p = m; prec[pnp].mask = mask;
     prec[pnp].ssp = NULL; prec[pnp].nf = (short)nf;
     for(e = 0; e < nf; e++) { prec[pnp].fac[e] = (short)fac[e]; }
-    phase_1_key(&prec[pnp], cost_table, u, d);
+    phase_1_key(&prec[pnp], cost_table, u, d, call_cost);
     pnp++;
   }
   *pnp_p = pnp;
@@ -2339,6 +2356,8 @@ static long sieving_info(ratpoints_args *args,
   long npw = 0; /* prime powers examined so far */
   unsigned long used = 0UL; /* the primes the moduli taken involve */
   double u_pad = 0.0; /* of run_words, the padding to whole bit arrays */
+  double n_calls = 0.0; /* calls of the sieve the run will make */
+  double call_cost = 0.0; /* what they cost a first-phase modulus, per word */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -2373,7 +2392,8 @@ static long sieving_info(ratpoints_args *args,
    * again below, once the forbidden divisors are known and the estimate can
    * take them into account. */
   run_shape(args, den_bits, cls, 0, 0,
-            &args->run_denoms, &args->run_words, &u_pad);
+            &args->run_denoms, &args->run_words, &u_pad, &n_calls);
+  call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
   sp2_extra = phase_2_offset(sp2_extra, sp2_u0, args->run_words);
 
   for(pn = 0; pn < RATPOINTS_NUM_PRIMES; pn++)
@@ -2392,7 +2412,8 @@ static long sieving_info(ratpoints_args *args,
     { return(p); /* no points mod p, hence no rational points */ }
     pinf[pn] = is_f_square[p];
     if(info > 0)
-    { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms);
+    { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms,
+                  call_cost);
       prime_se[pn] = prec[pnp].ssp;
       pnp++;
     }
@@ -2581,13 +2602,16 @@ static long sieving_info(ratpoints_args *args,
     long n;
 
     run_shape(args, den_bits, cls, fba, fdc,
-              &args->run_denoms, &args->run_words, &u_pad);
+              &args->run_denoms, &args->run_words, &u_pad, &n_calls);
+    call_cost = RATPOINTS_COST_CALL*n_calls/args->run_words;
     sp2_extra = phase_2_offset(e, sp2_u0, args->run_words);
     for(n = 0; n < pnp; n++)
-    { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms); }
+    { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms,
+                  call_cost);
+    }
     /* and the composite moduli join the candidates, keyed the same way */
     add_moduli(args, prec, &pnp, prime_se, pinf, pn_lim, &npw,
-               use_c_long, c_long, cost_table);
+               use_c_long, c_long, cost_table, call_cost);
   }
 
   /* sort the array to get at the best moduli */

@@ -232,6 +232,20 @@
 #ifndef RATPOINTS_COST_SETUP
 # define RATPOINTS_COST_SETUP 30.0
 #endif
+/* and, for a modulus of the first phase, what one call of the sieve costs
+ * it beyond its ANDs: the reduction that sets its row pointer at the head
+ * of the call and the narrower legs that sieve the bit arrays past the last
+ * whole chunk (sift.c).  A call handles at most array_size bit arrays of
+ * one denominator's interval, so below a height bound of some 30000 it is
+ * one call per interval and denominator, and the cost is of COST_SETUP's
+ * kind at half its size.  Measured in September 2026 (item 30) from the
+ * cycles per first-phase AND of the counter build against the bit arrays
+ * per call: 1.03 at 200 of them, 1.40 at 56, 5 to 40 at 1 to 3, which is
+ * 15 to 20 cycles per call and modulus; in units of one first-phase AND,
+ * which is one cycle. */
+#ifndef RATPOINTS_COST_CALL
+# define RATPOINTS_COST_CALL 16.0
+#endif
 #ifndef RATPOINTS_COST_PHASE2
 # define RATPOINTS_COST_PHASE2 110.0 /* one AND on a surviving bit-array */
 #endif
