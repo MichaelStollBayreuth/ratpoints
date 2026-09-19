@@ -1,3 +1,5 @@
 examples/
 TODO.md
 tuning.mk
+build-coverage/
+build-test4-*/
