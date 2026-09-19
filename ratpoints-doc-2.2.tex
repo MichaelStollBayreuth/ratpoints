@@ -56,7 +56,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{May 15, 2023}
+\date{September 19, 2026}
 
 \maketitle
 
@@ -92,7 +92,7 @@ for a first implementation of the use of 256-bit (and possibly 512-bit) register
 \section{Availability}
 
 The \texttt{ratpoints-\rpversion} package can be downloaded from my homepage,
-see~\cite{ratpoints}, or from \texttt{github} at
+see~\cite{ratpoints}, or obtained from \texttt{github} at
 \url{https://github.com/MichaelStollBayreuth/ratpoints}.
 
 This program is free software: you can redistribute it and/or modify
@@ -209,7 +209,7 @@ hardware. \texttt{gcc} will warn that passing a 512-bit vector argument
 without AVX512F enabled changes the ABI; this is harmless, as the whole
 library is built with the same flags.
 
-\subsection{Run a test}
+\subsection{Run various tests}
 
 Run
 
@@ -261,15 +261,11 @@ curves with no points modulo some prime or no admissible numerator modulo
 ranges and search intervals, height bounds from 1 to $2^{63}-1$ (those come
 with a denominator range of one and a narrow search interval, so that the
 run stays short), and every error message.  The output is compared against
-\texttt{testbase4}; the whole takes about a second.  Before each invocation
+\texttt{testbase4}; the whole test takes about a second.  Before each invocation
 the script prints its arguments, so that a failing test can be found from
 the difference between \texttt{test4.out} and \texttt{testbase4}.  The
-suite was written for version 2.3 and adapted; the reference was checked
-independently of the sieve by \texttt{verify-test4.py}, which reads it
-and, for every invocation that prints points, searches every coprime pair
-$(a, b)$ in the range by brute force, in arbitrary precision (Python~3);
-and version 2.3 prints the same points on the whole first part of the
-script.
+suite was written (by Claude) for version 3.0 and adapted; the reference was checked
+independently of the sieve.
 
 \begin{verbatim}
 > make testapi
@@ -278,7 +274,7 @@ runs \texttt{rpapi}, a program that tests what the library offers and the
 command-line program cannot reach: the checks that
 \texttt{find\_points\_work} makes on its arguments and the error codes it
 returns, a callback that stops the search or declines a point, the flags,
-and a sequence of searches on one initialised structure
+and a sequence of searches on one initialized structure
 (Section~\ref{sec:library}); the output is compared against
 \texttt{testbase-api}.
 
@@ -286,27 +282,26 @@ and a sequence of searches on one initialised structure
 > make test4configs
 \end{verbatim}
 runs \texttt{test4} again on the library built with each of the other
-compile-time switches: the register widths 64, 128 (both variants) and
-512; \texttt{RATPOINTS\_CHUNK=1}, one register in the first phase;
+compile-time switches: the register widths~64, 128 (both variants) and~512;
+\texttt{RATPOINTS\_CHUNK=1}, one register in the first phase;
 \texttt{USE\_LONG\_IN\_PHASE\_2}, the second phase one word at a time;
-and \texttt{PRIME\_SIZE} 8, the larger prime table.  Each is built in a
+and \texttt{PRIME\_SIZE}~8, the larger prime table.  Each is built in a
 directory of its own, so that the build in the working directory is left
 alone (\texttt{test4-configs.sh}); the points found must not depend on
-any of these, so every build is compared against the same
-\texttt{testbase4}.  About a quarter of a minute.  The script exits with
-status 1 when an output differs from the reference and with 2 when a build
+any of these, so every build is compared against the same~\texttt{testbase4}.
+The script exits with
+status~1 when an output differs from the reference and with~2 when a build
 failed; so does \texttt{coverage.sh} below.
 
 \begin{verbatim}
 > make coverage
 \end{verbatim}
-measures how much of the code the tests execute, with \texttt{gcov}: it
-builds the sources instrumented and unoptimised in
-\texttt{build-coverage/}, runs the tests through that build (all of
-\texttt{make test} but \texttt{test2} and \texttt{timing}) and prints,
-for each source file, the lines executed and the branches taken at least
-once (\texttt{coverage.sh}); the annotated sources are left in that
-directory.
+measures how much of the code the tests execute, with~\texttt{gcov}: it
+builds the sources instrumented and unoptimised in~\texttt{build-coverage/},
+runs the tests through that build (all of~\texttt{make test} but~\texttt{test2}
+and~\texttt{timing}) and prints, for each source file, the lines executed
+and the branches taken at least once (\texttt{coverage.sh});
+the annotated sources are left in that directory.
 
 \begin{verbatim}
 > make timing
@@ -391,17 +386,17 @@ The archive contains the following files.
   \item \texttt{main.c, rptest.c, rpapi.c} --- the source code for the
         \texttt{ratpoints}, \texttt{rptest} and \texttt{rpapi} executables,
         respectively
-  \item \texttt{testdata.h} --- the curves used by \texttt{make test1}
+  \item \texttt{testdata.h} --- the curves used by~\texttt{make test1}
   \item \texttt{testbase}, \texttt{testbase2}, \texttt{testbase3},
         \texttt{testbase4}, \texttt{testbase-api} --- the output the
         test runs are expected to produce
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
         executable, as have the next three
-  \item \texttt{verify-test4.py} --- the brute-force check of
-        \texttt{testbase4}
+  \item \texttt{verify-test4.py} --- the brute-force check of~\texttt{testbase4}
+        (needs a python installation)
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
-        \texttt{make test4configs} and \texttt{make coverage} run
+        \texttt{make test4configs} and~\texttt{make coverage} run
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
@@ -436,9 +431,9 @@ as a binary form of the smallest even degree $\ge n$) is not squarefree
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.
 Some of the options have arguments, others don't; the ordering of
-the options and option-argument pairs is arbitrary (except for options
-with opposite effect, where the last one given counts, and for the
-specification of the search intervals, which must be in order).
+the options and option-argument pairs is largely arbitrary.
+The exceptions are options with opposite effect, where the last one given counts,
+and the specification of the search intervals, which must be given in order.
 
 \subsection{Early abort}
 
@@ -902,8 +897,8 @@ your call to \texttt{find\_points}.
 
 Let $F(x, z)$ be the binary form of even degree corresponding to the
 polynomial on the right hand side of the curve equation. The basic idea
-is to let run $b$ from $1$ to the height bound~$H$, for each~$b$, let
-$a$ run from $-H$ to~$H$, and for each coprime pair $(a,b)$ check
+is to let $b$ run from~$1$ to the height bound~$H$, and for each~$b$, let
+$a$ run from $-H$ to~$H$, and finally, for each coprime pair~$(a,b)$ check
 if $F(a, b)$ is a square.
 
 Of course, in this form, this would take a very long time. To speed up the
@@ -1086,70 +1081,66 @@ for the numerators. Thanks to \textbf{Bill Allombert}.
 bug that led to the polynomials being reversed incorrectly when the
 degree is odd. Thanks to \textbf{Nicolas Mascot} and \textbf{Bill Allombert}.
 
+Work on the code starting with version~2.2.3 was done with the help
+of \textbf{Claude Code} (by Anthropic), using various models
+(Opus~5, Fable~5, and Fable~5.1).
+
 \textbf{Version 2.2.3} was released September 6, 2026. It fixes the code
 path using 512-bit registers, which had never been exercised. Two problems
 were found. The first one would have made
-the program crash: the array \texttt{sieves0} of precomputed sieving
-information is declared as an array of \texttt{unsigned long}, but it is
-read through pointers to \texttt{ratpoints\_bit\_array}, and \texttt{gcc}
-aligns such a global array to at most 32~bytes, whereas a 512-bit
-bit-array needs 64. The aligned 512-bit load that \texttt{gcc} generates
-in the second sieving phase would then fault; whether it did so depended
-on where the linker happened to place the array. The array is now given
-the alignment of \texttt{ratpoints\_bit\_array} explicitly, in every
-variant. The second problem was that the \texttt{TEST} macro, which is
+the program crash. The second problem was that the \texttt{TEST} macro, which is
 used in the innermost loop of the second phase, still used the generic
-fall-back version; \texttt{gcc} compiles this to a spill of the whole
-64-byte vector to the stack followed by reading it back word by word,
-which defeats store-to-load forwarding. It now uses \texttt{vptestmq},
-in analogy with the 256-bit version.
+fall-back version, leading to a degradation in performance;
+it now uses \texttt{vptestmq}, in analogy with the 256-bit version.
 
 Since I have no CPU with AVX512F available, this was tested by compiling
 with \verb+-DUSE_AVX512+ but without \verb+-mavx512f+, so that
 \texttt{gcc} expresses the 64-byte vectors through 256-bit operations.
-This exercises the whole code path (in particular \verb+RBA_PACK == 8+
-and the two mask macros); \texttt{make test1} and \texttt{make test2}
-both reproduce the reference output exactly, as do 400 randomly generated
-comparisons against the 256-bit version. What this cannot check is the
+This exercises the whole code path. What this cannot check is the
 genuine 512-bit instructions. In the meantime, \textbf{Drew Sutherland} has
 run the two variants against each other on an AMD Ryzen~9 9950X3D (Zen~5
 architecture), for a curve with many rational points and a height bound
 of~$10^6$; the 512-bit version was faster by 13 to 14\%.
 
-\textbf{Version 2.2.4} was released September 13, 2026. It fixes bugs that a
-review of the code turned up. A polynomial of degree~1 --- given as such,
-or reached from $y^2 = c_2x^2 + c_1x$ by the reversal, or from a zero
-leading coefficient --- made the Sturm sequence code read past the end of
-its arrays and crash; this affects library users as well. When the
-positivity region of~$f$ did not meet the search domain, the program
-returned before it had looked at the points at infinity, so that
-\texttt{ratpoints '-1000000000 0 0 1' 45} printed nothing where \verb+-s+
-printed $(1:0:0)$, and after a reversal the lost point is an affine point
-of the given curve. When no residue class of the denominator modulo~16
-admitted any numerator, the array of numerator patterns was read before it
-had been filled; by default the answer was still right, but with
-\verb+-j -F 0+ the program printed nondeterministic points outside the
-height bound after a run several thousand times longer than necessary.
-And several input fields of \texttt{ratpoints\_args} were used as scratch
-space --- the number of forbidden divisors found was written into
-\texttt{max\_forbidden}, the intersected search intervals into
-\texttt{num\_inter}, normalised values into \texttt{sp1}, \texttt{sp2}
-and others --- so that a program which fills the structure once and then
-calls \texttt{find\_points\_work} for curve after curve, as the section on
-the library suggests, had the forbidden-divisor test switched off after the
-first curve without forbidden divisors (a factor of two in running time)
-and the first curve's positivity region intersected into the search domains
-of the others, which loses points. The program no longer writes either,
-and the manual now says exactly which fields it does set;
-\texttt{make test1once} runs the test curves with the structure filled
-once, and \texttt{make test3} runs one or more invocations of
-\texttt{ratpoints} per bug against a reference. Also fixed: four left shifts of negative values
-(undefined in C, harmless with gcc so far), two arrays that could be
-declared with length zero under \verb+-n 0 -N 0+, an overflow in the
-enumeration of the divisors of the leading coefficient for denominator
-bounds above about $4\cdot10^{15}$, and two constants in
-\texttt{ratpoints.h} that could not be overridden from the compiler
-command line. The library is binary compatible with 2.2.3.
+\textbf{Version 2.2.4} was released September 19, 2026. It fixes bugs that a
+review of the code and running the new test suite turned up:
+\begin{itemize}
+  \item A polynomial of degree~1 --- given as such,
+        or reached from $y^2 = c_2x^2 + c_1x$ by the reversal, or from a zero
+        leading coefficient --- made the Sturm sequence code read past the end of
+        its arrays and crash; this affects library users as well.
+  \item When the positivity region of~$f$ did not meet the search domain, the program
+        returned before it had looked at the points at infinity, so that
+        \texttt{ratpoints '-1000000000 0 0 1' 45} printed nothing where \verb+-s+
+        printed $(1:0:0)$, and after a reversal the lost point is an affine point
+        of the given curve.
+  \item When no residue class of the denominator modulo~16
+        admitted any numerator, the array of numerator patterns was read before it
+        had been filled; by default the answer was still right, but with
+        \verb+-j -F 0+ the program printed nondeterministic points outside the
+        height bound after a run several thousand times longer than necessary.
+  \item Several input fields of \texttt{ratpoints\_args} were used as scratch
+        space --- the number of forbidden divisors found was written into
+        \texttt{max\_forbidden}, the intersected search intervals into
+        \texttt{num\_inter}, normalised values into \texttt{sp1}, \texttt{sp2}
+        and others --- so that a program which fills the structure once and then
+        calls \texttt{find\_points\_work} for curve after curve, as the section on
+        the library suggests, had the forbidden-divisor test switched off after the
+        first curve without forbidden divisors (a factor of two in running time)
+        and the first curve's positivity region intersected into the search domains
+        of the others, which loses points. The program no longer writes either,
+        and the manual now says exactly which fields it does set;
+        \texttt{make test1once} runs the test curves with the structure filled
+        once, and \texttt{make test3} runs one or more invocations of
+        \texttt{ratpoints} per bug against a reference.
+  \item Also fixed: four left shifts of negative values
+        (undefined in C, harmless with gcc so far), two arrays that could be
+        declared with length zero under \verb+-n 0 -N 0+, an overflow in the
+        enumeration of the divisors of the leading coefficient for denominator
+        bounds above about $4\cdot10^{15}$, and two constants in
+        \texttt{ratpoints.h} that could not be overridden from the compiler
+        command line. The library is binary compatible with 2.2.3.
+\end{itemize}
 
 %=========================================================================
 
