@@ -307,11 +307,11 @@ compares the output against \texttt{testbase3}.
 \end{verbatim}
 runs the invocations of \texttt{ratpoints} collected in \texttt{test4.sh},
 a few hundred of them, chosen so that every branch of the code runs at
-least once: every degree from 1 to 100, odd and even, square and non-square
+least once: degrees 1 to 9 and up to the maximum of 100, odd and even, square and non-square
 leading and constant coefficients, every reason to reverse the polynomial,
 curves with no points modulo some prime or no admissible numerator modulo
 64, forbidden divisors of every kind, every option, restricted denominator
-ranges and search intervals, height bounds from 1 to $2^{62}$ (those come
+ranges and search intervals, height bounds from 1 to $2^{63}-1$ (those come
 with a denominator range of one and a narrow search interval, so that the
 run stays short), and every error message.  The output is compared against
 \texttt{testbase4}; the whole takes about a second.  Before each invocation
@@ -321,7 +321,7 @@ reference was checked independently of the sieve: \texttt{verify-test4.py}
 reads it and, for every invocation that prints points, searches every
 coprime pair $(a, b)$ in the range by brute force, in arbitrary precision;
 it can be run again whenever the reference changes (it needs Python~3, and
-PARI/GP for the two searches that are too large for it).
+PARI/GP for the 19 searches, on two curves, that are too large for it).
 
 \begin{verbatim}
 > make testapi

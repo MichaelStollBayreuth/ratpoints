@@ -115,19 +115,20 @@ def brute_points(c, H, dl, du, ivs, want_inf):
     total = 0
     for b in range(b_low, b_high + 1) if b_high - b_low < 10**7 else []:
         for lo, up in ivs:
-            total += max(0, min(float(b)*up, H) - max(float(b)*lo, -H)) + 1
+            total += max(0, min(float(b)*up, float(H)) - max(float(b)*lo, -float(H))) + 1
         if total > MAX_BRUTE: return None
     if b_high - b_low >= 10**7: return None
+    Hf = float(H)   # the program compares b*low and b*up with (double)height
     for b in range(b_low, b_high + 1):
         fb = float(b)   # the program computes b*low in double precision
         pw = [b**(D - i) for i in range(D + 1)]   # b^(D-i)
         cb = [c[i]*pw[i] if i <= d else 0 for i in range(D + 1)]
         for lo, up in ivs:
-            if fb*lo <= -H: alo = -H
-            elif fb*lo > H: break
+            if fb*lo <= -Hf: alo = -H
+            elif fb*lo > Hf: break
             else: alo = math.ceil(fb*lo)
-            if fb*up >= H: ahi = H
-            elif fb*up < -H: continue
+            if fb*up >= Hf: ahi = H
+            elif fb*up < -Hf: continue
             else: ahi = math.floor(fb*up)
             for a in range(alo, ahi + 1):
                 if math.gcd(a, b) != 1: continue
@@ -149,6 +150,7 @@ def gp_points(c, H):
     except Exception:
         return None
     d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
     pts = {}
     for line in out.split('\n'):
         f = line.split()
@@ -198,8 +200,15 @@ def main():
     invs = []
     cur = None
     for line in lines:
-        if line.startswith('# ') or line.startswith('#<') or line == '#':
-            cur = (re.findall(r'<([^>]*)>', line), [])
+        # an announce line "# <arg> <arg> ..."; a format test whose output
+        # ends without a newline glues the next announce onto its last line
+        k = line.find('# <')
+        if k > 0 and cur is not None:
+            cur[1].append(line[:k]); line = line[k:]
+        if line.startswith('# <') or line == '#':
+            # a filtered run announces its filter after " | "
+            head, _, filt = line.partition(' | ')
+            cur = (re.findall(r'<([^>]*)>', head), [], filt)
             invs.append(cur)
         elif line.startswith('====') or line.startswith('----'):
             cur = None
@@ -207,17 +216,19 @@ def main():
             cur[1].append(line)
     checked = failed = skipped = gp_used = 0
     notes = []
-    for args, out in invs:
+    for args, out, filt in invs:
         o = parse_args(args)
+        if filt and 'found' not in filt:
+            skipped += 1; continue   # a filtered report: no points to check
         exit_line = [l for l in out if l.startswith('exit ')]
         body = [l for l in out if not l.startswith('exit ')]
         if exit_line:
             code = int(exit_line[-1].split()[1])
-            # an error test: the program must have refused the input
-            if code == 0 and (o['err'] or coefficients(o.get('cof', '')) is None):
-                failed += 1; print('FAIL (accepted bad input):', args)
-            else: skipped += 1
-            continue
+            # an error test: the program must have refused the input; a run
+            # that ended well is checked like any other
+            if code != 0: skipped += 1; continue
+            if o['err'] or coefficients(o.get('cof', '')) is None:
+                failed += 1; print('FAIL (accepted bad input):', args); continue
         if o['err']:
             failed += 1; print('FAIL (parse):', args, o['err']); continue
         c = coefficients(o['cof'])
@@ -237,14 +248,14 @@ def main():
         if refused: checked += 1; continue
         want_inf = o['inf']
         printed = {}
-        xset = set(); count = None
+        xlist = []; count = None
         for l in body:
             m = POINT.match(l)
             if m:
                 a, y, b = int(m[1]), int(m[2]), int(m[3])
                 printed.setdefault((a, b), []).append(y); continue
             m = XONLY.match(l)
-            if m: xset.add((int(m[1]), int(m[2]))); continue
+            if m: xlist.append((int(m[1]), int(m[2]))); continue
             m = FOUND.match(l)
             if m: count = int(m[1])
         if o['fmt'] or o['strs']:
@@ -269,12 +280,15 @@ def main():
             nonlocal failed
             failed += 1; print('FAIL:', ' '.join('<%s>' % a for a in args)); print('   ', msg)
         if o['z']:
+            # the count: one per point with y = 0, two otherwise; one per
+            # point (x-coordinate, or survivor) with -y or -x
             exp = 1 if o['one'] and pts else 0
             if not o['one']:
-                exp = sum(1 if (0 in ys and len(ys) == 1) else (1 if (o['x'] or o['y']) else 2) for ys in pts.values())
-                if o['x']: exp = len(pts)   # every survivor once; see below
-            if count != exp and not o['x']: fail('count %d, expected %d' % (count, exp))
+                exp = sum(1 if (0 in ys and len(ys) == 1) or o['x'] or o['y'] else 2 for ys in pts.values())
+            if count != exp: fail('count %d, expected %d' % (count, exp))
             continue
+        xset = set(xlist)
+        if len(xset) != len(xlist): fail('an x-coordinate printed twice'); continue
         if o['one']:
             allp = printed or {k: None for k in xset}
             if len(allp) > 1 or sum(len(v) for v in printed.values()) > 1:

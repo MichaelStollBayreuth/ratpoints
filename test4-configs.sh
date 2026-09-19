@@ -4,9 +4,10 @@
 # intrinsics, 512 emulated, 256 being what the tree is built with), one
 # register in the first phase (RATPOINTS_CHUNK=1), the second phase one word
 # at a time (USE_LONG_IN_PHASE_2), the smaller prime table (PRIME_SIZE 7,
-# the default of 2.2.4), and composite moduli off (RATPOINTS_COMPOSITE_MAX 1)
-# and up to 1023 (every odd modulus below the table's bound is a
-# candidate).  The points found must not depend on any of these, and
+# the default of 2.2.4) and the larger one (PRIME_SIZE 9, 96 primes, where
+# the mask of the primes a modulus involves runs out of bits), and composite
+# moduli off (RATPOINTS_COMPOSITE_MAX 1) and up to 1023 (every odd modulus
+# below the table's bound is a candidate).  The points found must not depend on any of these, and
 # test4.sh prints nothing that does, so every build is compared with the
 # same testbase4.  "make test4configs" runs this.
 #
@@ -24,6 +25,7 @@ CONFIGS=${CONFIGS:-'64: 128:-DUSE_AVX128 128s:-DUSE_SSE 512:-DUSE_AVX512
   chunk1:-DUSE_AVX,-mavx2,-DRATPOINTS_CHUNK=1
   long2:-DUSE_AVX,-mavx2,-DUSE_LONG_IN_PHASE_2
   prime7:-DUSE_AVX,-mavx2,PRIME_SIZE=7:nopart2
+  prime9:-DUSE_AVX,-mavx2,PRIME_SIZE=9
   comp1:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1
   comp1023:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1023'}
 
@@ -54,7 +56,8 @@ for cfg in $CONFIGS; do
   ref=testbase4
   if [ $part2 = no ]
   then sed '/^==== part 2/,/^==== part 3/{/^==== part 3/!d;}' testbase4 > "$dir/testbase4-nopart2"
-       sed -i '/^==== part 2/,/^==== part 3/{/^==== part 3/!d;}' "test4-$name.out"
+       sed '/^==== part 2/,/^==== part 3/{/^==== part 3/!d;}' "test4-$name.out" > "$dir/out-nopart2"
+       mv "$dir/out-nopart2" "test4-$name.out"
        ref="$dir/testbase4-nopart2"
   fi
   if cmp -s "$ref" "test4-$name.out"

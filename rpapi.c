@@ -115,6 +115,8 @@ int main(void)
   report("domain = NULL", find_points_work(&args, count, NULL));
   curve(&args, 0, constant, 10);
   report("degree 0", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 10); args.degree = -1;
+  report("degree -1", find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); mpz_set_si(c[1], 0); mpz_set_si(c[2], 0);
   report("degree 2 with c[1] = c[2] = 0 (degree 0 after stripping)",
          find_points_work(&args, count, NULL));
@@ -140,20 +142,27 @@ int main(void)
   curve(&args, 2, pyth, 10); args.num_primes = 1000; args.sp2 = 500; args.sp1 = 600;
   report("num_primes 1000, sp2 500, sp1 600",
          find_points_work(&args, count, NULL));
+  printf("  moduli used: %ld in the first stage, %ld in both\n", args.sp1_used, args.sp2_used);
   curve(&args, 2, pyth, 10); args.max_forbidden = 1000;
   report("max_forbidden 1000", find_points_work(&args, count, NULL));
   /* the input fields come back as they went in */
   curve(&args, 2, pyth, 10); args.sp1 = -1; args.sp2 = -1; args.num_primes = -1;
+  args.b_low = 0; args.b_high = -1; args.sturm = 100; args.num_inter = -1;
   ret = find_points_work(&args, count, NULL);
   report("a search with the choices left to the library", ret);
-  printf("  sp1 %ld sp2 %ld num_primes %ld max_forbidden %ld b_high %ld array_size %ld"
-         " flags %#x\n", args.sp1, args.sp2, args.num_primes, args.max_forbidden,
-         args.b_high, args.array_size, args.flags & RATPOINTS_FLAGS_INPUT_MASK);
+  printf("  sp1 %ld sp2 %ld num_primes %ld max_forbidden %ld b_low %ld b_high %ld"
+         " array_size %ld sturm %ld flags %#x, domain %s, %ld interval(s) searched\n",
+         args.sp1, args.sp2, args.num_primes, args.max_forbidden, args.b_low,
+         args.b_high, args.array_size, args.sturm,
+         args.flags & RATPOINTS_FLAGS_INPUT_MASK,
+         (args.domain == domain) ? "unchanged" : "CHANGED", args.num_inter);
   /* the flags */
   curve(&args, 2, pyth, 10); args.flags = RATPOINTS_NO_Y;
   report("RATPOINTS_NO_Y (one point of each pair)",
          find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); args.flags = RATPOINTS_NO_CHECK;
+  args.sp1 = 15; args.sp2 = 30; args.num_primes = 30; /* what the sieve
+                                   leaves depends on the moduli: pin them */
   report("RATPOINTS_NO_CHECK (the survivors, y = 0)",
          find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); args.flags = RATPOINTS_NO_REVERSE | RATPOINTS_NO_JACOBI;

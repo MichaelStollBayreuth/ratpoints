@@ -283,15 +283,15 @@ written independently of the sieve.
 
 `make test4` is a suite of another kind: instead of a thousand curves through one setting, a few
 hundred settings through a few curves, chosen so that every branch of the code runs at least once
--- every degree from 1 to 100, odd and even, square and non-square leading and constant
+-- degrees 1 to 9 and up to the maximum of 100, odd and even, square and non-square leading and constant
 coefficients, every reason to reverse the polynomial, curves with no points modulo some prime or
 no admissible numerator modulo 64, forbidden divisors of every kind, every command-line option,
-restricted denominator ranges and search intervals, height bounds from 1 to 2^62 (with a
+restricted denominator ranges and search intervals, height bounds from 1 to 2^63-1 (with a
 denominator range of one and a narrow search interval, so that the run stays short), and every
 error message. It runs in about a second. Its reference, `testbase4`, was checked by
 `verify-test4.py`, which searches every coprime pair in the range by brute force in arbitrary
-precision, without any sieve, for every invocation that prints points (the two searches too large
-for that were checked against PARI/GP's `hyperellratpoints`); and the released 2.2.4 prints the
+precision, without any sieve, for every invocation that prints points (the 19 that are too large
+for that, on two curves, were checked against PARI/GP's `hyperellratpoints`); and the released 2.2.4 prints the
 same points for the whole first part. `make testapi` covers the library interface that the program
 cannot reach (the checks on the arguments and their error codes, the callback, the flags), and
 `make test4configs` runs the suite again on the library built with the other compile-time
@@ -304,6 +304,9 @@ settings reach, and a few conditions the arithmetic makes impossible. Writing th
 bugs, all fixed: at a height bound of 2^62 the third sieving stage computed `2*height` in a `long`,
 which overflowed and made it reject every point; `find_points_work` tested whether the leading
 coefficient is a square before it checked the coefficient pointer for `NULL`; and an empty
-coefficient string made the program report "Bug no. 1" instead of refusing the input.
+coefficient string made the program report "Bug no. 1" instead of refusing the input. The two
+reviews of the branch found two more at the very top of the range of a `long`: a search interval
+reaching the last few hundred numerators below 2^63 was dropped without a word, and the loop over
+the denominators never ended when the bound was 2^63-1; both fixed, and the suite now runs there.
 
 There is now [ratpoints-gpu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.

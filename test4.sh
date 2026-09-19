@@ -8,7 +8,7 @@
 # polynomial, curves with no points modulo some prime, curves with no
 # admissible numerator modulo 64, curves with and without forbidden
 # divisors of the denominator, every command-line option, restricted
-# denominator ranges and search intervals, height bounds from 1 to 2^62,
+# denominator ranges and search intervals, height bounds from 1 to 2^63 - 1,
 # and every error the program reports.  It runs in a few seconds; the
 # heights are small, and the large ones come with a narrow search interval
 # and a denominator range of one.
@@ -39,6 +39,13 @@ RP=${RP:-./ratpoints}
 
 # run ratpoints, the arguments announced first
 t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@"; }
+# the same, with the output run through a filter (the first argument, a
+# shell command reading its standard input), which is announced with the
+# arguments: for the runs that look at one line of a report, or count them
+f() { filt=$1; shift
+      printf '#'; for a; do printf ' <%s>' "$a"; done; echo " | $filt"
+      "$RP" "$@" | eval "$filt"
+}
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
 # the options, which differ between 2.2.4 and 2.3)
@@ -116,12 +123,14 @@ t '5 3 7' 100 -q -F 0
 t '5 3 7' 100 -q -F 0 -j
 t '5 3 7' 100 -q -F 1
 t '4 0 3' 50 -q
+t '4 0 3' 50 -q -F 0
 t '9 0 -2' 50 -q
 # the prime 3 divides the leading coefficient: which valuations of the
 # denominator at 3 are excluded depends on the Newton polygon (see
 # forbidden_valuations): v_3(b) = 1 only; v_3(b) = 1 and 3^4 | b; 3^3 | b;
-# v_3(b) = 1 and 3^3 | b; every valuation (then 3 | b is excluded by a bit
-# array)
+# v_3(b) = 1 and 3^3 | b; 3^2 | b (for 3x^2 + 2x + 1 the two top terms tie
+# at v_3(b) = 1).  When every valuation is excluded, as for 3x^2 + 4 above,
+# 3 | b is tested by a bit array instead
 t '1 1 9' 100 -q
 t '1 1 27' 100 -q
 t '1 3 27' 100 -q
@@ -150,7 +159,7 @@ t '0 1 0 2' 50 -q
 t '0 -1 0 2' 50 -q
 t '0 1 0 2' 50 -q -k
 # the leading coefficient 1031*1033 has no prime factor in the table of
-# the first 1000 primes, so it is not factored and the denominators are
+# odd primes below 1024, so it is not factored and the denominators are
 # not restricted
 t '5 0 0 1065023' 100 -q
 # x^3 is not squarefree
@@ -178,7 +187,8 @@ t '-4 0 0 0 9' 50 -q -k
 # numerators modulo 64, so the primes are looked at
 t '2 0 1 0 2' 100 -q
 t '2 63 1 0 2' 100 -q
-# no points modulo 131, which is beyond the 30 primes looked at first
+# no points modulo 131, which is beyond the 30 primes looked at: the run
+# sieves and finds none (part 2 makes the third stage look that far)
 t '2 131 4 0 2' 100 -q
 # a leading coefficient beyond 2^63: 10^20 + 1 = 73 * 137 * 1676321 *
 # 5964848081, so the Jacobi symbol is computed on gmp integers
@@ -216,11 +226,15 @@ t '0 -223813512 -29715903 47242068 5804812 -1242416 3136' 300 -q
 t '0 -87865180 -234179851 125769766 107149081 -18406280 547600' 300 -q
 
 echo '---- the numerator classes mod 64 ----'
-# only odd denominators; every numerator of an odd denominator; one in
-# eight; classes of even denominators with one numerator in four
+# what the bit arrays hold, by class of the denominator mod 64 (the report
+# of -v says it in part 2): odd denominators only, with 24 of 64 numerators;
+# odd denominators one numerator in two, denominators 2 mod 4 one in four,
+# 8 mod 16 every odd one; odd denominators one in four; one in eight; a
+# cubic with odd denominators one in eight and six kinds of even ones; and
+# no class at all (like 3x^2 + 2 above, without a point at infinity)
 t '-36 -54 -5' 100 -q
 t '44 -2 -12' 100 -q
-t '-46 54 -63' 100 -q
+t '4 28 -53' 100 -q
 t '-52 -28 43' 100 -q
 t '32 48 55 -44' 100 -q
 t '-40 56 45' 100 -q
@@ -245,16 +259,17 @@ t '10 10 5 -7 0 3 -2' 300 -q -n 4 -N 6
 t '10 10 5 -7 0 3 -2' 300 -q -p 8
 # few primes to look at, with the choice free to look further
 t '1 0 126 0 441' 200 -q -p 3
-t '1 0 126 0 441' 200 -q -p 5
 t '-3 5 -7 11 -13 17 -19' 200 -q -p 3
 t '3 2 -1 12' 200 -q -p 2
 # f = (x^3 + x + 1)^2 + 3*5*...*127 is a square modulo every one of the
-# first thirty primes, so none of them says anything and the choice has to
+# first thirty odd primes, so none says anything and the choice has to
 # look beyond them; the constant term does not fit a long
 t '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -q
 t '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -q -p 40
 # no exact check: the survivors of the sieve are printed as they are; with
-# every prime of the table sieving, they are the points
+# every prime of the table sieving, they are the points.  Every -x run
+# pins its primes like this: what the sieve leaves depends on the moduli
+# chosen, and so on the tuning, which nothing else in this file does
 t '1 0 126 0 441' 200 -q -x -n 15 -N 30 -p 30
 t '3 2 -1 12' 200 -q -x -n 15 -N 30 -p 30
 t '1 0 1' 100 -q -x -n 15 -N 30 -p 30
@@ -343,7 +358,7 @@ t '3 2 -1 12' 100 -q -dl 50 -du 60
 # the prime dividing the leading coefficient is beyond the denominator bound
 t '1 2 3' 2 -q
 # a denominator range beyond 1021^2: the search for forbidden divisors runs
-# to the end of the table of the first thousand primes
+# to the end of the table of odd primes below 1024
 t '5 3 7' 1050000 -q -dl 1042441 -du 1042500 -l 0 -u 1e-5
 t '5 3 7' 1050000 -q -dl 1042441 -du 1042500 -l 0 -u 1e-5 -F 1000
 t '3 2 -1 12' 100 -q -dl 4 -du 50
@@ -405,6 +420,15 @@ t '1 1 8209' 300 -q
 t '1 1 123135' 300 -q -F 0
 t '1 1 -123135' 300 -q -F 0
 t '1 1 123135' 300 -q
+# the largest height bound a long holds, 2^63 - 1: a window at the very top
+# of the range (the last bit array of the last word; a monic linear
+# polynomial, so that the denominators are the squares up to 1), the
+# denominator 2^63 - 1 itself in the loop over every denominator (which
+# has to stop without incrementing past it), and the last eight
+# denominators in the loop that tests them
+t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854767616 -u 1e30
+t '1 0 1' 9223372036854775807 -q -dl 9223372036854775807 -du 9223372036854775807 -l 0.5 -u 0.500000000000001
+t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18
 # a height bound just below and above 2^31, with few denominators
 t '1 0 1' 2147483647 -q -dl 1 -du 3 -l 0 -u 1e-8
 t '1 0 1' 2147483648 -q -dl 1 -du 3 -l 0 -u 1e-8
@@ -426,21 +450,21 @@ t '1 0 0 1' 100 -q -1
 t '1 0 0 1' 100 -q -1 -i
 t '1 0 1' 100 -q -1 -i
 t '5 0 0 1065023' 100 -q -1 -i
-t '1 0 126 0 441' 200 -q -1 -x
+t '1 0 126 0 441' 200 -q -1 -x -n 15 -N 30 -p 30
 t '2 3 1' 50 -q -1
 t '-1 0 -1' 50 -q -1
 t '1 0 126 0 441' 200 -q -y
 t '1 0 126 0 441' 200 -q -y -Y
-t '1 0 126 0 441' 200 -q -x
-t '1 0 126 0 441' 200 -q -x -y
-t '1 0 126 0 441' 200 -z | grep found
-t '1 0 126 0 441' 200 -z -i | grep found
+t '1 0 126 0 441' 200 -q -x -n 15 -N 30 -p 30
+t '1 0 126 0 441' 200 -q -x -y -n 15 -N 30 -p 30
+f 'grep found' '1 0 126 0 441' 200 -z
+f 'grep found' '1 0 126 0 441' 200 -z -i
 t '1 0 126 0 441' 200 -z -Z -q
-t '1 0 126 0 441' 200 -z -y | grep found
-t '1 0 126 0 441' 200 -z -x | grep found
-t '1 0 126 0 441' 200 -z -1 | grep found
-t '-1 0 -1' 50 -z | grep found
-t '2 0 3' 200 -z | grep found
+f 'grep found' '1 0 126 0 441' 200 -z -y
+f 'grep found' '1 0 126 0 441' 200 -z -x -n 15 -N 30 -p 30
+f 'grep found' '1 0 126 0 441' 200 -z -1
+f 'grep found' '-1 0 -1' 50 -z
+f 'grep found' '2 0 3' 200 -z
 t '1 0 126 0 441' 200 -q -f '%x/%z\n'
 t '1 0 126 0 441' 200 -q -f '[%x, %y, %z] '
 t '1 0 126 0 441' 200 -q -f '%x\t%y\t%z\n'
@@ -470,12 +494,12 @@ m '5 3 7' 50 -z -y
 m '-1 0 -1' 50
 m '2 0 3' 20
 # the curve equation as the program prints it
-t '-1 1 -1 1' 20 | grep 'Curve equation'
-t '0 -2 0 1' 20 | grep 'Curve equation'
-t '1 0 0 0 0 -1' 20 | grep 'Curve equation'
-t '-12 0 0 7' 20 | grep 'Curve equation'
-t '1 -1' 20 | grep 'Curve equation'
-t '0 1' 20 | grep 'Curve equation'
+f "grep 'Curve equation'" '-1 1 -1 1' 20
+f "grep 'Curve equation'" '0 -2 0 1' 20
+f "grep 'Curve equation'" '1 0 0 0 0 -1' 20
+f "grep 'Curve equation'" '-12 0 0 7' 20
+f "grep 'Curve equation'" '1 -1' 20
+f "grep 'Curve equation'" '0 1' 20
 
 echo '---- errors ----'
 e
@@ -516,6 +540,7 @@ e '1 2 3' 10 -q q
 e 'x' 10
 e '1 2 x' 10
 e '' 10
+e '   ' 10
 e '5' 10
 e '5 0' 10
 e '1 2 0 0' 20 -q
@@ -564,11 +589,11 @@ v '0 0 1' 20 -v
 v '10 10 5 -7 0 3 -2' 300 -v -n 4 -N 6 -P 0
 # the bits set per word, the one number of the report that depends on the
 # curve alone
-t '1 0 126 0 441' 100 -v | grep 'bits set per word' | sed 's/,.*//'
-t '3 2 -1 12' 100 -v | grep 'bits set per word' | sed 's/,.*//'
-t '-46 54 -63' 100 -v | grep 'bits set per word' | sed 's/,.*//'
-t '1 0 126 0 441' 100 -v -q | grep -c .
-t '1 0 126 0 441' 100 -q -v | grep -c .
+f "grep 'bits set per word' | sed 's/,.*//'" '1 0 126 0 441' 100 -v
+f "grep 'bits set per word' | sed 's/,.*//'" '3 2 -1 12' 100 -v
+f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
+f 'grep -c .' '1 0 126 0 441' 100 -v -q
+f 'grep -c .' '1 0 126 0 441' 100 -q -v
 
 echo '==== part 3: the options of 2.3 ===='
 # the constants of the rules that choose the sieving primes, set on the

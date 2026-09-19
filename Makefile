@@ -30,9 +30,18 @@
 #               before the loop: the library must leave them alone
 #   test3       the invocations of test3.sh, regression tests for the bugs
 #               found in the review of September 2026, against testbase3
+#   test1       1000 random genus 2 curves and eight chosen ones, checked
+#               against testbase
+#   test1many   curves with many rational points, against testbase-many;
+#               the two cover the two regimes that behave differently, and
+#               both should be used when judging a change to the sieve
+#   testhigh    the curves of test1 at a height bound of TESTHEIGHT below,
+#               where the sieve and not the set-up decides the running time
+#   testhighmany  the curves of test1many that run out of primes, at the same
+#               height; testhigh and testhighmany take about a minute each
 #   test4       the invocations of test4.sh, the suite that exercises every
 #               branch of the code -- every degree and shape of curve,
-#               every option, restricted ranges, heights from 1 to 2^62,
+#               every option, restricted ranges, heights from 1 to 2^63-1,
 #               every error message -- against testbase4; a few seconds.
 #               verify-test4.py checks that reference by brute force
 #   testapi     rpapi, the tests of the library interface that the program
@@ -46,15 +55,6 @@
 #   coverage    build the sources instrumented for gcov in build-coverage/,
 #               run the tests through that build and print how much of each
 #               source file they executed (coverage.sh); a minute or so
-#   test1       1000 random genus 2 curves and eight chosen ones, checked
-#               against testbase
-#   test1many   curves with many rational points, against testbase-many;
-#               the two cover the two regimes that behave differently, and
-#               both should be used when judging a change to the sieve
-#   testhigh    the curves of test1 at a height bound of TESTHEIGHT below,
-#               where the sieve and not the set-up decides the running time
-#   testhighmany  the curves of test1many that run out of primes, at the same
-#               height; testhigh and testhighmany take about a minute each
 #   tune        measure the four machine-dependent constants that decide how
 #               many primes each sieving stage uses and which, and write them
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
@@ -429,7 +429,7 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
-	rm -rf build-coverage build-test4-*
+	${RM} -r build-coverage build-test4-*
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk

@@ -12,10 +12,10 @@
 # happened.  "make coverage" runs this; a minute or so.
 #
 # What the suite of item 20 left uncovered on 2026-09-19 is listed in
-# test4.sh's notes: guards against states the callers cannot produce,
-# arms reached only with other compile-time settings (test4-configs.sh
-# covers those builds, but this script measures one), and two conditions
-# the arithmetic makes impossible.
+# TESTSUITE-NOTES.md on the branch testsuite: guards against states the
+# callers cannot produce, arms reached only with other compile-time settings
+# (test4-configs.sh covers those builds, but this script measures one), and
+# a few conditions the arithmetic makes impossible.
 
 dir=build-coverage
 rm -rf "$dir"; mkdir "$dir"
@@ -47,9 +47,10 @@ run testapi './rpapi' testbase-api
 echo
 # gcov names the data after the object: main.c was compiled straight into
 # the executable, so its notes are ratpoints-main.gcno
-for f in find_points sift init sturm; do
-  gcov -b "$f.c" 2>&1 | grep -A3 "^File '$f.c'" | grep -v 'Branches executed'
-done
-gcov -b ratpoints-main.gcno 2>&1 | grep -A3 "^File 'main.c'" | grep -v 'Branches executed'
+summary() { # the four lines gcov prints for the file named, less one
+  awk -v f="File '$1'" '$0 == f { p = 4 } p > 0 { print; p-- }' | grep -v 'Branches executed'
+}
+for f in find_points sift init sturm; do gcov -b "$f.c" 2>&1 | summary "$f.c"; done
+gcov -b ratpoints-main.gcno 2>&1 | summary main.c
 echo "(annotated sources in $dir/*.c.gcov)"
 exit $fail
