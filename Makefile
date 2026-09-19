@@ -79,7 +79,9 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
-            gpl-2.0.txt testbase2 test3.sh testbase3
+            gpl-2.0.txt testbase2 test3.sh testbase3 \
+            test4.sh testbase4 verify-test4.py test4-configs.sh \
+            rpapi.c testbase-api coverage.sh
 
 # Temporary files that are generated during build and test
 # and can be removed afterwards
@@ -87,10 +89,12 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             sift.s sift.i init.s find_points.h init_sieve.h \
             gen_find_points_h gen_init_sieve_h \
             rptest.out sift-debug.o find_points-debug.o main.o test2.out \
-            test3.out rptest-once.out rptest-once2.out
+            test3.out rptest-once.out rptest-once2.out \
+            test4.out testapi.out test4-*.out
 
 # Executables and library produced when building
-TARGETFILES = ratpoints libratpoints.a rptest ratpoints-debug ratpoints-doc-2.2.pdf
+TARGETFILES = ratpoints libratpoints.a rptest rpapi ratpoints-debug \
+              ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
 
@@ -98,7 +102,7 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1once test2 test3 timing
+test: test1 test1once test2 test3 test4 testapi timing
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
@@ -133,6 +137,31 @@ test3: ratpoints testbase3 test3.sh
 # Run ratpoints on the curve with the record number of known
 # rational points, with a fairly large height bound,
 # time it and compare with the expected output
+# The suite that exercises every branch of the code (see test4.sh), written
+# for 2.3 and adapted: a few hundred invocations of ratpoints, against
+# testbase4.  The reference was checked by brute force, independently of
+# the sieve, by verify-test4.py, which can be run again whenever testbase4
+# changes.
+test4: ratpoints testbase4 test4.sh
+	./test4.sh > test4.out 2>&1
+	cmp -s testbase4 test4.out || echo ${FAILED}
+
+# The tests of the library interface (see rpapi.c), against testbase-api.
+testapi: rpapi testbase-api
+	./rpapi > testapi.out 2>&1
+	cmp -s testbase-api testapi.out || echo ${FAILED}
+
+# test4 on the library built with the other compile-time switches, each in
+# a build directory of its own (see test4-configs.sh).
+.PHONY: test4configs
+test4configs: testbase4 test4.sh test4-configs.sh
+	./test4-configs.sh
+
+# How much of the code the tests execute, by gcov (see coverage.sh).
+.PHONY: coverage
+coverage: coverage.sh
+	./coverage.sh
+
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out
 	cmp -s testbase2 test2.out || echo ${FAILED}
@@ -169,6 +198,7 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
+	rm -rf build-coverage build-test4-*
 
 distclean: clean
 	${RM} ${TARGETFILES}
@@ -217,6 +247,9 @@ find_points-debug.o: find_points.c ratpoints.h rp-private.h primes.h find_points
 
 rptest: libratpoints.a rptest.c ratpoints.h testdata.h
 	${CC} rptest.c -o rptest ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+rpapi: libratpoints.a rpapi.c ratpoints.h
+	${CC} rpapi.c -o rpapi ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 gen_init_sieve_h: gen_init_sieve_h.c ratpoints.h rp-private.h primes.h
 	${CC} gen_init_sieve_h.c -o gen_init_sieve_h  ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS}

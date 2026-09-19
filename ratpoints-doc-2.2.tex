@@ -248,6 +248,63 @@ one or more for each of the bugs fixed in version 2.2.4, and compares the
 output against \texttt{testbase3}.
 
 \begin{verbatim}
+> make test4
+\end{verbatim}
+runs the invocations of \texttt{ratpoints} collected in \texttt{test4.sh},
+a few hundred of them, chosen so that every branch of the code runs at
+least once: degrees 1 to 9 and up to the maximum of 100, odd and even, square and non-square
+leading and constant coefficients, every reason to reverse the polynomial,
+curves with no points modulo some prime or no admissible numerator modulo
+16, forbidden divisors of every kind, every option, restricted denominator
+ranges and search intervals, height bounds from 1 to $2^{63}-1$ (those come
+with a denominator range of one and a narrow search interval, so that the
+run stays short), and every error message.  The output is compared against
+\texttt{testbase4}; the whole takes about a second.  Before each invocation
+the script prints its arguments, so that a failing test can be found from
+the difference between \texttt{test4.out} and \texttt{testbase4}.  The
+suite was written for version 2.3 and adapted; the reference was checked
+independently of the sieve by \texttt{verify-test4.py}, which reads it
+and, for every invocation that prints points, searches every coprime pair
+$(a, b)$ in the range by brute force, in arbitrary precision (Python~3);
+and version 2.3 prints the same points on the whole first part of the
+script.
+
+\begin{verbatim}
+> make testapi
+\end{verbatim}
+runs \texttt{rpapi}, a program that tests what the library offers and the
+command-line program cannot reach: the checks that
+\texttt{find\_points\_work} makes on its arguments and the error codes it
+returns, a callback that stops the search or declines a point, the flags,
+and a sequence of searches on one initialised structure
+(Section~\ref{sec:library}); the output is compared against
+\texttt{testbase-api}.
+
+\begin{verbatim}
+> make test4configs
+\end{verbatim}
+runs \texttt{test4} again on the library built with each of the other
+compile-time switches: the register widths 64, 128 (both variants) and
+512; \texttt{RATPOINTS\_CHUNK=1}, one register in the first phase;
+\texttt{USE\_LONG\_IN\_PHASE\_2}, the second phase one word at a time;
+and \texttt{PRIME\_SIZE} 8, the larger prime table.  Each is built in a
+directory of its own, so that the build in the working directory is left
+alone (\texttt{test4-configs.sh}); the points found must not depend on
+any of these, so every build is compared against the same
+\texttt{testbase4}.  About a quarter of a minute.
+
+\begin{verbatim}
+> make coverage
+\end{verbatim}
+measures how much of the code the tests execute, with \texttt{gcov}: it
+builds the sources instrumented and unoptimised in
+\texttt{build-coverage/}, runs the tests through that build (all of
+\texttt{make test} but \texttt{test2} and \texttt{timing}) and prints,
+for each source file, the lines executed and the branches taken at least
+once (\texttt{coverage.sh}); the annotated sources are left in that
+directory.
+
+\begin{verbatim}
 > make timing
 \end{verbatim}
 times \texttt{ratpoints} on some curve with height bound $400\,000$.
@@ -325,12 +382,20 @@ The archive contains the following files.
         on the system configuration
   \item \texttt{sift.c, init.c, sturm.c, find\_points.c} ---
         the source code for the ratpoints library
-  \item \texttt{main.c, rptest.c} --- the source code for the \texttt{ratpoints}
-        and \texttt{rptest} executables, respectively
-  \item \texttt{testdata.h, testbase, testbase2, testbase3} --- data for
-        the test runs
-  \item \texttt{test3.sh} --- the script that \texttt{make test3} runs;
-        it has to be executable
+  \item \texttt{main.c, rptest.c, rpapi.c} --- the source code for the
+        \texttt{ratpoints}, \texttt{rptest} and \texttt{rpapi} executables,
+        respectively
+  \item \texttt{testdata.h} --- the curves used by \texttt{make test1}
+  \item \texttt{testbase}, \texttt{testbase2}, \texttt{testbase3},
+        \texttt{testbase4}, \texttt{testbase-api} --- the output the
+        test runs are expected to produce
+  \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
+        \texttt{make test3} and \texttt{make test4} run; they have to be
+        executable, as have the next three
+  \item \texttt{verify-test4.py} --- the brute-force check of
+        \texttt{testbase4}
+  \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
+        \texttt{make test4configs} and \texttt{make coverage} run
   \item \texttt{ratpoints-doc-2.2.pdf} --- this documentation file
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}
