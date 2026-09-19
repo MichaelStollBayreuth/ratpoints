@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
  *                                                                     *
@@ -58,7 +58,7 @@
  * doubling of the width.  The measurements behind this are in
  * PARAMETER-MODEL.md on the phases-by-register-width branch of the git
  * repository.  (Those figures were 0.0075 for the rule as it then was; the
- * tuning session of 2.3 made the rule count the survivors a modulus
+ * tuning session of 3.0.0 made the rule count the survivors a modulus
  * removes rather than the ones it meets, a factor 1 - r of about a half,
  * and charge the modulus its per-call cost and its row fetch, so the same
  * measurements put the constant at 0.003 -- a sweep of the threshold on
@@ -115,7 +115,7 @@
  * Setting RATPOINTS_SP2_U0 (or the sp2_u0 field, or -U) to zero switches the
  * correction off and restores a flat offset.
  *
- * The first phase has a correction of its own since 2.3 (TODO item 29).
+ * The first phase has a correction of its own since 3.0.0 (TODO item 29).
  * A modulus is taken while the survivors per word it removes -- the
  * survivors it meets times 1 - r, r its density -- exceed the threshold
  * times what the modulus costs per word -- one AND, plus its tables, its
@@ -146,7 +146,7 @@
  * It needs no table, so it can use primes that would never be worth
  * building one for; what it costs is a multiplication and a reduction per
  * survivor and prime, and a set-up for each denominator that brings a
- * survivor to the stage at all (up to 2.3's item 24 it was set up for every
+ * survivor to the stage at all (up to 3.0.0's item 24 it was set up for every
  * denominator, and b carried along modulo each of its primes, which is what
  * the second constant below was tuned for).  How many primes it should use
  * therefore depends on how many survivors a denominator has, which is what
@@ -181,7 +181,7 @@
  * survivors are those divisible by several of the sieving primes, which are
  * also the ones with the fewest coprime numerators.  It was fitted when the
  * even denominators alone were packed, at half width, and carries what that
- * left over; since 2.3 every class of the denominator is packed with its
+ * left over; since 3.0.0 every class of the denominator is packed with its
  * own stride (rp_num_class in rp-private.h) and run_shape counts that, so
  * this is a fitted fudge; neither factor is worth estimating separately. */
 #ifndef RATPOINTS_SP3_COPRIME
@@ -213,7 +213,7 @@
 #ifndef RATPOINTS_COST_TABLE
 # define RATPOINTS_COST_TABLE 38.0   /* building one row of a sieve table */
 #endif
-/* The largest composite modulus offered to the ranking (2.3, TODO item
+/* The largest composite modulus offered to the ranking (3.0.0, TODO item
  * 21).  A composite modulus -- a prime power, or a product of primes and
  * prime powers -- carries the information of all its factors for one AND
  * per word; but its row is m bit arrays and its table m rows of them, and
@@ -340,7 +340,7 @@
  * curve's check to another's is used, so a machine on which every check is
  * dearer needs no change here.  The estimate can be overridden per call
  * through the check_cost field of ratpoints_args, and with -W on the command
- * line; -W 306 is what versions before 2.3 did, which is to assume that every
+ * line; -W 306 is what versions before 3.0.0 did, which is to assume that every
  * curve costs what a degree-6 one with small coefficients costs. */
 #ifndef RATPOINTS_CHECK_STEP
 # define RATPOINTS_CHECK_STEP 29.0   /* one Horner step */
@@ -403,7 +403,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used;
                    /* output: the number of sieving moduli (primes, and
-                      since 2.3 composite moduli) the last search used in
+                      since 3.0.0 composite moduli) the last search used in
                       the first stage and in the first two, and the number
                       of moduli and primes in all three stages; the input
                       fields above come back as they went in */

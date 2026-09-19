@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
  *                                                                     *
@@ -246,7 +246,7 @@ static ratpoints_bit_array *sieve_init_##prime(void *se1, long b1, void *args1) 
 #include "init_sieve.h"
 
 /************************************************************************
- * The rows of a composite modulus (TODO item 21, 2.3)                  *
+ * The rows of a composite modulus (TODO item 21, 3.0.0)                  *
  ************************************************************************/
 
 /* Lay an m-periodic pattern of admissible bit indices out as a table row of

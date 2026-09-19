@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.3                                                     *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -1473,7 +1473,7 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * bits_per_word times the product rate of the densities taken so far,
  * times 1 - r_n --, weighted by what they cost downstream (above), exceed
  * the target times what the modulus costs per word.  (Until the tuning
- * session of 2.3 the rule compared the survivors the modulus meets, not
+ * session of 3.0.0 the rule compared the survivors the modulus meets, not
  * the ones it removes, and the target had the typical 1 - r of a half
  * folded in.)  The target, RATPOINTS_SURVIVORS_PER_WORD, is
  * fitted for a long run and a modulus that costs one AND per word; the
@@ -1499,7 +1499,7 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
 
 /* How many primes the first phase would need under that rule.  prec[] must
  * be sorted by increasing key.  If the target cannot be reached with the
- * primes available, all of them are used.  Since 2.3 the choice itself is
+ * primes available, all of them are used.  Since 3.0.0 the choice itself is
  * made by take_entries(), with the composite moduli in the pool; this
  * estimate, over the primes alone, serves the rule that decides whether to
  * look at more primes.  (It used to err on the high side, a composite
@@ -1522,7 +1522,7 @@ static long primes_for_phase_1(entry *prec, long pnp,
  * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
- * offset, which is what every version before 2.3 used. */
+ * offset, which is what every version before 3.0.0 used. */
 static long phase_2_offset(long extra, double u0, double u_words)
 { double e;
 
@@ -1663,7 +1663,7 @@ static int examine_prime(ratpoints_args *args, long pn,
      * class divisible by p, whose row (sieves0) admits the numerators not
      * divisible by p; that class counts only when such denominators occur.
      * A prime power's density (examine_power) is computed the same way, and
-     * the two compete in one ranking.  Until the tuning session of 2.3 the
+     * the two compete in one ranking.  Until the tuning session of 3.0.0 the
      * last class counted as 1, which is 1/p^2 too much -- the numerators
      * that row removes are the ones the test for common factors removes
      * anyway, and the constants had been fitted to the mixture (item 21
@@ -1960,7 +1960,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * of its class (rp_num_class), so a class sweeps that share of its
    * numerators; the classes counted above are equally frequent among the
    * denominators, so the mean over the classes kept is the factor.  (Until
-   * 2.3 only the packing by parity existed, and counting the even
+   * 3.0.0 only the packing by parity existed, and counting the even
    * denominators of a curve with numerators of both parities at full width
    * over-estimated U by up to a third.) */
   if(good > 0) { nums *= packed/(double)good; }
@@ -1969,7 +1969,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays.  An end the
    * height bound cut pads what clipped_padding says for its class, the
    * mean over the classes kept; an end inside the bound pads half a bit
-   * array on average.  (Until 2.3 the ranges were padded to whole chunks of
+   * array on average.  (Until 3.0.0 the ranges were padded to whole chunks of
    * RATPOINTS_CHUNK bit arrays on top of that; the tail legs of item 25
    * took that away, this is what is left.) */
   { double pad = (good > 0)
@@ -2006,7 +2006,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
  * 64 for k = 0..31 with squares as denominators, d k^2 for each divisor d
  * of the leading coefficient with squares times divisors), each as often
  * as it comes up, and each weighted by the words it sweeps -- one in 2^k of
- * its numerators.  Until 2.3 the mean was over all 64 classes unweighted,
+ * its numerators.  Until 3.0.0 the mean was over all 64 classes unweighted,
  * which on the square paths counted the 52 classes never visited; a monic
  * curve of odd degree sieves the twelve square classes only, where the
  * unweighted mean is higher (item 26's review; by 16 to 61% on the curves
@@ -3108,7 +3108,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
       /* From numerators to bits: bit t stands for a0 + 2^k t, so the bits
        * are ceil((low - a0)/2^k) .. floor((high - a0)/2^k); the shifts of
        * signed values round down, as they do throughout the program.  (Only
-       * the two-fold packings existed until 2.3: low >>= 1 and so on.) */
+       * the two-fold packings existed until 3.0.0: low >>= 1 and so on.) */
       { long k = cls->k, a0 = cls->a0;
 
         low = (low - a0 + (1L << k) - 1) >> k;
@@ -3141,7 +3141,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
            * saves a store and a load on every one of them; what is left
            * for sift0 to do afterwards is the two boundary words, and it
            * is told about them like this.  The range is not padded to a
-           * multiple of RATPOINTS_CHUNK either, since 2.3: sift0 sieves
+           * multiple of RATPOINTS_CHUNK either, since 3.0.0: sift0 sieves
            * the bit arrays past the last whole chunk in narrower legs.
            * (Until then the padding was sieved with every prime of the
            * first phase, walked by the scan of the second and zeroed --

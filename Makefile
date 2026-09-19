@@ -1,4 +1,4 @@
-#   ratpoints-2.2.3
+#   ratpoints-3.0.0
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
@@ -72,7 +72,7 @@
 # with very many rational points; on those it is worth up to a factor of two.
 # Having the larger table costs nothing when it is not used.
 PRIME_SIZE = 8
-VERSION = 2.2.3
+VERSION = 3.0.0
 
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
@@ -143,7 +143,7 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 
 # The following uses 64-bit registers, i.e., plain unsigned longs.
 # This works on any machine the library builds on at all (a 64-bit long is
-# what the code needs in any case, since 2.3; see rp-private.h).
+# what the code needs in any case, since 3.0.0; see rp-private.h).
 CCFLAGS64 =
 # The following uses 128-bit registers. In spite of its name, USE_AVX128 needs
 # only SSE2, which every x86-64 machine has, so this is as portable as the
@@ -204,7 +204,7 @@ CCFLAGS =
 DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
-            main.c rptest.c testdata.h testbase ratpoints-doc-2.2.tex \
+            main.c rptest.c testdata.h testbase ratpoints-doc-3.0.tex \
             gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
@@ -227,7 +227,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               rptest-degrees rpapi ratpoints-debug \
-              bench_init bench_check ratpoints-doc-2.2.pdf
+              bench_init bench_check ratpoints-doc-3.0.pdf
 
 FAILED = "Test failed!"
 # what a test does when its output differs from the reference: print the
@@ -236,7 +236,7 @@ FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
-doc: ratpoints-doc-2.2.pdf
+doc: ratpoints-doc-3.0.pdf
 
 # The suites "make test" runs, each a target below.  A test whose output
 # differs from its reference prints "Test failed!" and fails its target
@@ -433,9 +433,9 @@ install: install-bin install-lib
 
 # To generate the documentation, run pdflatex twice
 # to get the cross-references right.
-ratpoints-doc-2.2.pdf: ratpoints-doc-2.2.tex
-	pdflatex ratpoints-doc-2.2.tex
-	pdflatex ratpoints-doc-2.2.tex
+ratpoints-doc-3.0.pdf: ratpoints-doc-3.0.tex
+	pdflatex ratpoints-doc-3.0.tex
+	pdflatex ratpoints-doc-3.0.tex
 
 dist: ${DISTFILES}
 	mkdir -p ratpoints-${VERSION}

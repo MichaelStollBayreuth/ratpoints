@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
  *                                                                     *
@@ -76,7 +76,7 @@ unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
  * phases; the third stage's check_spec is filled on demand, outside this
  * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
-/* clearing the two boundary words.  Until 2.3 this was a pass over the
+/* clearing the two boundary words.  Until 3.0.0 this was a pass over the
  * whole array, writing the 2-adic pattern into every bit array before the
  * first phase ANDed anything into it, and for a while after that it also
  * zeroed the bit arrays that padded the range to a multiple of
@@ -531,7 +531,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME_EVEN);
 
 #ifdef DEBUG
-  /* There is nothing in the survivors array to print: since 2.3 the first
+  /* There is nothing in the survivors array to print: since 3.0.0 the first
    * phase's first prime writes it, so on entry it holds either nothing at
    * all (the first call) or the previous denominator's leavings.  What goes
    * into it is this pattern, with the two ends cleared after the phase. */
@@ -920,7 +920,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * where the wider ones stopped, which is the part of the length above
      * its own bit; for the widest leg that is a constant zero, and writing
      * it as one matters: with a variable offset gcc keeps eight index
-     * registers for that leg and spills them.  (Until 2.3 the range was
+     * registers for that leg and spills them.  (Until 3.0.0 the range was
      * padded up to a whole chunk instead, and the padding sieved with every
      * prime, walked by the scan below and zeroed: a seventh of all bit
      * arrays swept at height 16383, four fifths at height 1000.) */
@@ -1036,7 +1036,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     if(mask_high) { MASKU(&survivors[w_high - w_low - 1], mask_high); }
     RP_TOC(t_fill, _rp_fill_cycles);
 #ifdef RP_PHASE_TIMING
-    /* what this region writes, which since 2.3 is at most the two boundary
+    /* what this region writes, which since 3.0.0 is at most the two boundary
      * words -- not the whole range, which is what _rp_arrays_swept already
      * counts */
     _rp_fill_arrays += (unsigned long long)((mask_low ? 1 : 0)
@@ -1180,7 +1180,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       /* Sieve with the next sp2-sp1 primes while some bits are set.  The
        * table row for word number i is the one at index (i + offset) mod p
        * (see sieve_spec in rp-private.h), and the reduction multiplies by
-       * the reciprocal wherever small says that is exact.  Until 2.3 the
+       * the reciprocal wherever small says that is exact.  Until 3.0.0 the
        * row was reached from a pointer set up at the head of the call, by
        * subtracting p until it pointed back into the table: one to three
        * data-dependent branches per AND, most of them mispredicted, and one

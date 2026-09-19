@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.3                                                     *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -37,7 +37,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-2.2.3 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \
@@ -369,7 +369,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'U': /* the number of numerator words at which a second-phase
                    * prime pays for setting itself up; scales -R down for
-                   * short runs.  Zero leaves -R flat, as before 2.3 */
+                   * short runs.  Zero leaves -R flat, as before 3.0.0 */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
@@ -385,7 +385,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'C': /* what building one row of a sieve table costs, in units
                    * of one first-phase AND per word; zero ranks the primes
-                   * by what they say alone, as before 2.3 */
+                   * by what they say alone, as before 3.0.0 */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }

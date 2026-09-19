@@ -16,7 +16,7 @@
 #       either way; 14 shows the message of the early return, which the
 #       unfixed program does not have
 # 16-17 no odd denominator admits a numerator, but the even ones do.  On the
-#       2.3 line this used to put the run-length estimate on its floor and
+#       3.0.0 line this used to put the run-length estimate on its floor and
 #       switch the second and third sieving stages off (the points were
 #       right, the run slow): 16 pins the point list, 17 counts the -v lines
 #       saying that a stage uses no primes, which must be 0 (2.2.4 has no
