@@ -1,5 +1,6 @@
 \documentclass[12pt,a4paper,oneside]{amsart}
-\usepackage{fullpage,url,amssymb,enumerate,colonequals}
+\usepackage{fullpage,url,amssymb,enumerate,colonequals,array}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}} % ragged-right paragraph column (the appendix tables)
 % add a bit of space between text and page numbers at the bottom of the page:
 \addtolength{\footskip}{10pt}
 
@@ -635,13 +636,13 @@ what they switch on can be switched off again and measured: \\
 The first sets the length of run, in 64-bit words of numerators, at which a
 second-stage prime just pays for setting itself up; \verb+-R+ is then the
 number of extra primes for a run much longer than that, and a shorter run
-gets proportionately fewer (Section~\ref{sec:spchoice}). \verb+-U 0+ makes
-\verb+-R+ a flat offset again, as it was before version~3.0.0. The second sets
-what building one row of a sieving table costs, in units of what one
-first-stage prime costs per word, which is what lets the program prefer a
-smaller prime to a larger one of the same quality; \verb+-C 0+ ranks the
-primes by quality alone, as before. The third says how much of the choice the program should revise while it
-runs (Section~\ref{sec:adapt}): $a = 0$ nothing, $a = 1$, the default, the
+gets proportionately fewer (Section~\ref{sec:spchoice}); \verb+-U 0+ makes
+\verb+-R+ a flat offset. The second sets what building one row of a sieving
+table costs, in units of what one first-stage prime costs per word, which
+is what lets the program prefer a smaller prime to a larger one of the same
+quality; \verb+-C 0+ ranks the primes by quality alone. The third says how
+much of the choice the program should revise while it runs
+(Section~\ref{sec:adapt}): $a = 0$ nothing, $a = 1$, the default, the
 number of primes in the third stage, and $a = 2$ the number in the second
 stage as well. It revises nothing it did not choose in the first place, so
 \verb+-n+ or \verb+-N+ has the same effect as \verb+-A 0+.
@@ -677,11 +678,18 @@ large enough to push the arithmetic into another limb. The program estimates
 it from the degree, the largest coefficient and the height bound, all of
 which it knows before it looks at a single prime, and \\
 \strut\quad\verb+-W+ $w$ \\
-overrides the estimate with $w$ rdtsc cycles. \verb+-W 306+ is what versions
-before~3.0.0 did in effect, namely assume that every curve costs what a
-degree-6 curve with small coefficients costs; it is the way to measure what
-the estimate is worth. Section~\ref{sec:sp3choice} has the formula, and
-\verb+-v+ prints what it gives for the curve in hand.
+overrides the estimate with $w$ rdtsc cycles. An rdtsc cycle is one tick of
+the processor's time-stamp counter, which the x86 instruction \texttt{rdtsc}
+reads; on current processors that counter advances at a fixed rate close to
+the nominal clock rate, whatever frequency the core is running at, so it
+measures time --- in units of a fraction of a nanosecond --- rather than the
+core's own cycles. It is the unit in which the program measures itself:
+\texttt{make bench\_check} reports it, and
+\texttt{RATPOINTS\_CHECK\_REFERENCE} in \texttt{ratpoints.h} is expressed
+in it. \verb+-W 306+ assumes that every curve costs what a degree-6 curve
+with small coefficients costs, and is the way to measure what the estimate
+is worth. Section~\ref{sec:sp3choice} has the formula, and \verb+-v+ prints
+what it gives for the curve in hand.
 
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
@@ -872,7 +880,8 @@ it is non-negative (option \verb+-P+) and otherwise leaves the number to be
 chosen from the curve, and \texttt{sp3\_per\_denom} (option \verb+-Q+),
 which is the machine constant that choice turns on and takes the value
 compiled into \texttt{ratpoints.h} when negative. \texttt{check\_cost}
-(option \verb+-W+) says what one exact test costs, in rdtsc cycles, and both
+(option \verb+-W+) says what one exact test costs, in rdtsc cycles
+(Section~\ref{fd}), and both
 of those constants are fractions of it; when negative, which is the usual
 case, the program estimates it from the degree, the coefficients and the
 height bound as described in Section~\ref{sec:sp3choice}.
@@ -1240,24 +1249,63 @@ transformation $(x,y) \to (1/x, y/x^{\lceil n/2 \rceil})$, we can as well search
 reversed polynomial $F(z,x)$. This will result in a speed-up if the
 reversed polynomial belongs to a `better' class than the original.
 
-\subsection{Some general remarks}
+\subsection{Some general remarks}\label{sec:remarks}
 
-Modern processors are very fast when doing basic things like moving
-data around between registers or simple arithmetic operations (addition,
-subtraction, shift, \dots, comparison). Even memory access can be fast
-when there is no cache miss. On the other hand, integer division is a
-slow process. It turned out that quite some improvement of the performance
-was possible by removing as many instances of integer division operations
-as reasonably possible.
+Much of what was learnt about where the time goes on a current processor
+while this version was developed ran against expectation, and is worth
+recording for whoever changes the program.
 
-For example, the gcd that tests a candidate for lowest terms is a binary
-gcd without a data-dependent branch; the Jacobi symbol test on the
-denominators is evaluated as a product of Legendre symbols read from tables
-built once per curve (Section~\ref{sec:elim}); the residue classes of~$b$
-modulo the various sieving primes are computed by a multiplication with a
-precomputed reciprocal rather than by a division; and most of the testing of
-`forbidden divisors' of~$b$ is done with bit arrays similar to those used
-for sieving the numerators, a word of 64 denominators at a time.
+Integer division is slow --- some ten to forty cycles, against one for an
+addition --- and the earlier versions avoided it wherever they reasonably
+could. It turned out that division was never where the time went: the
+integer divider is busy for less than $0.6\%$ of the cycles on every test
+suite. The subtraction chains written to avoid divisions were themselves
+worth two to three per cent of the running time; they have been replaced by
+reductions using a multiplication with a precomputed reciprocal, which won
+because it takes some twenty instructions fewer per call, not because it
+avoids a division.
+
+What does cost is memory traffic and control flow. The innermost loop of
+the first sieving stage loads a row of a sieving table for each modulus and
+\texttt{AND}s it into the registers, and it runs at the rate at which the
+first-level cache delivers those rows: an \texttt{AND} costs about one cycle
+as long as the rows of all first-stage moduli together fit into that cache
+(some 25\,KB), and more for every kilobyte beyond. This is why the composite
+sieving moduli are capped at~$64$ although larger ones would remove more
+numerators per \texttt{AND}, why every row is stored \texttt{RBA\_PACK}
+times over so that each load is aligned, and why nothing should be added to
+the structure this loop reads (Appendix~\ref{app:notes}).
+
+A mispredicted branch costs fifteen to twenty cycles, the time of as many
+\texttt{AND}s, and a branch that depends on the data mispredicts often. At
+small height bounds version~2.2.4 spent more of its time on mispredicted
+branches than on anything else: in the Jacobi symbol computed by a binary
+algorithm for every denominator, in the gcd, in the test on each surviving
+bit, in the padding of the tail of each bit array and in the bookkeeping of
+the scan over the arrays. Each of these is now done without a
+data-dependent branch: the Jacobi symbol is a product of Legendre symbols
+read from tables built once per curve (Section~\ref{sec:elim}); the gcd
+that tests a candidate for lowest terms is a binary gcd without a branch on
+the data; the survivors of a word are located by counting trailing zeros;
+the tail of an array is sieved in legs of 8, 4, 2 and~1 words instead of
+being padded; and the scan runs into a sentinel instead of testing a
+counter. The number of mispredicted branches is between $3\%$ and $40\%$ of
+what version~2.2.4 had, depending on the test suite.
+
+Two smaller lessons are of the same kind. A chain of dependent operations
+sets a floor of its own: a loop that computes $x \mathrel{+}= d$; if
+$x \ge p$ then $x \mathrel{-}= p$ for one table row after another costs
+three cycles a row whatever else it does, and the remedy is to run several
+such chains at once, as the table set-up does with four rows at a time. And
+in the loops that run most often --- the scan over the bit arrays, the
+set-up per denominator --- a handful of instructions removed is a gain of a
+few per cent, while the same instructions elsewhere cost nothing
+measurable. The residue classes of~$b$ modulo the sieving moduli are
+computed by multiplication with a precomputed reciprocal for that reason,
+and most of the testing of `forbidden divisors' of~$b$ is done with bit
+arrays like those used for sieving the numerators, a word of 64 denominators
+at a time. Appendix~\ref{app:notes} has the measurements behind all of this,
+including the cases in which fewer instructions meant more cycles.
 
 %=========================================================================
 
@@ -1376,7 +1424,8 @@ bound before it looks at a prime --- the constants are
 for a degree-6 curve with small coefficients --- and divides the two fractions
 above by the ratio, so that a curve whose test is dearer gets more primes.
 Only ratios enter, so a machine on which every test costs more needs no
-change; \verb+-W+~$w$ overrides the estimate with $w$ cycles, and \verb+-v+
+change; \verb+-W+~$w$ overrides the estimate with $w$ rdtsc cycles
+(Section~\ref{fd}), and \verb+-v+
 prints what the estimate gives for the curve in hand.
 
 \subsection{Correcting the choice while the program runs}\label{sec:adapt}
@@ -1722,14 +1771,6 @@ details, and Appendix~\ref{app:notes} the measurements behind them.
         test fails; \texttt{testhigh}, \texttt{testhighmany},
         \texttt{test4configs} and \texttt{coverage} are run separately
         (Section~\ref{sec:tests}).
-  \item \emph{Bugs fixed.} All of those listed under version~2.2.4, and in
-        addition: the estimate of the run length fell to its floor when no
-        odd denominator admitted a numerator, which switched the second and
-        third stages off for such curves; at a height bound of~$2^{62}$ the
-        third stage's bias overflowed and rejected every point; an interval
-        endpoint of the positivity region was scaled by a shift that is
-        undefined at large bisection depths (now \texttt{ldexp}); and the
-        library refuses a negative degree.
 \end{itemize}
 
 %=========================================================================
@@ -1738,18 +1779,19 @@ details, and Appendix~\ref{app:notes} the measurements behind them.
 
 \section{Notes on the optimizations}\label{app:notes}
 
-Version 3.0.0 was developed in a series of experiments, each recorded in a
-notebook on its own branch of the repository. This appendix keeps what a
-reader would need in order to change the program without repeating them:
-how the measurements were made and what they can and cannot resolve, where
-the time goes, why curves with many rational points behave so differently
-from random ones, the cost model with the origin of each constant, what
-each change was worth, what was tried and did not pay, and how much of all
-this depends on the machine. Every figure was taken on one laptop --- an
-Intel i7-1355U, the code pinned to one performance core, the 256-bit build,
-gcc~14 --- and is quoted as a ratio of cycle counts against the version
-before the change; Section~\ref{app:machine} says what would come out
-differently elsewhere.
+This appendix was written by Claude Code, the AI assistant (by Anthropic)
+with whose help this version was developed (Section~\ref{sec:changelog}); it
+consolidates the notes kept during that work. It keeps what a reader would
+need in order to change the program without repeating the experiments: how
+the measurements were made and what they can and cannot resolve, where the
+time goes, why curves with many rational points behave so differently from
+random ones, the cost model with the origin of each constant, what each
+change was worth, what was tried and did not pay, and how much of all this
+depends on the machine. Every figure was taken on one laptop --- an Intel
+i7-1355U, the code pinned to one performance core, the 256-bit build,
+gcc~14 --- and is quoted as a ratio of cycle counts, the program with the
+change in question over the program without it;
+Section~\ref{app:machine} says what would come out differently elsewhere.
 
 \subsection{How the measurements were made}\label{app:measure}
 
@@ -1777,10 +1819,10 @@ $2\cdot10^5$ --- where half the run is the innermost loop of the first stage,
 which is exactly what those flags move --- cannot be settled that way at
 all. The other method, putting both variants in one binary behind a switch
 read once at start-up, removes the placement effect entirely and is the
-better evidence; but it is blind to a data-layout cost, and one change
-measured that way gave back more than half of a $2.8\%$ gain across builds
-because it had grown a structure read in the innermost loop from 40 to
-48~bytes. Both methods were used when a change touched such a structure.
+better evidence; but it is blind to a data-layout cost. A change that grows
+a structure read in the innermost loop by eight bytes shows nothing within
+one binary and gives back half of a $2.8\%$ gain across builds. Both methods
+were used when a change touched such a structure.
 
 Instruction counts are exact, repeatable to $10^{-8}$, and the right tool for
 attributing a set-up cost to a function; as a proxy for time they misled
@@ -1816,8 +1858,7 @@ The sieving tables are built once for each pair of a modulus and a class
 of denominators modulo it and kept, so their cost is bounded by the moduli
 and does not grow with the height bound; everything else grows at least
 linearly with it. The shares therefore depend on the height bound above
-all. With every change of this version in place, on the random test
-curves:
+all. On the random test curves:
 \begin{center}\small
 \begin{tabular}{lrr}
  & height $16383$ & height $2\cdot10^5$ \\
@@ -1829,18 +1870,16 @@ outside the sieve altogether: examining and choosing the moduli & $16\%$ & $3\%$
 \end{tabular}
 \end{center}
 (the rest is the work of \texttt{sift()} around the stages). Within the
-sieve, when this was measured midway through the work, the first stage was
-three fifths of a long run on random curves and three quarters on
-point-rich ones, the second stage with the exact checks a quarter and a
-fifth. The exact check itself is under one per cent of every suite --- it
-was never a target --- and the integer divider is busy for less than $0.6\%$
-of the cycles, so the divisions were never what cost anything either: the
-two to three per cent that replacing the division-avoiding subtraction
-chains by a multiplication bought came from twenty fewer instructions per
-call. At a height bound of~$200$ the shape is different again: examining
-the thirty primes is a quarter of the instructions, and the tables were a
-fifth of the run before the first-stage rule learnt to price them and are a
-twentieth since.
+sieve the first stage is the larger part, of the order of three fifths of a
+long run on random curves and three quarters on point-rich ones; the second
+stage with the exact checks is most of the rest. The exact check itself is
+under one per cent of every suite, and the integer divider is busy for less
+than $0.6\%$ of the cycles: neither is where the time goes
+(Section~\ref{sec:remarks}). At a height bound of~$200$ the shape is
+different again: examining the thirty primes is a quarter of the
+instructions, and the sieving tables are a twentieth of the run --- they
+would be a fifth if the first-stage rule did not price them
+(Section~\ref{sec:spchoice}).
 
 The first stage's inner loop is close to what the machine can do: sixteen
 fused load-and-\texttt{AND} instructions per modulus per chunk and about
@@ -1863,15 +1902,15 @@ curves behave very differently in it. On a random curve about one
 numerator in $10^4$ survives, and the rule of Section~\ref{sec:spchoice}
 reaches its target with ten or twelve moduli. On a curve with very many
 rational points $f$ is a square modulo every residue for the smallest
-primes, so those primes carry no information and are discarded, the rule
-needs twenty or more primes, and with the thirty primes below $128$ that the
-program used to look at about one such curve in five could not reach its
-target at all; that is why the table holds the primes below~$256$ now and
-the program looks further when it needs to, which is worth a factor of
-$1.3$ to~$2$ on those curves at a large height bound and costs nothing on
-any other. Larger primes are what these curves need: the proportion of
-admissible residues tends to one half as the prime grows however many
-points the curve has, while for the small primes it is close to one.
+primes, so those primes carry no information and are discarded, and the
+rule needs twenty or more primes; among the thirty primes the program
+examines first, about one such curve in five does not find enough. That is
+why the program looks at further primes when it needs to, and why the table
+holds the primes below~$256$: it is worth a factor of $1.3$ to~$2$ on those
+curves at a large height bound and costs nothing on any other. Larger
+primes are what these curves need: the proportion of admissible residues
+tends to one half as the prime grows however many points the curve has,
+while for the small primes it is close to one.
 
 The second thing that separates the regimes is a floor of survivors that
 no sieving removes: if $a/b$ is a rational point then so is $ka/kb$ for
@@ -1879,22 +1918,24 @@ every~$k$, with the same value of~$f$, and it passes every prime test. There
 are about $H/b$ of them for each point of denominator~$b$, so they grow
 with the height bound while the survivors that die by chance grow with its
 square; only the test for common factors removes them, which is why that
-test runs before the third stage. The floor is what made \texttt{sp2}
-unpredictable from the densities alone (Section~\ref{sec:adapt}), and it is
-why the number of survivors a denominator brings to the third stage ranges
-over a factor of $260$ between the suites --- $0.035$ on the random curves at
-$16383$, $9.2$ on the point-rich ones at $2\cdot10^5$ --- so that no fixed
-number of third-stage primes can serve and the rule there is a stopping
-rule.
+test runs before the third stage. The floor is what the densities alone
+cannot predict and what the correction of Section~\ref{sec:adapt} measures,
+and it is why the number of survivors a denominator brings to the third
+stage ranges over a factor of $260$ between the suites --- $0.035$ on the
+random curves at $16383$, $9.2$ on the point-rich ones at $2\cdot10^5$ ---
+so that no fixed number of third-stage primes can serve and the rule there
+is a stopping rule.
 
 The two regimes want the same constants, which was not obvious and was
-measured twice: \texttt{make tunehigh} at three rounds keeps every value
-that \texttt{make tune} finds at $16383$, all within $0.7\%$ except the
-threshold, which costs $5.6\%$ when doubled there and $8.6\%$ at two and a
-half times its value here. One threshold also serves every height bound
-from $200$ to $2\cdot10^5$ since the estimates behind the rules were
-corrected (Section~\ref{app:model}); before that the group wanted a
-different threshold at every height.
+measured twice: \texttt{make tunehigh}, which tunes at $2\cdot10^5$, keeps
+every value that \texttt{make tune} finds at $16383$, all within $0.7\%$
+except the threshold, which is sharper --- doubling it costs $5.6\%$ at
+$2\cdot10^5$, and two and a half times its value costs $8.6\%$ at $16383$.
+One threshold also serves every height bound from $200$ to $2\cdot10^5$.
+That depends on the estimates behind the rules --- the words the run will
+sweep, the denominators it will visit, the bits set per word --- being right
+together (Section~\ref{app:model}): with one of them off, every height
+bound wants a threshold of its own.
 
 \subsection{The cost model and where the constants came from}\label{app:model}
 
@@ -1905,86 +1946,158 @@ array, about $0.26$ core cycles on the development machine. The constants
 that are not fitted were measured with the instrumented build
 (\texttt{-DRP\_PHASE\_TIMING -DRP\_PHASE\_COUNTS}), dividing each part's
 cycles by the number of times it ran. The instrumentation is not free ---
-counting the bits set on entry to the first stage was $18\%$ of an
-instrumented run of \texttt{make testhigh} until it became a multiplication
---- so shares are taken from a timing-only build. Table~\ref{tab:constants}
-lists the constants.
-\begin{table}[tbp]\footnotesize\setlength{\tabcolsep}{4pt}
-\begin{tabular}{p{3.3cm}p{1.5cm}p{4.6cm}p{4.9cm}}
-constant (\texttt{RATPOINTS\_\dots}) & value & what it is, and how it was found & how flat \\
+the counters alone can be nearly a fifth of an instrumented run --- so shares are
+taken from a timing-only build. Table~\ref{tab:constants} lists the
+constants: what each one is, how its value was found, and how much a
+different value costs.
+
+\begin{table}[tbp]\footnotesize\setlength{\tabcolsep}{3pt}%
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}P{4.0cm}P{1.7cm}P{5.6cm}P{5.6cm}@{}}
+constant (\texttt{RATPOINTS\_\dots}) & value & what it is; how the value was found & how flat \\
 \hline
-\texttt{SURVIVORS\_PER\_WORD} & $0.003$ & the threshold at which the first stage stops; fitted by \texttt{make tune} at $16383$ & $0.0045$ costs $2.7\%$, $0.0075$ (the value before the corrected estimates) $8.6\%$, $0.0015$ to $0.002$ nothing; the same at $2\cdot10^5$ \\
-\texttt{SP2\_EXTRA}, \texttt{SP2\_U0} & $11$, $1.6\cdot10^6$ & the second-stage offset of an arbitrarily long run, and the run length at which a prime's set-up costs as much as its sieving; fitted to four measured optima --- 3, 5, 9 and 12 second-stage primes at $U = 5.9\cdot10^5$, $5.1\cdot10^6$, $8.2\cdot10^7$ and $7.1\cdot10^8$ words --- which the pair reproduces as 3, 8, 11, 11 & a flat offset costs about $5\%$ at one height bound or the other, and the old flat~$5$ costs $12\%$ of \texttt{testhighmany}; only \texttt{tune} and \texttt{tunehigh} together separate the two \\
-\texttt{COST\_TABLE} & $38$ & one row of a sieving table; measured at 18 to 30 & flat from 20 to 70: $0.9515$ at 38 against $1$ at 0, $0.9619$ at 140 \\
-\texttt{COST\_BP}, \texttt{COST\_SETUP} & $8$, $30$ & a denominator's entry in the list of reduced denominators, and the fill of a sieve entry per denominator; measured & 8 against 24 within $0.3\%$ \\
-\texttt{COST\_CALL}, \texttt{COST\_LINE} & $50$, $4.5$ & a call of the sieve per modulus (12 to 13 cycles) and the fetch of a table row per denominator (1.2 cycles per cache line); measured for the corrected estimates & not swept singly; part of the group whose refit moved the threshold \\
-\texttt{COST\_PHASE2}, \texttt{COST\_SURVIVOR} & $110$, $1400$ & one second-stage \texttt{AND}, and one survivor of the second stage; the first measured at 155 (random) and 61 (point-rich) at $2\cdot10^5$ & 60, 100 and 220 within about $2\%$ of 110 \\
-\texttt{SP3\_PER\_SURVIVOR}, \texttt{SP3\_PER\_DENOM} & $0.055$, $0.013$ & the third stage's costs per survivor tested and per denominator, as fractions of one exact check (250 to 280 cycles beyond the first for a denominator, some 190 once per denominator, 3.5 per step carrying $b$ past a prime) & the per-denominator value from $0.003$ to $0.05$ within $1.2\%$; a fixed \verb+-P+ never beats the rule by more than $0.3\%$ \\
-\texttt{CHECK\_STEP}, \texttt{\_LIMB}, \texttt{\_CALL}, \texttt{\_ROOT}; \texttt{CHECK\_REFERENCE} & $29$, $8$, $94$, $170$; $306$ & the exact check: a Horner step, a further limb, the call, a further limb of the root, in cycles, and the value for a degree-6 curve with small coefficients; from \texttt{make bench\_check} (in the sieve the check costs $44 + 1.44$ times the microbenchmark) & only ratios between curves enter; the estimate agrees with the sieve to $6\%$ over degrees 3 to 12; scaling every curve's value alike from 306 to 1000 moves no suite by $0.5\%$ \\
+\texttt{SURVIVORS\_PER\_WORD} & $0.003$ &
+  the threshold at which the first stage stops taking moduli; fitted by
+  \texttt{make tune} at $16383$ &
+  $0.0045$ costs $2.7\%$ and $0.0075$ costs $8.6\%$; $0.0015$ to $0.002$
+  cost nothing; the same at $2\cdot10^5$ \\[3pt]
+\texttt{SP2\_EXTRA}, \texttt{SP2\_U0} & $11$, $1.6\cdot10^6$ &
+  the second-stage offset of an arbitrarily long run, and the run length at
+  which a prime's set-up costs as much as its sieving; fitted to four
+  measured optima --- 3, 5, 9 and 12 second-stage primes at $U =
+  5.9\cdot10^5$, $5.1\cdot10^6$, $8.2\cdot10^7$ and $7.1\cdot10^8$ words ---
+  which the pair reproduces as 3, 8, 11, 11 &
+  a flat offset (\verb+-U 0+) costs about $5\%$ at one height bound or the
+  other; a flat~$5$ costs $12\%$ of \texttt{testhighmany}; only
+  \texttt{tune} and \texttt{tunehigh} together separate the two \\[3pt]
+\texttt{COST\_TABLE} & $38$ &
+  one row of a sieving table; measured at 18 to 30 &
+  flat from 20 to 70: $0.9515$ at 38 against $1$ at 0, $0.9619$ at 140 \\[3pt]
+\texttt{COST\_BP}, \texttt{COST\_SETUP} & $8$, $30$ &
+  a denominator's entry in the list of reduced denominators, and the fill
+  of a sieve entry per denominator; measured &
+  8 against 24 within $0.3\%$ \\[3pt]
+\texttt{COST\_CALL}, \texttt{COST\_LINE} & $50$, $4.5$ &
+  a call of the sieve per modulus (12 to 13 cycles) and the fetch of a table
+  row per denominator (1.2 cycles per cache line); measured &
+  not swept singly; fitted as one group with the threshold \\[3pt]
+\texttt{COST\_PHASE2}, \texttt{COST\_SURVIVOR} & $110$, $1400$ &
+  one second-stage \texttt{AND}, and one survivor of the second stage; the
+  first measured at 155 (random) and 61 (point-rich) at $2\cdot10^5$ &
+  60, 100 and 220 within about $2\%$ of 110 \\[3pt]
+\texttt{SP3\_PER\_SURVIVOR}, \texttt{SP3\_PER\_DENOM} & $0.055$, $0.013$ &
+  the third stage's costs per survivor tested and per denominator, as
+  fractions of one exact check; measured: 250 to 280 cycles for a check
+  beyond the first of a denominator, some 190 once per denominator, 3.5 per
+  step carrying $b$ past a prime &
+  the per-denominator value from $0.003$ to $0.05$ within $1.2\%$; a fixed
+  \verb+-P+ never beats the rule by more than $0.3\%$ \\[3pt]
+\texttt{CHECK\_STEP}, \texttt{\_LIMB}, \texttt{\_CALL}, \texttt{\_ROOT} &
+  $29$, $8$, $94$, $170$ &
+  the exact check, in rdtsc cycles: a Horner step, a further limb, the
+  call, a further limb of the root; from \texttt{make bench\_check} (in the
+  sieve the check costs $44 + 1.44$ times the microbenchmark) &
+  only ratios between curves enter; the estimate agrees with the sieve to
+  $6\%$ over degrees 3 to 12 \\[3pt]
+\texttt{CHECK\_REFERENCE} & $306$ &
+  the same for a degree-6 curve with small coefficients, which is what
+  \verb+-W 306+ assumes for every curve &
+  scaling every curve's value alike from 306 to 1000 moves no suite by
+  $0.5\%$ \\
 \end{tabular}
-\caption{The constants of the cost model: their values, where they came from, and how much a different value costs.}\label{tab:constants}
+\caption{The constants of the cost model: their values, where they came
+from, and how much a different value costs.}\label{tab:constants}
 \end{table}
+
 Two properties of the model are worth more than any single value. First,
 the rules sit at their own optimum, so a constant off by a factor of two
 costs under three per cent, and a better estimate of one moves the boundary
 by about one prime, which is by definition worth about what it costs; that
-is why the per-curve estimate of the exact check's cost changed no running
+is why the per-curve estimate of the exact check's cost changes no running
 time by half a per cent and is there so that the constants mean what they
 say. Second, the estimates the rules feed on --- the words the run will
 sweep, the denominators it will visit, the bits set per word, the density
-of a modulus --- had to be corrected as one group and the constants refitted
-with them, because each correction alone looked worse: the constants had
-been fitted with the old estimates and absorbed their errors. After the
-corrections the predicted words per denominator are within $1.5\%$ of the
-count at every height bound from $200$ to $2\cdot10^5$, and the automatic
-choice of the first-stage moduli beats or ties the best fixed \verb+-n+ in
-every one of eighteen combinations of suite, height bound and modulus cap.
-A finer point of the same kind: three conventions for the density of a
-prime and of its powers were measured, and the mixed one --- the prime
-approximated, the power exact --- was best on every suite. A fitted model
-absorbs its approximations, and ``more exact'' can be worse.
+of a modulus --- and the fitted constants form one system: the constants are
+fitted with the estimates in place and absorb whatever error the estimates
+have, so a more accurate estimate on its own makes the program slower, and
+has to be judged after a refit of the constants (\texttt{make tune}), not
+before. As they stand, the predicted words per denominator are within
+$1.5\%$ of the count at every height bound from $200$ to $2\cdot10^5$, and
+the automatic choice of the first-stage moduli beats or ties the best fixed
+\verb+-n+ in every one of eighteen combinations of suite, height bound and
+modulus cap. A finer point of the same kind: three conventions for the
+density of a prime and of its powers were measured, and the mixed one ---
+the prime approximated, the power exact --- is the best on every suite. A
+fitted model absorbs its approximations, and ``more exact'' can be worse.
 
 \subsection{What each change was worth}\label{app:worth}
 
-Cycles after the change over cycles before it, on the four suites (random
-and point-rich curves at $16383$ and at $2\cdot10^5$) and, where it matters,
-at the small height bounds; each measured as described above against the
-program as it stood when the change was made, so the rows do not multiply
-out to the totals of Section~\ref{sec:changelog}. A dash is a change
-within the noise. Table~\ref{tab:worth} has them.
-\begin{table}[tbp]\footnotesize\setlength{\tabcolsep}{4pt}
-\begin{tabular}{p{5.9cm}rrrrp{3.1cm}}
-change & \texttt{test1} & \texttt{many} & \texttt{high} & \texttt{highmany} & elsewhere \\
+Table~\ref{tab:worth} gives, for each change, the cycles with it over the
+cycles without it on the four suites --- random and point-rich curves at
+the height bound $16383$ (\texttt{make test1} and \texttt{test1many}) and at
+$2\cdot10^5$ (\texttt{testhigh} and \texttt{testhighmany}) --- and, where it
+matters, at other height bounds or on the suite of curves of degrees 3, 4,
+7 and~8 (\texttt{make testdegrees}). Each was measured as described above,
+against the program as it stood when the change was made, so the rows do
+not multiply out to the totals of Section~\ref{sec:changelog}. A dash is a
+change within the noise; an empty cell was not measured.
+
+\begin{table}[tbp]\footnotesize\setlength{\tabcolsep}{3pt}%
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}P{7.3cm}rrrrP{3.8cm}@{}}
+ & \multicolumn{2}{c}{height $16383$} & \multicolumn{2}{c}{height $2\cdot10^5$} & \\
+change & random & rich & random & rich & elsewhere \\
 \hline
-\texttt{sp1}, \texttt{sp2} from the survival rate; the tight scan over the empty arrays (against 2.2.3) & $0.86$ & $0.64$ & & & \\
-further primes for starved curves, \texttt{PRIME\_SIZE}~8 & -- & -- & -- & -- & $0.50$ to $0.75$ on the curves it applies to \\
-the survivors found by counting trailing zeros & $0.99$ & $0.95$ & $0.98$ & $0.98$ & \\
-the table set-up: the branch on the residue test becomes a shift, four rows at a time & $0.87$ & $0.98$ & -- & -- & the tables $3.7\times$ faster \\
+\texttt{sp1}, \texttt{sp2} chosen from the survival rate; the tight scan
+  over the empty arrays & $0.86$ & $0.64$ & & & \\
+further primes for starved curves; \texttt{PRIME\_SIZE}~8 & -- & -- & -- & --
+  & $0.50$ to $0.75$ on the curves it applies to \\
+survivors located by counting trailing zeros & $0.99$ & $0.95$ & $0.98$ & $0.98$ & \\
+the table set-up: the residue test's branch becomes a shift, four rows at a
+  time & $0.87$ & $0.98$ & -- & -- & the tables $3.7\times$ faster \\
 the third sieving stage & -- & $0.98$ & $0.98$ & $0.93$ & \\
 reductions by a multiply-high instead of a subtraction chain & $0.97$ & $0.97$ & $0.98$ & $0.98$ & \\
-the run length known in advance: cost-aware ranking, the offset scaled, the survivors counted, the check's cost estimated & $0.94$ & -- & -- & $0.88$ & degrees $0.86$ \\
-the first stage writes the arrays: no fill pass & $0.97$ & -- & $0.94$ & $0.97$ & degrees at $2\cdot10^5$ $0.95$ \\
-the valuation test at primes dividing the leading coefficient & $0.92$ & $0.98$ & $0.91$ & $0.98$ & degrees $0.95$ \\
-the scan into a sentinel; the second stage's row by the reciprocal & $0.97$ & $0.97$ & $0.93$--$0.96$ & $0.93$--$0.96$ & \\
-the denominator side: Legendre-symbol tables, 64 denominators a word, reciprocals, a branchless gcd, forbidden divisors to $\sqrt H$, the third stage set up on demand & $0.76$ & $0.96$ & $0.94$ & $0.98$ & \\
-no padding: the tail in legs of 8, 4, 2, 1 & $0.90$ & $0.94$ & $0.98$ & $0.98$--$1.00$ & $0.81$ at 1000 and 4000, $0.92$ at 200 \\
-the 2-adic information modulo 64 & $0.97$ & $0.98$ & $0.97$ & $0.99$ & $0.97$--$0.98$ at 200 to 4000 \\
-the third stage looks further; even denominators at half width & -- & $0.99$ & -- & -- & the exact checks of \texttt{highmany} $4.6\times$ fewer \\
-each denominator class packed with its 2-adic stride & $0.91$ & $0.99$ & $0.875$ & $0.98$ & $0.97$ at 4000, $1.035$ at 1000, $1.05$ at 200 \\
-composite moduli up to 64 & $0.92$ & -- & $0.89$ & $0.96$ & nothing below a few hundred \\
-the first-stage rule prices the tables and the downstream cost & -- & -- & -- & -- & $0.76$ at 200, $0.86$ at 1000, $0.99$ at 4000 \\
-the estimates corrected as a group, the constants refitted & $0.995$ & $0.985$ & $0.993$ & $0.981$ & $1.00$ to $1.03$ at 200 to 4000 \\
+the run length known in advance: cost-aware ranking, the offset scaled, the
+  survivors counted, the check's cost estimated & $0.94$ & -- & -- & $0.88$
+  & $0.86$ on the degree suite \\
+the first stage writes the arrays: no fill pass & $0.97$ & -- & $0.94$ & $0.97$
+  & $0.95$ on the degree suite at $2\cdot10^5$ \\
+the valuation test at primes dividing the leading coefficient & $0.92$ & $0.98$
+  & $0.91$ & $0.98$ & $0.95$ on the degree suite \\
+the scan into a sentinel; the second stage's row by the reciprocal & $0.97$
+  & $0.97$ & $0.93$--$0.96$ & $0.93$--$0.96$ & \\
+the denominator side: Legendre-symbol tables, 64 denominators a word,
+  reciprocals, a branchless gcd, forbidden divisors up to $\sqrt H$, the
+  third stage set up on demand & $0.76$ & $0.96$ & $0.94$ & $0.98$ & \\
+no padding: the tail in legs of 8, 4, 2, 1 words & $0.90$ & $0.94$ & $0.98$
+  & $0.98$--$1.00$ & $0.81$ at 1000 and 4000, $0.92$ at 200 \\
+the 2-adic information modulo 64 & $0.97$ & $0.98$ & $0.97$ & $0.99$
+  & $0.97$--$0.98$ at 200 to 4000 \\
+the third stage looks further; even denominators at half width & -- & $0.99$
+  & -- & -- & $4.6\times$ fewer exact checks on the point-rich curves at
+  $2\cdot10^5$ \\
+each denominator class packed with its 2-adic stride & $0.91$ & $0.99$
+  & $0.875$ & $0.98$ & $0.97$ at 4000, $1.035$ at 1000, $1.05$ at 200 \\
+composite moduli up to 64 & $0.92$ & -- & $0.89$ & $0.96$ & nothing below a
+  few hundred \\
+the first-stage rule prices the tables and the downstream cost & -- & -- & --
+  & -- & $0.76$ at 200, $0.86$ at 1000, $0.99$ at 4000 \\
+the estimates of the run (words, denominators, bits per word, densities)
+  made accurate, the constants refitted & $0.995$ & $0.985$ & $0.993$
+  & $0.981$ & $1.00$ to $1.03$ at 200 to 4000 \\
 \end{tabular}
-\caption{What each change was worth: cycles after over cycles before, on the random and the point-rich curves at $16383$ (\texttt{test1}, \texttt{many}) and at $2\cdot10^5$ (\texttt{high}, \texttt{highmany}).}\label{tab:worth}
+\caption{What each change was worth: cycles with it over cycles without
+it, on the random and the point-rich curves at the height bounds $16383$
+and $2\cdot10^5$; a dash is a change within the noise.}\label{tab:worth}
 \end{table}
-The suite of curves of degrees 3, 4, 7 and~8 gained most from the changes
-to the model because it is the one set none of the constants had been
-fitted on: rules carry over where fitted constants do not. The largest
-single gain on the random curves at $16383$ came from the denominator side,
-where the Jacobi symbol computed by a binary algorithm for every
-denominator had been $12\%$ of the run and a third of its mispredicted
-branches; the largest at $2\cdot10^5$ from the stride, which sweeps $15\%$
-fewer bit arrays.
+
+The degree suite gained most from the changes to the model because it is
+the one set none of the constants had been fitted on: rules carry over
+where fitted constants do not. The largest single gain on the random curves
+at $16383$ came from the denominator side, where the Jacobi symbol computed
+by a binary algorithm for every denominator had been $12\%$ of the run and
+a third of its mispredicted branches; the largest at $2\cdot10^5$ from the
+stride, which sweeps $15\%$ fewer bit arrays.
 
 \subsection{What was tried and did not pay}\label{app:declined}
 
@@ -1994,9 +2107,9 @@ fewer bit arrays.
         counters say the number of second-stage \texttt{AND} steps is the same
         to $1.5\%$ at 64, 128, 256 and 512 bits, and a hybrid that scans at
         the register width and sieves the surviving words one at a time
-        (what \texttt{USE\_LONG\_IN\_PHASE\_2} now means) is a wash to $4\%$
-        slower: a narrow and a wide read of the same table come from one
-        cache line, so there was never any traffic to save.
+        (which is what \texttt{USE\_LONG\_IN\_PHASE\_2} selects) is a wash to
+        $4\%$ slower: a narrow and a wide read of the same table come from
+        one cache line, so there was never any traffic to save.
   \item \emph{Byte rotations in the table set-up.} Holding the $p$-bit pattern
         in eight shifted copies makes every row an unaligned load; but the
         rotation was never the expensive part --- three quarters of the set-up
@@ -2016,17 +2129,17 @@ fewer bit arrays.
         $28\%$ of the first stage at 256 bits, against a cache cliff worth at
         most $17\%$ and only for curves that reach eighteen or more
         first-stage primes; worse with 512-bit registers, where seven offsets
-        in eight split a line. Ordering the tables by prime was already the
-        case in effect, since they are built lazily in the order of use, and
-        the TLB is not a constraint.
-  \item \emph{Testing several bit arrays at once in the scan} paid when the
-        number of first-stage primes was fixed and the proportion of
-        surviving arrays varied widely; with the rate pinned at a few per
-        cent a group containing a survivor wastes its whole \texttt{OR}, and
-        a group of one wins. Per-chunk survivor flags computed in the first
-        stage were prototyped three ways: the branchy form mispredicted, the
-        branchless forms spilled, since all sixteen vector registers hold
-        live arrays. The sentinel was the answer.
+        in eight split a line. Ordering the tables by prime, proposed for the
+        same reason, is the case in effect already, since they are built
+        lazily in the order of use; and the TLB is not a constraint.
+  \item \emph{Testing several bit arrays at once in the scan} pays only when
+        the proportion of surviving arrays varies widely, as it does when the
+        number of first-stage primes is fixed; with the rate pinned at a few
+        per cent by the rule, a group containing a survivor wastes its whole
+        \texttt{OR}, and a group of one wins. Per-chunk survivor flags
+        computed in the first stage were prototyped three ways: the branchy
+        form mispredicted, the branchless forms spilled, since all sixteen
+        vector registers hold live arrays. The sentinel was the answer.
   \item \emph{Compiler switches.} \texttt{-funswitch-loops} removes one to
         three per cent of the instructions and none of the cycles;
         profile-guided optimisation removed $6.5\%$ of the instructions and
@@ -2056,10 +2169,11 @@ fewer bit arrays.
   \item \emph{Blocking the prime loop for the cache} and \emph{a two-copy
         table layout} were proposed for cores with a 32~KB first-level cache
         or with 256-bit loads executed as two halves; on this machine's
-        performance cores they lose, on its efficiency cores the review
-        predicted gains of $9\%$ and of up to $46\%$ of the first stage. Their
-        sign depends on the cache size, so they belong behind a run-time
-        gate and a measurement on such a machine, and were not built.
+        performance cores they lose, and for its efficiency cores an
+        analysis of the loop predicted gains of $9\%$ and of up to $46\%$ of
+        the first stage. Their sign depends on the cache size, so they belong
+        behind a run-time gate and a measurement on such a machine, and were
+        not built.
 \end{itemize}
 
 \subsection{How much of it is this machine}\label{app:machine}
@@ -2091,24 +2205,25 @@ of some forty lines in \texttt{rp-private.h}.
 \begin{itemize}
   \item Bit $j$ of \texttt{den\_bits} is the class $b \equiv j \bmod 64$, not
         $b - 1$, although the set-up shifts by $(b_{\text{low}} - 1) \bmod 64$:
-        the loop shifts before it tests. Read the other way it inverted the
-        parity for a third of the curves and made the run-length estimate
-        $2.4$ times too small, and it looked like a modelling error.
+        the loop shifts before it tests. Read the other way, it inverts the
+        parity for a third of the curves and makes the run-length estimate
+        $2.4$ times too small, which looks like a modelling error.
   \item Changing the number of moduli in the middle of a run is safe for
         correctness --- sieving only removes numerators that cannot be points
         --- but not for the bookkeeping: the list of moduli must hold every
         informative one, the list of reduced denominators must be sized for
         all of them, and the buffer of sieving tables must cover every prime
         looked at, since a prime the third stage held may be promoted and
-        suddenly build a table. The last was a segmentation fault.
+        suddenly build a table. Missing the last is a segmentation fault.
   \item Anything added to the sieve entry structure is read in the innermost
-        loop of the first stage; eight more bytes gave back half of a gain.
+        loop of the first stage; eight more bytes cost about $1.5\%$ of a
+        long run.
   \item The sixteen-register ladder of the first stage stays hand-written:
         as an array of sixteen registers gcc spills it, $15\%$ slower. The
         tail legs need \texttt{\#pragma GCC unroll} to keep their smaller
         arrays in registers, and a variable that is in fact a constant must be
         written as one --- an offset written as \texttt{t \& \~{}15} instead
-        of~\texttt{0} kept eight index registers live and spilled five per
+        of~\texttt{0} keeps eight index registers live and spills five per
         prime.
   \item \texttt{prime[]} holds the odd primes only, so \texttt{prime[0]} is~3.
   \item With \texttt{PRIME\_SIZE}~9 the mask that records which primes a
