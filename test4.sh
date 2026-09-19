@@ -30,7 +30,7 @@
 # for the register widths and the other compile-time switches.
 #
 # The first part prints points and messages that are the same in 2.2.4 and
-# 2.3; the second part looks at the reports of -v, whose texts differ
+# 3.0.0; the second part looks at the reports of -v, whose texts differ
 # between the versions; the third uses options that 2.2.4 does not have.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
@@ -51,7 +51,7 @@ f() { filt=$1; shift
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
-# the options, which differ between 2.2.4 and 2.3)
+# the options, which differ between 2.2.4 and 3.0.0)
 e() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo
       out=$("$RP" "$@"); st=$?
       printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\['
@@ -633,7 +633,7 @@ f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
 
-echo '==== part 3: the options of 2.3 ===='
+echo '==== part 3: the options of 3.0.0 ===='
 # the constants of the rules that choose the sieving primes, set on the
 # command line: the threshold, the offset, the run length, the table cost,
 # the third stage's cost per denominator and the cost of an exact check;

@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.3                                                     *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -34,11 +34,11 @@
 #include <string.h>
 
 /* The code assumes that an unsigned long has 64 bits, and has done so since
- * version 2.3; the last version that accommodates a 32-bit long is 2.2.4.
+ * version 3.0.0; the last version that accommodates a 32-bit long is 2.2.4.
  * The test is for exactly 64 bits, and it is written so that it is right in
  * every mode of preprocessor arithmetic. */
 #if (((ULONG_MAX >> 31) >> 31) >> 1) != 1
-# error "ratpoints needs a 64-bit long since version 2.3; use version 2.2.4 on this machine"
+# error "ratpoints needs a 64-bit long since version 3.0.0; use version 2.2.4 on this machine"
 #endif
 /* The same test in C proper, for a <limits.h> that defines ULONG_MAX in a
  * form no #if can evaluate (a cast, or ~0UL, which every #if computes in its
@@ -472,7 +472,7 @@ typedef struct { ratpoints_bit_array bits; long k; long a0; const long *offset; 
 /* the type of the functions used for initializing the sieve */
 typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 
-/* A sieving modulus need not be a prime (2.3, TODO item 21).  A table row
+/* A sieving modulus need not be a prime (3.0.0, TODO item 21).  A table row
  * only has to be periodic in the bit index with the modulus as its period,
  * selected by the denominator's residue, and the first two phases read it
  * the same way whatever the modulus is.  Three kinds of modulus are sieved

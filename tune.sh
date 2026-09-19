@@ -64,7 +64,7 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # moves a value, it has not finished looking, and should be run again from
 # there.
 #
-# The offset is the third constant's business too.  Since version 2.3 it is
+# The offset is the third constant's business too.  Since version 3.0.0 it is
 # the number of extra primes an arbitrarily long run wants, and a run of U
 # numerator words gets sp2_extra/(1 + U0/U) of them, so the ladder for it is
 # wider than it used to be and the value that suits a short run is not the
@@ -86,7 +86,7 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # The fifth constant is what carrying one third-stage prime costs per
 # denominator, as a fraction of one exact check.  It decides whether the third
 # stage runs at all on a curve (ratpoints.h, RATPOINTS_SP3_PER_DENOM); since
-# 2.3 the stage's set-up is done on demand, for the denominators that bring a
+# 3.0.0 the stage's set-up is done on demand, for the denominators that bring a
 # survivor that far, so the cost is smaller than it was when the constant was
 # first fitted, and the ladder reaches down accordingly.
 R_VALUES=${R_VALUES:-"0.0015 0.002 0.0045 0.0075"}
