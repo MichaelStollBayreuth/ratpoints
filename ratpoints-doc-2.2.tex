@@ -1133,6 +1133,28 @@ review of the code and running the new test suite turned up:
         \texttt{make test1once} runs the test curves with the structure filled
         once, and \texttt{make test3} runs one or more invocations of
         \texttt{ratpoints} per bug against a reference.
+  \item The library tested whether the leading coefficient is a square before
+        it checked the coefficient pointer for \texttt{NULL}, so that a caller
+        passing \texttt{NULL} crashed instead of getting the error code back.
+  \item An empty coefficient string made the program report
+        ``Bug no.~1 --- please report!'' instead of refusing the input.
+  \item At the very top of the range of a \texttt{long}, three things went
+        wrong: a search interval that reached the last few hundred numerators
+        below~$2^{63}$ was dropped without a word, two computations on the
+        position of its last bit having overflowed; the loop over every
+        denominator never ended when the denominator bound was $2^{63}-1$,
+        since the increment wraps around; and the loops over the square
+        denominators formed $b^2$ and $d\,b^2$, which overflow within
+        $2\cdot10^9$ of it.
+  \item The test on the valuation of a denominator $d\,b^2$ at a prime
+        dividing the leading coefficient applied \texttt{abs}, the
+        \texttt{int} function, to a \texttt{long}, so that for denominators
+        above~$2^{31}$ it judged the low 32~bits only and could exclude a
+        denominator that carries a point: a point with denominator
+        $3\cdot 59827^2$ was missed.
+  \item Not a bug, but wasted time: the loops over the square denominators
+        started at~1 whatever the lower bound \verb+-dl+ said; they now start
+        at the first square in the range.
   \item Also fixed: four left shifts of negative values
         (undefined in C, harmless with gcc so far), two arrays that could be
         declared with length zero under \verb+-n 0 -N 0+, an overflow in the
