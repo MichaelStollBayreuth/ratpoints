@@ -3285,7 +3285,8 @@ static long find_points_work_1(ratpoints_args *args,
 
   int point_at_infty = 0; /* indicates if there are points at infinity */
   int sturm_empty = 0;    /* the positivity region misses the search domain */
-  int lcfsq = mpz_perfect_square_p(c[degree]);
+  int lcfsq;             /* whether the leading coefficient is a square;
+                           set once the degree is known, below */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -3334,6 +3335,7 @@ static long find_points_work_1(ratpoints_args *args,
       return(RATPOINTS_NON_SQUAREFREE);
   } }
   if(degree <= 0) return(RATPOINTS_BAD_ARGS);
+  lcfsq = mpz_perfect_square_p(c[degree]);
 
 #ifdef DEBUG
   printf("\nfind_points_work: sanity checks...\n"); fflush(NULL);

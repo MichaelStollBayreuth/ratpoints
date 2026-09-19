@@ -427,7 +427,7 @@ fill_checks(long b, check_spec *csp, ratpoints_args *args)
      * non-negative, so that the reduction can be the cheap one; a zero
      * says the shifted value would not fit and the slow path is to be
      * taken (see stage3()) */
-    cs->bias = ((double)p*(double)(2*height) < RP_STAGE3_LIMIT)
+    cs->bias = ((double)p*2.0*(double)height < RP_STAGE3_LIMIT)
                  ? p*height : 0;
   }
   args->stage3_filled = 1;
