@@ -3098,18 +3098,22 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         high = (high - a0) >> k;
       }
 
-      /* now turn the bit interval into [low, high[ */
-      high++;
-
-      if(low < high)
+      /* The bit interval is [low, high], both ends included.  (It used to
+       * be made half-open by high++, and the bit arrays counted as
+       * CEIL(high, RBA_LENGTH) = (high + RBA_LENGTH - 1) >> RBA_SHIFT; both
+       * overflow a long when the last bit is within RBA_LENGTH of LONG_MAX,
+       * which a height bound that close to it reaches, and the interval
+       * was then dropped without a word.) */
+      if(low <= high)
       { long w_low, w_high;
         long w_low0, w_high0;
         long range = args->array_size;
 
-        /* Now the range of longwords (= bit_arrays) */
+        /* Now the range of longwords (= bit_arrays): the one holding the
+         * first bit to the one past the last; the shifts round down for
+         * negative values too */
         w_low = low >> RBA_SHIFT; /* FLOOR(low, RBA_LENGTH); */
-        w_high = (high + RBA_LENGTH - 1) >> RBA_SHIFT;
-                                 /* CEIL(high, RBA_LENGTH); */
+        w_high = (high >> RBA_SHIFT) + 1;
         w_low0 = w_low;
         w_high0 = w_low0 + range;
         for( ; w_low0 < w_high; w_low0 = w_high0, w_high0 += range)
@@ -3132,8 +3136,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             /* lower bits of the first bit array are to be set to zero */
             { mask_low = low - RBA_LENGTH * w_low; }
             if(w_high0 == w_high)
-            /* upper bits of the last bit array are to be set to zero */
-            { mask_high = RBA_LENGTH * w_high - high; }
+            /* upper bits of the last bit array are to be set to zero:
+             * those above the last bit, high mod RBA_LENGTH */
+            { mask_high = RBA_LENGTH - 1 - (high & (RBA_LENGTH - 1)); }
 
             total += _ratpoints_sift0(b, w_low0, w_high0, args, cls,
                                       survivors, mask_low, mask_high,
@@ -3256,6 +3261,9 @@ long find_points_work(ratpoints_args *args,
   long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
   long result;
 
+  /* the degree sizes an array of find_points_work_1 before that function
+   * can check anything, so a negative one is refused here */
+  if(args->degree < 0) { return(RATPOINTS_BAD_ARGS); }
   /* sp3 is a working field the caller never sets, and the three _used
    * fields are outputs: they stay 0 when the search ends before it has
    * chosen its primes (no real points, nothing admissible mod 64, ...). */
@@ -3285,7 +3293,8 @@ static long find_points_work_1(ratpoints_args *args,
 
   int point_at_infty = 0; /* indicates if there are points at infinity */
   int sturm_empty = 0;    /* the positivity region misses the search domain */
-  int lcfsq = mpz_perfect_square_p(c[degree]);
+  int lcfsq;             /* whether the leading coefficient is a square;
+                           set once the degree is known, below */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
@@ -3334,6 +3343,7 @@ static long find_points_work_1(ratpoints_args *args,
       return(RATPOINTS_NON_SQUAREFREE);
   } }
   if(degree <= 0) return(RATPOINTS_BAD_ARGS);
+  lcfsq = mpz_perfect_square_p(c[degree]);
 
 #ifdef DEBUG
   printf("\nfind_points_work: sanity checks...\n"); fflush(NULL);
@@ -3825,8 +3835,10 @@ static long find_points_work_1(ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        for(b = 1; bb = b*b, bb <= args->b_high; b++)
-        { if(bb >= args->b_low)
+        /* b*b <= b_high, written so that the square cannot overflow */
+        for(b = 1; b <= args->b_high/b; b++)
+        { bb = b*b;
+          if(bb >= args->b_low)
           { const rp_num_class *cl = &cls[bb & 0x3f];
 
             if(EXT0(cl->bits))
@@ -3865,8 +3877,11 @@ static long find_points_work_1(ratpoints_args *args,
           fflush(NULL);
 #endif
 
-          for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
-          { if(bb >= args->b_low)
+          /* d*b*b <= b_high, written so that the product cannot overflow
+           * (the divisors are at most b_high, see setup_us1) */
+          for(b = 1; b <= (args->b_high/(*div))/b; b++)
+          { bb = (*div)*b*b;
+            if(bb >= args->b_low)
             { int flag = 1;
               const rp_num_class *cl = &cls[bb & 0x3f];
 
@@ -4050,6 +4065,7 @@ static long find_points_work_1(ratpoints_args *args,
           }
 #endif
 
+          if(b == LONG_MAX) { break; } /* b++ would overflow */
       } }
     }
     /* de-allocate memory */

@@ -24,8 +24,8 @@
 
 # The main targets are
 #   all         the library, the program and this documentation
-#   test        test1, test1once, test1many, testdegrees, test2, test3 and
-#               timing (see below)
+#   test        test1, test1once, test1many, testdegrees, test2, test3,
+#               test4, testapi and timing (see below)
 #   test1once   the curves of test1 with the input fields of args set once
 #               before the loop: the library must leave them alone
 #   test3       the invocations of test3.sh, regression tests for the bugs
@@ -39,6 +39,22 @@
 #               where the sieve and not the set-up decides the running time
 #   testhighmany  the curves of test1many that run out of primes, at the same
 #               height; testhigh and testhighmany take about a minute each
+#   test4       the invocations of test4.sh, the suite that exercises every
+#               branch of the code -- every degree and shape of curve,
+#               every option, restricted ranges, heights from 1 to 2^63-1,
+#               every error message -- against testbase4; a few seconds.
+#               verify-test4.py checks that reference by brute force
+#   testapi     rpapi, the tests of the library interface that the program
+#               cannot reach (the argument checks and their error codes,
+#               the callback, the flags), against testbase-api
+#   test4configs  test4 again on the library built with the other
+#               compile-time switches: register widths 64, 128, 512,
+#               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7 and
+#               composite moduli off and unbounded (test4-configs.sh);
+#               builds each in a directory of its own, about a minute
+#   coverage    build the sources instrumented for gcov in build-coverage/,
+#               run the tests through that build and print how much of each
+#               source file they executed (coverage.sh); a minute or so
 #   tune        measure the four machine-dependent constants that decide how
 #               many primes each sieving stage uses and which, and write them
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
@@ -193,6 +209,8 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
+            test4.sh testbase4 verify-test4.py test4-configs.sh \
+            rpapi.c testbase-api coverage.sh \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -203,11 +221,12 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest.out rptest-many.out rptest-high.out \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
-            test3.out rptest-once.out rptest-once2.out rptest-once3.out
+            test3.out rptest-once.out rptest-once2.out rptest-once3.out \
+            test4.out testapi.out test4-*.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
-              rptest-degrees ratpoints-debug \
+              rptest-degrees rpapi ratpoints-debug \
               bench_init bench_check ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
@@ -216,7 +235,7 @@ all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1once test1many testdegrees test2 test3 timing
+test: test1 test1once test1many testdegrees test2 test3 test4 testapi timing
 
 # Measure good values for the four machine-dependent constants and write them
 # to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
@@ -350,6 +369,30 @@ test3: ratpoints testbase3 test3.sh
 	./test3.sh > test3.out 2>&1
 	cmp -s testbase3 test3.out || echo ${FAILED}
 
+# The suite that exercises every branch (see test4.sh): a few hundred
+# invocations of ratpoints, against testbase4.  The reference was checked
+# by brute force, independently of the sieve: verify-test4.py does that,
+# and can be run again whenever testbase4 changes.
+test4: ratpoints testbase4 test4.sh
+	./test4.sh > test4.out 2>&1
+	cmp -s testbase4 test4.out || echo ${FAILED}
+
+# The tests of the library interface (see rpapi.c), against testbase-api.
+testapi: rpapi testbase-api
+	./rpapi > testapi.out 2>&1
+	cmp -s testbase-api testapi.out || echo ${FAILED}
+
+# test4 on the library built with the other compile-time switches, each in
+# a build directory of its own (see test4-configs.sh).
+.PHONY: test4configs
+test4configs: testbase4 test4.sh test4-configs.sh
+	./test4-configs.sh
+
+# How much of the code the tests execute, by gcov (see coverage.sh).
+.PHONY: coverage
+coverage: coverage.sh
+	./coverage.sh
+
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out
 	cmp -s testbase2 test2.out || echo ${FAILED}
@@ -386,6 +429,7 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
+	${RM} -r build-coverage build-test4-*
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk
@@ -463,6 +507,9 @@ rptest-degrees: libratpoints.a rptest.c ratpoints.h testdata-degrees.h \
 	${CC} rptest.c -o rptest-degrees \
 	      -DRATPOINTS_TESTDATA='"testdata-degrees.h"' \
 	      ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+rpapi: libratpoints.a rpapi.c ratpoints.h build.stamp
+	${CC} rpapi.c -o rpapi ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 # What is compiled depends on flags, which make cannot see by itself: change
 # CCFLAGS1 or PRIME_SIZE, or retune, and every file must be built again even
