@@ -281,4 +281,29 @@ rest; one regression had already slipped through because of it. The points on th
 checked once against a brute-force search over every coprime pair within a small height bound,
 written independently of the sieve.
 
+`make test4` is a suite of another kind: instead of a thousand curves through one setting, a few
+hundred settings through a few curves, chosen so that every branch of the code runs at least once
+-- every degree from 1 to 100, odd and even, square and non-square leading and constant
+coefficients, every reason to reverse the polynomial, curves with no points modulo some prime or
+no admissible numerator modulo 64, forbidden divisors of every kind, every command-line option,
+restricted denominator ranges and search intervals, height bounds from 1 to 2^62 (with a
+denominator range of one and a narrow search interval, so that the run stays short), and every
+error message. It runs in about a second. Its reference, `testbase4`, was checked by
+`verify-test4.py`, which searches every coprime pair in the range by brute force in arbitrary
+precision, without any sieve, for every invocation that prints points (the two searches too large
+for that were checked against PARI/GP's `hyperellratpoints`); and the released 2.2.4 prints the
+same points for the whole first part. `make testapi` covers the library interface that the program
+cannot reach (the checks on the arguments and their error codes, the callback, the flags), and
+`make test4configs` runs the suite again on the library built with the other compile-time
+switches: register widths 64, 128 and 512, `RATPOINTS_CHUNK=1`, `USE_LONG_IN_PHASE_2`,
+`PRIME_SIZE 7`, and composite moduli off and unbounded. `make coverage` measures what all the tests
+execute, with gcov: 99.9% of the lines of `find_points.c`, 96% of `sift.c`, all of `init.c` and
+`sturm.c`, 99% of `main.c`; what is left is listed in `TESTSUITE-NOTES.md` of the `testsuite`
+branch, and consists of guards against states no caller can produce, arms that other compile-time
+settings reach, and a few conditions the arithmetic makes impossible. Writing the suite found three
+bugs, all fixed: at a height bound of 2^62 the third sieving stage computed `2*height` in a `long`,
+which overflowed and made it reject every point; `find_points_work` tested whether the leading
+coefficient is a square before it checked the coefficient pointer for `NULL`; and an empty
+coefficient string made the program report "Bug no. 1" instead of refusing the input.
+
 There is now [ratpoints-gpu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.
