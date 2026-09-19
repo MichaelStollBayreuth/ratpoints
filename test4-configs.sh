@@ -11,7 +11,9 @@
 # Each configuration is built in a directory of its own, build-test4-<name>,
 # from symbolic links to the sources, so that the build in the working
 # directory is left alone; the directories are removed afterwards unless
-# KEEP is set.  About a quarter of a minute for all of them.
+# KEEP is set.  About a quarter of a minute for all of them.  The exit
+# status is 1 when the output of a build differs from the reference and 2
+# when a build failed (whatever the other builds did).
 #
 # The configurations, as name:flags, the flags separated by commas; they
 # replace CCFLAGS1 of the Makefile (and PRIME_SIZE, for the one that
@@ -45,7 +47,7 @@ for cfg in $CONFIGS; do
   # and would be ignored with a warning; leave it out
   echo "== $name: CCFLAGS1='$flags' PRIME_SIZE=$psize"
   if ! (cd "$dir" && make -s ratpoints CCFLAGS1="$flags" PRIME_SIZE=$psize > make.log 2>&1)
-  then echo "build failed, see $dir/make.log"; status=1; continue; fi
+  then echo "build failed, see $dir/make.log"; status=2; continue; fi
   RP="./$dir/ratpoints" ./test4.sh > "test4-$name.out" 2>&1
   ref=testbase4
   if [ $part2 = no ]
@@ -56,7 +58,7 @@ for cfg in $CONFIGS; do
   fi
   if cmp -s "$ref" "test4-$name.out"
   then echo "ok"; [ -n "$KEEP" ] || rm -rf "$dir" "test4-$name.out"
-  else echo "Test failed! (diff $ref test4-$name.out)"; status=1
+  else echo "Test failed! (diff $ref test4-$name.out)"; [ $status = 2 ] || status=1
   fi
 done
 exit $status

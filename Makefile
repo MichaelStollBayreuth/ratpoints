@@ -97,12 +97,26 @@ TARGETFILES = ratpoints libratpoints.a rptest rpapi ratpoints-debug \
               ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
+# what a test does when its output differs from the reference: print the
+# message and fail the recipe, so that the exit status of make reports it
+FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1once test2 test3 test4 testapi timing
+# The suites "make test" runs, each a target below.  A test whose output
+# differs from its reference prints "Test failed!" and fails its target
+# (make then exits with status 2 and names the target); "make test" runs
+# every suite whatever the earlier ones did and fails at the end if any of
+# them failed.
+TESTS = test1 test1once test2 test3 test4 testapi timing
+
+.PHONY: test
+test:
+	@status=0; for t in ${TESTS}; do \
+	   ${MAKE} --no-print-directory $$t || status=1; done; \
+	 exit $$status
 
 # Run ratpoints on a set of 1000 test cases
 # and check the output
@@ -113,7 +127,7 @@ test1 test2 timing: SHELL = /bin/bash
 
 test1: rptest testbase
 	time ./rptest > rptest.out
-	cmp -s testbase rptest.out || echo ${FAILED}
+	cmp -s testbase rptest.out || ${FAIL}
 
 # The curves of test1 again, with the input fields of args set once before
 # the loop instead of once per curve: the library must not write into
@@ -124,19 +138,16 @@ test1: rptest testbase
 # flags.
 test1once: rptest testbase
 	./rptest -O > rptest-once.out
-	cmp -s testbase rptest-once.out || echo ${FAILED}
+	cmp -s testbase rptest-once.out || ${FAIL}
 	./rptest -O -dl 2 -z > rptest-once2.out
-	grep -q changed rptest-once2.out && echo ${FAILED} || true
+	! grep -q changed rptest-once2.out || ${FAIL}
 
 # Regression tests for the bugs found in the review of September 2026: a
 # list of invocations of ratpoints in test3.sh, against testbase3.
 test3: ratpoints testbase3 test3.sh
 	./test3.sh > test3.out 2>&1
-	cmp -s testbase3 test3.out || echo ${FAILED}
+	cmp -s testbase3 test3.out || ${FAIL}
 
-# Run ratpoints on the curve with the record number of known
-# rational points, with a fairly large height bound,
-# time it and compare with the expected output
 # The suite that exercises every branch of the code (see test4.sh), written
 # for 2.3 and adapted: a few hundred invocations of ratpoints, against
 # testbase4.  The reference was checked by brute force, independently of
@@ -144,27 +155,33 @@ test3: ratpoints testbase3 test3.sh
 # changes.
 test4: ratpoints testbase4 test4.sh
 	./test4.sh > test4.out 2>&1
-	cmp -s testbase4 test4.out || echo ${FAILED}
+	cmp -s testbase4 test4.out || ${FAIL}
 
 # The tests of the library interface (see rpapi.c), against testbase-api.
 testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
-	cmp -s testbase-api testapi.out || echo ${FAILED}
+	cmp -s testbase-api testapi.out || ${FAIL}
 
 # test4 on the library built with the other compile-time switches, each in
-# a build directory of its own (see test4-configs.sh).
+# a build directory of its own (see test4-configs.sh; the script exits with
+# 1 when an output differs from the reference, with 2 when a build failed).
 .PHONY: test4configs
 test4configs: testbase4 test4.sh test4-configs.sh
 	./test4-configs.sh
 
-# How much of the code the tests execute, by gcov (see coverage.sh).
+# How much of the code the tests execute, by gcov (see coverage.sh; the
+# script exits with 1 when an output differs from its reference, with 2
+# when the instrumented build failed).
 .PHONY: coverage
 coverage: coverage.sh
 	./coverage.sh
 
+# Run ratpoints on the curve with the record number of known
+# rational points, with a fairly large height bound,
+# time it and compare with the expected output
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out
-	cmp -s testbase2 test2.out || echo ${FAILED}
+	cmp -s testbase2 test2.out || ${FAIL}
 
 # Time a call to ratpoints with a largish height parameter.
 # This can be helpful to assess modifications to the sieving process.
