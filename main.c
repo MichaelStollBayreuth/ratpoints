@@ -266,7 +266,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
     { degree++; }
     degree--;
     if(scan_mpz(s, fff)) { error(3); }
-    if(degree == 0) { error(5); }
+    if(degree <= 0) { error(5); }
     args->degree = degree;
   }
 

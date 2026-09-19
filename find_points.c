@@ -1198,17 +1198,22 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
       }
 
       /* now turn the bit interval into [low, high[ */
-      high++;
-
-      if(low < high)
+      /* The bit interval is [low, high], both ends included.  (It used to
+       * be made half-open by high++, and the bit arrays counted as
+       * CEIL(high, RBA_LENGTH) = (high + RBA_LENGTH - 1) >> RBA_SHIFT; both
+       * overflow a long when the last bit is within RBA_LENGTH of LONG_MAX,
+       * which a height bound that close to it reaches, and the interval
+       * was then dropped without a word.) */
+      if(low <= high)
       { long w_low, w_high;
         long w_low0, w_high0;
         long range = args->array_size;
 
-        /* Now the range of longwords (= bit_arrays) */
+        /* Now the range of longwords (= bit_arrays): the one holding the
+         * first bit to the one past the last; the shifts round down for
+         * negative values too */
         w_low = low >> RBA_SHIFT; /* FLOOR(low, RBA_LENGTH); */
-        w_high = (high + (long)(RBA_LENGTH-1)) >> RBA_SHIFT;
-                                 /* CEIL(high, RBA_LENGTH); */
+        w_high = (high >> RBA_SHIFT) + 1;
         w_low0 = w_low;
         w_high0 = w_low0 + range;
         for( ; w_low0 < w_high; w_low0 = w_high0, w_high0 += range)
@@ -1233,7 +1238,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
           if(w_high0 == w_high)
           /* set upper bits of the last bit array to zero */
-          { MASKU(&survivors[range-1], RBA_LENGTH * w_high - high); }
+          { MASKU(&survivors[range-1], RBA_LENGTH - 1 - (high & (RBA_LENGTH - 1))); }
 
 #ifdef DEBUG
           printf("survivors[%ld] = ", range-1);
@@ -1297,7 +1302,8 @@ long find_points_work(ratpoints_args *args,
 
   int point_at_infty = 0; /* indicates if there are points at infinity */
   int sturm_empty = 0;    /* the positivity region misses the search domain */
-  int lcfsq = mpz_perfect_square_p(c[degree]);
+  int lcfsq;             /* whether the leading coefficient is a square;
+                           set once the degree is known, below */
 
   forbidden_entry *forb_ba = (forbidden_entry *)args->forb_ba;
   long *forbidden = (long *)args->forbidden;
@@ -1340,6 +1346,7 @@ long find_points_work(ratpoints_args *args,
       return(RATPOINTS_NON_SQUAREFREE);
   } }
   if(degree <= 0) return(RATPOINTS_BAD_ARGS);
+  lcfsq = mpz_perfect_square_p(c[degree]);
 
 #ifdef DEBUG
   printf("\nfind_points_work: sanity checks...\n"); fflush(NULL);
@@ -1788,8 +1795,10 @@ long find_points_work(ratpoints_args *args,
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
         }
 
-        for(b = 1; bb = b*b, bb <= args->b_high; b++)
-        { if(bb >= args->b_low)
+        /* b*b <= b_high, written so that the square cannot overflow */
+        for(b = 1; b <= args->b_high/b; b++)
+        { bb = b*b;
+          if(bb >= args->b_low)
           { ratpoints_bit_array bits = num_bits[bb & 0xf];
 
             if(TEST(bits))
@@ -1840,8 +1849,11 @@ long find_points_work(ratpoints_args *args,
             { bp_list[n] = mod(*div, sieve_list[n]->p); }
           }
 
-          for(b = 1; bb = (*div)*b*b, bb <= args->b_high; b++)
-          { if(bb >= args->b_low)
+          /* d*b*b <= b_high, written so that the product cannot overflow
+           * (the divisors are at most b_high, see setup_us1) */
+          for(b = 1; b <= (args->b_high/(*div))/b; b++)
+          { bb = (*div)*b*b;
+            if(bb >= args->b_low)
             { int flag = 1;
               ratpoints_bit_array bits = num_bits[bb & 0xf];
 
@@ -1990,6 +2002,7 @@ long find_points_work(ratpoints_args *args,
 #endif
 
           }
+          if(b == LONG_MAX) { break; } /* b++ would overflow */
         }
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
@@ -2033,6 +2046,7 @@ long find_points_work(ratpoints_args *args,
           }
 #endif
 
+          if(b == LONG_MAX) { break; } /* b++ would overflow */
       } }
     }
     /* de-allocate memory */
