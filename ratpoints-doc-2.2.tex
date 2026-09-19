@@ -221,7 +221,9 @@ in the working directory. This will build an executable \texttt{rptest} and
 then run (and time) it. Finally, the output (which was written to a file
 \texttt{rptest.out}) is compared against \texttt{testbase}, which contains the
 output of a sample run. The two should be identical; otherwise the
-message \texttt{Test failed!} will be displayed (on its own on a line).
+message \texttt{Test failed!} will be displayed (on its own on a line) and
+the target fails, so that \texttt{make} exits with an error and names the
+test.
 
 \begin{verbatim}
 > make test1once
@@ -291,7 +293,9 @@ and \texttt{PRIME\_SIZE} 8, the larger prime table.  Each is built in a
 directory of its own, so that the build in the working directory is left
 alone (\texttt{test4-configs.sh}); the points found must not depend on
 any of these, so every build is compared against the same
-\texttt{testbase4}.  About a quarter of a minute.
+\texttt{testbase4}.  About a quarter of a minute.  The script exits with
+status 1 when an output differs from the reference and with 2 when a build
+failed; so does \texttt{coverage.sh} below.
 
 \begin{verbatim}
 > make coverage
@@ -314,7 +318,9 @@ Finally,
 \begin{verbatim}
 > make test
 \end{verbatim}
-does all of the above.
+does all of the above, each of them whatever the earlier ones did, and
+fails at the end if any of them failed, so that a script can tell whether
+the build passed.
 
 \subsection{Install}
 

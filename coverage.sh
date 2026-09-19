@@ -11,17 +11,19 @@
 # N taken 0%" after a line says one of its outcomes never happened.  "make
 # coverage" runs this; a minute or so.  The suite was written for 2.3 and
 # adapted; the notes of the 2.3 sources say what is left uncovered there.
+# The exit status is 1 when the output of a test differs from its
+# reference and 2 when the instrumented build failed.
 
 dir=build-coverage
 rm -rf "$dir"; mkdir "$dir"
 for f in Makefile *.c *.h *.sh testbase* ; do ln -s "../$f" "$dir/$f"; done
 rm -f "$dir/find_points.h" "$dir/init_sieve.h"
-cd "$dir" || exit 1
+cd "$dir" || exit 2
 # --coverage is -fprofile-arcs -ftest-coverage at compile time and the
 # profiling library at link time; -O0 last overrides the Makefile's -O2/-O3,
 # so that every branch of the source is a branch of the code
 if ! make -s ratpoints rptest rpapi CCFLAGS='--coverage -O0' > make.log 2>&1
-then echo "build failed, see $dir/make.log"; exit 1; fi
+then echo "build failed, see $dir/make.log"; exit 2; fi
 fail=0
 run() { # name, command, reference
   eval "$2" > "$1.out" 2>&1

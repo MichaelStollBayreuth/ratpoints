@@ -25,6 +25,9 @@
 #       reversal, the search intervals), which no other test looks at; the
 #       numbers of primes are pinned so that they cannot drift
 RP=./ratpoints
+# no program to run: exit 2 (the comparison with the reference is make's,
+# whose target fails with 1 when they differ)
+[ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
 $RP '1 2' 20 -q
 $RP '1 2 0' 50 -q
 $RP '0 19 1' 45 -q

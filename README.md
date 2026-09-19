@@ -29,7 +29,17 @@ library tested whether the leading coefficient is a square before it checked the
 pointer for `NULL`; an empty coefficient string made the program report "Bug no. 1" instead of
 refusing the input; and at the very top of the range of a `long` a search interval reaching the
 last few hundred numerators below 2^63 was dropped without a word, while the loop over the
-denominators never ended when the bound was 2^63-1.
+denominators never ended when the bound was 2^63-1. Two more followed: the loops over the square
+denominators started at 1 whatever the lower bound `-dl` said, which at the top of the range meant
+three thousand million useless squares before the first one in the range, and now start at the
+first square in the range; and the test on the valuation of such a denominator at a prime dividing
+the leading coefficient looked at its low 32 bits only (`abs` where `labs` was meant), so that
+from 2^31 on it could exclude a denominator that carries a point.
+
+A test that fails now fails its `make` target, and `make test` runs all of its suites whatever the
+earlier ones did and fails at the end if any of them failed, so that a script can tell whether the
+build passed. The scripts behind `make test4configs` and `make coverage` exit with status 1 when an
+output differs from its reference and with 2 when a build did not succeed.
 
 There is also a variant that uses 512-bit AVX registers, which needs a CPU with AVX512F capability;
 see the documentation for how to enable it. One caveat: it has not been tested completely, since I

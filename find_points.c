@@ -233,7 +233,7 @@ static long valuation1(long n, long p)
 {
   long v = 0;
   unsigned long rem;
-  unsigned long qn = abs(n);
+  unsigned long qn = labs(n);
   if(n == 0) { return(VERY_BIG); }
   rem = qn % p;
   while(rem == 0)
@@ -242,6 +242,23 @@ static long valuation1(long n, long p)
     rem = qn % p;
   }
   return(v);
+}
+
+/**************************************************************************
+ * Helper function: the least k >= 1 with k^2 >= n, for n >= 1 -- where   *
+ * the loops over the square denominators start.  sqrt in double is exact *
+ * only up to 2^53 and n may exceed that, so the result is corrected by a *
+ * step either way; the comparisons avoid forming k^2, which could        *
+ * overflow near LONG_MAX:  k^2 < n  <==>  k <= (n-1)/k.                  *
+ *************************************************************************/
+
+static long ceil_sqrt(long n)
+{
+  long k = (long)sqrt((double)n);
+
+  while(k > 1 && k - 1 > (n - 1)/(k - 1)) { k--; }  /* (k-1)^2 >= n */
+  while(k <= (n - 1)/k) { k++; }                    /* k^2 < n */
+  return(k);
 }
 
 /**************************************************************************
@@ -1795,35 +1812,35 @@ long find_points_work(ratpoints_args *args,
           { bp_list[n] = mod(args->b_low, sieve_list[n]->p); }
         }
 
-        /* b*b <= b_high, written so that the square cannot overflow */
-        for(b = 1; b <= args->b_high/b; b++)
-        { bb = b*b;
-          if(bb >= args->b_low)
-          { ratpoints_bit_array bits = num_bits[bb & 0xf];
+        /* from the first square in the range; b*b <= b_high, written so
+         * that the square cannot overflow */
+        for(b = ceil_sqrt(args->b_low); b <= args->b_high/b; b++)
+        { ratpoints_bit_array bits;
 
-            if(TEST(bits))
-            { long n;
-              long d = bb - last_b;
+          bb = b*b;
+          bits = num_bits[bb & 0xf];
+          if(TEST(bits))
+          { long n;
+            long d = bb - last_b;
 
-              /* fill bp_list */
-              for(n = 0; n < args->sp2; n++)
-              { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-              last_b = bb;
+            /* fill bp_list */
+            for(n = 0; n < args->sp2; n++)
+            { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+            last_b = bb;
 
-              total += sift(bb, survivors, args, which_bits, bits,
-                            sieve_list, &bp_list[0],
-                            &quit, process, info);
-              if(quit) { break; }
-            }
+            total += sift(bb, survivors, args, which_bits, bits,
+                          sieve_list, &bp_list[0],
+                          &quit, process, info);
+            if(quit) { break; }
+          }
 
 #ifdef DEBUG
-            else
-            { printf("\nb = %ld: excluded mod 16\n", b);
-              fflush(NULL);
-            }
+          else
+          { printf("\nb = %ld: excluded mod 16\n", bb);
+            fflush(NULL);
+          }
 #endif
-
-        } }
+        }
       }
       else /* args->flags & RATPOINTS_USE_SQUARES1 */
       { long *div = &divisors[0];
@@ -1849,47 +1866,48 @@ long find_points_work(ratpoints_args *args,
             { bp_list[n] = mod(*div, sieve_list[n]->p); }
           }
 
-          /* d*b*b <= b_high, written so that the product cannot overflow
-           * (the divisors are at most b_high, see setup_us1) */
-          for(b = 1; b <= (args->b_high/(*div))/b; b++)
-          { bb = (*div)*b*b;
-            if(bb >= args->b_low)
-            { int flag = 1;
-              ratpoints_bit_array bits = num_bits[bb & 0xf];
+          /* from the first multiple of the divisor by a square in the
+           * range; d*b*b <= b_high, written so that the product cannot
+           * overflow (the divisors are at most b_high, see setup_us1) */
+          for(b = ceil_sqrt((args->b_low - 1)/(*div) + 1);
+              b <= (args->b_high/(*div))/b; b++)
+          { int flag = 1;
+            ratpoints_bit_array bits;
 
-              if(EXT0(bits))
-              { long i;
-                long n;
-                long d = bb - last_b;
+            bb = (*div)*b*b;
+            bits = num_bits[bb & 0xf];
+            if(EXT0(bits))
+            { long i;
+              long n;
+              long d = bb - last_b;
 
-                /* fill bp_list */
-                for(n = 0; n < args->sp2; n++)
-                { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
-                last_b = bb;
+              /* fill bp_list */
+              for(n = 0; n < args->sp2; n++)
+              { bp_list[n] = mod(bp_list[n] + d, sieve_list[n]->p); }
+              last_b = bb;
 
-                for(i = 0; den_info[i].p; i++)
-                { int v = valuation1(bb, den_info[i].p);
-                  if((v >= den_info[i].slope)
-                       && ((v + (den_info[i].val)) & 1))
-                  { flag = 0; break; }
-                }
-                if(flag)
-                {
-                  total += sift(bb, survivors, args, which_bits, bits,
-                                sieve_list, &bp_list[0],
-                                &quit, process, info);
-                  if(quit) { break; }
-                }
+              for(i = 0; den_info[i].p; i++)
+              { int v = valuation1(bb, den_info[i].p);
+                if((v >= den_info[i].slope)
+                     && ((v + (den_info[i].val)) & 1))
+                { flag = 0; break; }
               }
+              if(flag)
+              {
+                total += sift(bb, survivors, args, which_bits, bits,
+                              sieve_list, &bp_list[0],
+                              &quit, process, info);
+                if(quit) { break; }
+              }
+            }
 
 #ifdef DEBUG
-              else
-              { printf("\nb = %ld: excluded mod 16\n", b);
-                fflush(NULL);
-              }
+            else
+            { printf("\nb = %ld: excluded mod 16\n", bb);
+              fflush(NULL);
+            }
 #endif
-
-          } }
+          }
         if(quit) { break; }
         }
     } }
