@@ -308,5 +308,16 @@ coefficient string made the program report "Bug no. 1" instead of refusing the i
 reviews of the branch found two more at the very top of the range of a `long`: a search interval
 reaching the last few hundred numerators below 2^63 was dropped without a word, and the loop over
 the denominators never ended when the bound was 2^63-1; both fixed, and the suite now runs there.
+The loops over the square denominators started at 1 whatever the lower bound `-dl` said, which at
+the top of the range meant three thousand million useless squares before the first one in the
+range; they now start at the first square in the range. A planted point above 2^31 also showed that
+2.2.4's test on the valuation of such a denominator at a prime dividing the leading coefficient
+looked at its low 32 bits only (`abs` where `labs` was meant, which this version had corrected
+early on), so that it could exclude a denominator that carries a point; fixed there.
+
+A test that fails now fails its `make` target, and `make test` runs all of its suites whatever the
+earlier ones did and fails at the end if any of them failed, so that a script can tell whether the
+build passed. The scripts behind `make test4configs` and `make coverage` exit with status 1 when an
+output differs from its reference and with 2 when a build did not succeed.
 
 There is now [ratpoints-gpu](https://github.com/wgxli/ratpoints-gpu) by [Samuel Li](https://github.com/wgxli), which has similar functionality, but does the sieving on a GPU, which makes it much faster. His code is independent from what is in this repository.

@@ -36,6 +36,9 @@
 # its own reference.
 
 RP=${RP:-./ratpoints}
+# no program to run: exit 2 (the comparison with the reference is make's,
+# whose target fails with 1 when they differ)
+[ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
 
 # run ratpoints, the arguments announced first
 t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@"; }
@@ -351,9 +354,27 @@ t '1 0 126 0 441' 200 -q -dl -5 -du -5
 # no square in the range; the range starts above the first squares
 t '1 0 0 1' 100 -q -dl 5 -du 8
 t '1 0 0 1' 100 -q -dl 5
+# the loop over the squares starts at the first square in the range,
+# ceil(sqrt(b_low))^2, and the loops over the squares times a divisor d of
+# the leading coefficient at d*ceil(sqrt(b_low/d))^2; y^2 = x^3 + 17 has
+# points with the denominators 1, 4, 9, 25, 64 and 81 below height 300,
+# 12x^3 - x^2 + 2x + 3 with 1, 2, 3, 4, 6, 12, 16, 25, 27, 48, 49, 50, ...
+t '17 0 0 1' 300 -q -dl 4 -du 9
+t '17 0 0 1' 300 -q -dl 5 -du 9
+t '17 0 0 1' 300 -q -dl 2 -du 4
+t '17 0 0 1' 300 -q -dl 9 -du 9
+t '17 0 0 1' 300 -q -dl 10 -du 80
+t '17 0 0 1' 300 -q -dl 26 -du 63
+t '17 0 0 1' 300 -q -dl 65
+t '3 2 -1 12' 300 -q -dl 2 -du 2
+t '3 2 -1 12' 300 -q -dl 3 -du 6
+t '3 2 -1 12' 300 -q -dl 7 -du 12
+t '3 2 -1 12' 300 -q -dl 13 -du 26
+t '3 2 -1 12' 300 -q -dl 49 -du 49
 # a divisor of the leading coefficient beyond the denominator bound
 t '3 2 -1 12' 100 -q -du 5
-# a denominator range without a square times a divisor
+# a denominator range whose squares times divisors are 50 = 2 * 5^2 and
+# 54 = 6 * 3^2
 t '3 2 -1 12' 100 -q -dl 50 -du 60
 # the prime dividing the leading coefficient is beyond the denominator bound
 t '1 2 3' 2 -q
@@ -406,6 +427,12 @@ t '1 1 2305843009213693954' 4611686018427387904 -q -dl 1152921504606846977 -du 1
 t '1 1 6' 4611686018427387904 -q -dl 1152921504606846977 -du 1152921504606846980 -l 0.5 -u 0.50000000000001
 # and with a leading coefficient beyond 2^63
 t '1 1 100000000000000000001' 4611686018427387904 -q -dl 8589934593 -du 8589934600 -l 0 -u 1e-8
+# a denominator above 2^31 in the loop over the squares times the divisors
+# of the leading coefficient, 3 * 59827^2, which is not divisible by 9 but
+# whose low 32 bits are: the test on the valuation at 3 (an even positive
+# v_3(b) is excluded here) must look at the whole denominator.  The point
+# is x = 1/(3k^2) on y^2 = 3x^3 + 9k^6 + 2 again
+t '412691823703593288194398668803 0 0 3' 1099511627776 -q -dl 10737809787 -du 10737809787 -l 0 -u 1.4e-10
 # the leading coefficient 3*5*...*61 has 17 odd prime factors, too many
 # for the table-driven Jacobi symbol test; 971*...*1021 has nine whose
 # non-square tables would not fit
@@ -429,6 +456,17 @@ t '1 1 123135' 300 -q
 t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854767616 -u 1e30
 t '1 0 1' 9223372036854775807 -q -dl 9223372036854775807 -du 9223372036854775807 -l 0.5 -u 0.500000000000001
 t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18
+# the loops over the squares at 2^63 - 1: the range starts at the largest
+# square below it, k^2 for k = 3037000499, which is the only square in the
+# range and carries a planted point, x = 1/k^2 on y^2 = x^3 + k^6 + 2
+# (y = (k^6 + 1)/k^3); then with the leading coefficient 3 and the range
+# starting at 3k^2 for k = 1753413056, the largest with 3k^2 <= 2^63 - 1,
+# where x = 1/(3k^2) lies on y^2 = 3x^3 + 9k^6 + 2 and the loop over the
+# plain squares finds none in the range and must stop at once.  Before
+# the loops started at the first square in the range they ran through
+# three thousand million useless squares here, six seconds
+t '784637715410305245771861851903983139945652963971781747003 0 0 1' 9223372036854775807 -q -dl 9223372030926249001 -du 9223372036854775807 -l 0 -u 1e-18
+t '261545905470885580590835526458680687693017248327589167106 0 0 3' 9223372036854775807 -q -dl 9223372034853777408 -du 9223372036854775807 -l 0 -u 1e-18
 # a height bound just below and above 2^31, with few denominators
 t '1 0 1' 2147483647 -q -dl 1 -du 3 -l 0 -u 1e-8
 t '1 0 1' 2147483648 -q -dl 1 -du 3 -l 0 -u 1e-8

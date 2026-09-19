@@ -400,6 +400,23 @@ static long valuation1(long n, long p)
 }
 
 /**************************************************************************
+ * Helper function: the least k >= 1 with k^2 >= n, for n >= 1 -- where   *
+ * the loops over the square denominators start.  sqrt in double is exact *
+ * only up to 2^53 and n may exceed that, so the result is corrected by a *
+ * step either way; the comparisons avoid forming k^2, which could        *
+ * overflow near LONG_MAX:  k^2 < n  <==>  k <= (n-1)/k.                  *
+ *************************************************************************/
+
+static long ceil_sqrt(long n)
+{
+  long k = (long)sqrt((double)n);
+
+  while(k > 1 && k - 1 > (n - 1)/(k - 1)) { k--; }  /* (k-1)^2 >= n */
+  while(k <= (n - 1)/k) { k++; }                    /* k^2 < n */
+  return(k);
+}
+
+/**************************************************************************
  * Try to avoid divisions                                                 *
  **************************************************************************/
 
@@ -3835,28 +3852,28 @@ static long find_points_work_1(ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        /* b*b <= b_high, written so that the square cannot overflow */
-        for(b = 1; b <= args->b_high/b; b++)
-        { bb = b*b;
-          if(bb >= args->b_low)
-          { const rp_num_class *cl = &cls[bb & 0x3f];
+        /* from the first square in the range; b*b <= b_high, written so
+         * that the square cannot overflow */
+        for(b = ceil_sqrt(args->b_low); b <= args->b_high/b; b++)
+        { const rp_num_class *cl;
 
-            if(EXT0(cl->bits))
-            { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-              total += sift(bb, survivors, args, cl,
-                            sieve_list, &bp_list[0],
-                            &quit, process, info);
-              if(quit) { break; }
-            }
+          bb = b*b;
+          cl = &cls[bb & 0x3f];
+          if(EXT0(cl->bits))
+          { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
+            total += sift(bb, survivors, args, cl,
+                          sieve_list, &bp_list[0],
+                          &quit, process, info);
+            if(quit) { break; }
+          }
 
 #ifdef DEBUG
-            else
-            { printf("\nb = %ld: excluded mod 64\n", b);
-              fflush(NULL);
-            }
+          else
+          { printf("\nb = %ld: excluded mod 64\n", bb);
+            fflush(NULL);
+          }
 #endif
-
-        } }
+        }
       }
       else /* args->flags & RATPOINTS_USE_SQUARES1 */
       { long *div = &divisors[0];
@@ -3877,40 +3894,41 @@ static long find_points_work_1(ratpoints_args *args,
           fflush(NULL);
 #endif
 
-          /* d*b*b <= b_high, written so that the product cannot overflow
-           * (the divisors are at most b_high, see setup_us1) */
-          for(b = 1; b <= (args->b_high/(*div))/b; b++)
-          { bb = (*div)*b*b;
-            if(bb >= args->b_low)
-            { int flag = 1;
-              const rp_num_class *cl = &cls[bb & 0x3f];
+          /* from the first multiple of the divisor by a square in the
+           * range; d*b*b <= b_high, written so that the product cannot
+           * overflow (the divisors are at most b_high, see setup_us1) */
+          for(b = ceil_sqrt((args->b_low - 1)/(*div) + 1);
+              b <= (args->b_high/(*div))/b; b++)
+          { int flag = 1;
+            const rp_num_class *cl;
 
-              if(EXT0(cl->bits))
-              { long i;
+            bb = (*div)*b*b;
+            cl = &cls[bb & 0x3f];
+            if(EXT0(cl->bits))
+            { long i;
 
-                for(i = 0; den_info[i].p; i++)
-                { int v = valuation1(bb, den_info[i].p);
-                  if((v >= den_info[i].slope)
-                       && ((v + (den_info[i].val)) & 1))
-                  { flag = 0; break; }
-                }
-                if(flag)
-                { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-                  total += sift(bb, survivors, args, cl,
-                                sieve_list, &bp_list[0],
-                                &quit, process, info);
-                  if(quit) { break; }
-                }
+              for(i = 0; den_info[i].p; i++)
+              { int v = valuation1(bb, den_info[i].p);
+                if((v >= den_info[i].slope)
+                     && ((v + (den_info[i].val)) & 1))
+                { flag = 0; break; }
               }
+              if(flag)
+              { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
+                total += sift(bb, survivors, args, cl,
+                              sieve_list, &bp_list[0],
+                              &quit, process, info);
+                if(quit) { break; }
+              }
+            }
 
 #ifdef DEBUG
-              else
-              { printf("\nb = %ld: excluded mod 64\n", b);
-                fflush(NULL);
-              }
+            else
+            { printf("\nb = %ld: excluded mod 64\n", bb);
+              fflush(NULL);
+            }
 #endif
-
-          } }
+          }
         if(quit) { break; }
         }
     } }
