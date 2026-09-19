@@ -230,12 +230,26 @@ TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               bench_init bench_check ratpoints-doc-2.2.pdf
 
 FAILED = "Test failed!"
+# what a test does when its output differs from the reference: print the
+# message and fail the recipe, so that the exit status of make reports it
+FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
 doc: ratpoints-doc-2.2.pdf
 
-test: test1 test1once test1many testdegrees test2 test3 test4 testapi timing
+# The suites "make test" runs, each a target below.  A test whose output
+# differs from its reference prints "Test failed!" and fails its target
+# (make then exits with status 2 and names the target); "make test" runs
+# every suite whatever the earlier ones did and fails at the end if any of
+# them failed.
+TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi timing
+
+.PHONY: test
+test:
+	@status=0; for t in ${TESTS}; do \
+	   ${MAKE} --no-print-directory $$t || status=1; done; \
+	 exit $$status
 
 # Measure good values for the four machine-dependent constants and write them
 # to tuning.mk; see tune.sh.  Deliberately not part of "make all": it takes a
@@ -291,7 +305,7 @@ test1 test1many testhigh testhighmany testdegrees test2 timing: SHELL = /bin/bas
 # leading coefficient, see testdata.h -- and check the output
 test1: rptest testbase
 	time ./rptest > rptest.out
-	cmp -s testbase rptest.out || echo ${FAILED}
+	cmp -s testbase rptest.out || ${FAIL}
 
 # The same, but for curves with many rational points, which sieve very
 # differently: about one numerator in 10^4 survives the first phase on a
@@ -301,7 +315,7 @@ test1: rptest testbase
 # helps one regime can easily hurt the other.
 test1many: rptest-many testbase-many
 	time ./rptest-many > rptest-many.out
-	cmp -s testbase-many rptest-many.out || echo ${FAILED}
+	cmp -s testbase-many rptest-many.out || ${FAIL}
 
 # The same two regimes at a height bound of ${TESTHEIGHT} instead of the 16383
 # that test1 and test1many use.  What a suite measures depends a good deal on
@@ -322,13 +336,13 @@ test1many: rptest-many testbase-many
 # output has to be looked at and kept as a reference of its own.
 testhigh: rptest testbase
 	time ./rptest -h ${TESTHEIGHT} > rptest-high.out
-	cmp -s testbase rptest-high.out || echo ${FAILED}
+	cmp -s testbase rptest-high.out || ${FAIL}
 
 # The thirty curves of test1many that run out of sieving primes, at the same
 # height; see testdata-high-many.h for what they are and why just those.
 testhighmany: rptest-high-many testbase-high-many
 	time ./rptest-high-many -h ${TESTHEIGHT} > rptest-high-many.out
-	cmp -s testbase-high-many rptest-high-many.out || echo ${FAILED}
+	cmp -s testbase-high-many rptest-high-many.out || ${FAIL}
 
 # Run ratpoints on the curve with the record number of known
 # rational points, with a fairly large height bound,
@@ -346,7 +360,7 @@ testhighmany: rptest-high-many testbase-high-many
 # sieve; see scripts/verify-degrees.py in the branch notes.
 testdegrees: rptest-degrees testbase-degrees
 	time ./rptest-degrees > rptest-degrees.out
-	cmp -s testbase-degrees rptest-degrees.out || echo ${FAILED}
+	cmp -s testbase-degrees rptest-degrees.out || ${FAIL}
 
 # The curves of test1 again, with the input fields of args set once before
 # the loop instead of once per curve: the library must leave them alone
@@ -357,17 +371,17 @@ testdegrees: rptest-degrees testbase-degrees
 # library normalises, which used to be stored in the fields.
 test1once: rptest testbase
 	./rptest -O > rptest-once.out
-	cmp -s testbase rptest-once.out || echo ${FAILED}
+	cmp -s testbase rptest-once.out || ${FAIL}
 	./rptest -O -dl 2 -z > rptest-once2.out
-	grep -q changed rptest-once2.out && echo ${FAILED} || true
+	! grep -q changed rptest-once2.out || ${FAIL}
 	./rptest -O -dl 0 -du 1000000 -S 100 > rptest-once3.out
-	cmp -s testbase rptest-once3.out || echo ${FAILED}
+	cmp -s testbase rptest-once3.out || ${FAIL}
 
 # Regression tests for the bugs found in the review of September 2026: a
 # list of invocations of ratpoints in test3.sh, against testbase3.
 test3: ratpoints testbase3 test3.sh
 	./test3.sh > test3.out 2>&1
-	cmp -s testbase3 test3.out || echo ${FAILED}
+	cmp -s testbase3 test3.out || ${FAIL}
 
 # The suite that exercises every branch (see test4.sh): a few hundred
 # invocations of ratpoints, against testbase4.  The reference was checked
@@ -375,27 +389,30 @@ test3: ratpoints testbase3 test3.sh
 # and can be run again whenever testbase4 changes.
 test4: ratpoints testbase4 test4.sh
 	./test4.sh > test4.out 2>&1
-	cmp -s testbase4 test4.out || echo ${FAILED}
+	cmp -s testbase4 test4.out || ${FAIL}
 
 # The tests of the library interface (see rpapi.c), against testbase-api.
 testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
-	cmp -s testbase-api testapi.out || echo ${FAILED}
+	cmp -s testbase-api testapi.out || ${FAIL}
 
 # test4 on the library built with the other compile-time switches, each in
-# a build directory of its own (see test4-configs.sh).
+# a build directory of its own (see test4-configs.sh; the script exits with
+# 1 when an output differs from the reference, with 2 when a build failed).
 .PHONY: test4configs
 test4configs: testbase4 test4.sh test4-configs.sh
 	./test4-configs.sh
 
-# How much of the code the tests execute, by gcov (see coverage.sh).
+# How much of the code the tests execute, by gcov (see coverage.sh; the
+# script exits with 1 when an output differs from its reference, with 2
+# when the instrumented build failed).
 .PHONY: coverage
 coverage: coverage.sh
 	./coverage.sh
 
 test2: ratpoints testbase2
 	time ./ratpoints '247747600 -985905640 567207969 2396040466 52485681 -470135160 82342800' 1000000 -n 30 -N 30 -p 30 -q > test2.out
-	cmp -s testbase2 test2.out || echo ${FAILED}
+	cmp -s testbase2 test2.out || ${FAIL}
 
 # Time a call to ratpoints with a largish height parameter.
 # This can be helpful to assess modifications to the sieving process.

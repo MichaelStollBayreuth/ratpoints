@@ -238,7 +238,9 @@ in the working directory. This will build an executable \texttt{rptest} and
 then run (and time) it. Finally, the output (which was written to a file
 \texttt{rptest.out}) is compared against \texttt{testbase}, which contains the
 output of a sample run. The two should be identical; otherwise the
-message \texttt{Test failed!} will be displayed (on its own on a line).
+message \texttt{Test failed!} will be displayed (on its own on a line) and
+the target fails, so that \texttt{make} exits with an error and names the
+test.
 
 \begin{verbatim}
 > make test1once
@@ -348,7 +350,9 @@ directory is left alone (\texttt{test4-configs.sh}); the points found
 must not depend on any of these, so every build is compared against the
 same \texttt{testbase4}; the build with the smaller table is compared
 without the reports of \verb+-v+, two of which say what the primes beyond
-127 say.  About a minute.
+127 say.  About a minute.  The script exits with status 1 when an output
+differs from the reference and with 2 when a build failed; so does
+\texttt{coverage.sh} below.
 
 \begin{verbatim}
 > make coverage
@@ -379,7 +383,9 @@ Finally,
 \end{verbatim}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
-\texttt{testapi} and \texttt{timing}.
+\texttt{testapi} and \texttt{timing}, each of them whatever the earlier
+ones did, and fails at the end if any of them failed, so that a script can
+tell whether the build passed.
 The two large-height tests are not part of it; they are meant for judging a
 change to the sieve rather than for checking that the build works.
 

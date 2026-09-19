@@ -30,6 +30,9 @@
 #       odd denominators take one numerator in eight and whose even ones
 #       one in four or none
 RP=./ratpoints
+# no program to run: exit 2 (the comparison with the reference is make's,
+# whose target fails with 1 when they differ)
+[ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
 $RP '1 2' 20 -q
 $RP '1 2 0' 50 -q
 $RP '0 19 1' 45 -q
