@@ -1,2 +1,4 @@
 examples/
 TODO.md
+build-coverage/
+build-test4-*/
