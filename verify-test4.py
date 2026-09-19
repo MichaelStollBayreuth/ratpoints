@@ -14,7 +14,11 @@ for the x-coordinates -x and -y print, for the single point of -1 and for
 the count -z reports.  A search too large for that (the two curves at
 heights 30000 to 100000 in the third part) is checked against PARI/GP's
 hyperellratpoints when gp is on the PATH, which is another implementation
-of the search, and otherwise reported as not checked.  Invocations that
+of the search, and otherwise reported as not checked -- except when the
+degree is odd and the denominator range is what makes the search large:
+then only the denominators a point can have are tried, e m^2 with e a
+divisor of the leading coefficient (see brute_points), which is how the
+runs at the top of the range of a long are checked.  Invocations that
 test an error message, an output format or the report of -v are not
 checked here beyond what they print, except that the points a -v report
 contains are still compared.
@@ -26,6 +30,7 @@ import sys, re, math, subprocess, shutil
 from fractions import Fraction
 
 MAX_BRUTE = 40_000_000   # candidate pairs a brute-force search is allowed
+rule_used = 0            # searches over the denominators e m^2 only
 
 def parse_args(args):
     """The options of main.c that decide what is searched and printed."""
@@ -111,15 +116,29 @@ def brute_points(c, H, dl, du, ivs, want_inf):
     b_high = H if (du is None or du < 1) else min(du, H)
     if not ivs: ivs = [(-float(H), float(H))]
     ivs = [((-float(H) if lo is None else lo), (float(H) if up is None else up)) for lo, up in ivs]
+    # the denominators to try: every one in the range -- or, when the range
+    # is too long for that and the degree is odd, only those a point can
+    # have.  For odd d, F(a, b) = b (c_d a^d + b (...)), so with gcd(a, b) = 1
+    # a prime not dividing c_d divides F(a, b) exactly as often as b, which
+    # for a square must be an even number of times: b = e m^2 with e a
+    # divisor of |c_d| (every divisor is tried, not only the squarefree ones)
+    bs = range(b_low, b_high + 1)
+    if b_high - b_low >= 10**7:
+        if not (d & 1) or abs(c[d]) > 10**6: return None
+        divs = [e for e in range(1, abs(c[d]) + 1) if c[d] % e == 0]
+        ms = [(e, math.isqrt((b_low - 1)//e) + 1, math.isqrt(b_high//e)) for e in divs]
+        if sum(max(0, hi - lo + 1) for e, lo, hi in ms) > 10**6: return None
+        bs = sorted(e*m*m for e, lo, hi in ms for m in range(lo, hi + 1))
+        global rule_used
+        rule_used += 1
     # the size of the search
     total = 0
-    for b in range(b_low, b_high + 1) if b_high - b_low < 10**7 else []:
+    for b in bs:
         for lo, up in ivs:
             total += max(0, min(float(b)*up, float(H)) - max(float(b)*lo, -float(H))) + 1
         if total > MAX_BRUTE: return None
-    if b_high - b_low >= 10**7: return None
     Hf = float(H)   # the program compares b*low and b*up with (double)height
-    for b in range(b_low, b_high + 1):
+    for b in bs:
         fb = float(b)   # the program computes b*low in double precision
         pw = [b**(D - i) for i in range(D + 1)]   # b^(D-i)
         cb = [c[i]*pw[i] if i <= d else 0 for i in range(D + 1)]
@@ -314,8 +333,9 @@ def main():
             missing = [k for k in exp if k not in got]; extra = [k for k in got if k not in exp]
             wrong = [k for k in exp if k in got and exp[k] != got[k]]
             fail('missing %s extra %s wrong y %s' % (sorted(missing)[:5], sorted(extra)[:5], wrong[:5]))
-    print('%d invocations checked (%d by gp), %d skipped (errors, formats, reports), %d failed'
-          % (checked, gp_used, skipped, failed))
+    print('%d invocations checked (%d by gp, %d over the denominators e m^2 only), '
+          '%d skipped (errors, formats, reports), %d failed'
+          % (checked, gp_used, rule_used, skipped, failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 
