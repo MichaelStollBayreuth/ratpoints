@@ -31,7 +31,7 @@ The main improvements over version 2.2.x:
   exact test costs on that curve, and corrected while
   the program runs from what the sieve is actually finding.
 * **Composite moduli.**
-  Products of size below 64 of odd prime powers sieve alongside the primes;
+  The odd numbers below 64 sieve alongside the primes;
   this improves the efficiency of the first two sieving phases.
 * **Finer 2-adic information.**
   The numerator patterns are taken modulo 64 instead of 16,
