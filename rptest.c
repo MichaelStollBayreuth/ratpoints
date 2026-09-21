@@ -50,7 +50,7 @@
  * says which by defining TEST_DEGREE or TEST_MAX_DEGREE. */
 #ifndef TEST_DEGREE
 # ifndef TEST_MAX_DEGREE
-#  define TEST_DEGREE 6      /* what every file in the package used to be */
+#  define TEST_DEGREE 6      /* the default: curves of genus 2 */
 # endif
 #endif
 #ifdef TEST_DEGREE

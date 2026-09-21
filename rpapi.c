@@ -26,8 +26,8 @@
  * error codes they return, a callback that stops the search or        *
  * declines a point, the flags set through the API, and a sequence of  *
  * searches on one initialised structure.  "make testapi" compares the *
- * output with testbase-api.  Part of the test suite of TODO item 20;  *
- * the searches themselves are covered by rptest and test4.sh.         *
+ * output with testbase-api.  The searches themselves are covered by   *
+ * rptest and test4.sh.                                                *
  *                                                                     *
  * Michael Stoll, September 19, 2026                                   *
  ***********************************************************************/

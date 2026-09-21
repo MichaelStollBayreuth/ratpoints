@@ -1,32 +1,30 @@
 #!/bin/sh
-# Regression tests for the bugs found in the review of September 2026: each
+# Regression tests for bugs that were fixed: each
 # line is one invocation of ./ratpoints whose output is compared with
 # testbase3 by "make test3".  All point lists were checked against a
 # brute-force search over all coprime (a, b) with |a|, b <= H.
 #
 #  1-7  degree 1, given as such or reached by stripping a zero leading
-#       coefficient or by reversal of y^2 = c2 x^2 + c1 x: used to read past
-#       the end of the Sturm arrays and crash
+#       coefficient or by reversal of y^2 = c2 x^2 + c1 x: must not read
+#       past the end of the Sturm arrays
 #  8-12 the positivity region misses the search domain: the points at
-#       infinity used to be dropped (8-10 in general, 11-12 for even degree
+#       infinity must still be found (8-10 in general, 11-12 for even degree
 #       with a square leading coefficient when reversal is suppressed)
-# 13-15 no denominator class admits a numerator mod 64: the array of numerator
-#       patterns used to be read uninitialised, which with -j -F 0 printed points outside the
-#       height bound after a 5000-fold blow-up.  13 and 15 print nothing
-#       either way; 14 shows the message of the early return, which the
-#       unfixed program does not have
-# 16-17 no odd denominator admits a numerator, but the even ones do.  On the
-#       3.0.0 line this used to put the run-length estimate on its floor and
-#       switch the second and third sieving stages off (the points were
-#       right, the run slow): 16 pins the point list, 17 counts the -v lines
-#       saying that a stage uses no primes, which must be 0 (2.2.4 has no
-#       such estimate and no line 17)
+# 13-15 no denominator class admits a numerator mod 64: the array of
+#       numerator patterns must not be read uninitialised (with -j -F 0 that
+#       prints points outside the height bound after a 5000-fold blow-up).
+#       13 and 15 print nothing; 14 shows the message of the early return
+# 16-17 no odd denominator admits a numerator, but the even ones do.  The
+#       run-length estimate must not fall to its floor then, which would
+#       switch the second and third sieving stages off (the points right,
+#       the run slow): 16 pins the point list, 17 counts the -v lines
+#       saying that a stage uses no primes, which must be 0
 # 18    not squarefree: the Sturm chain reaches a zero remainder, and the
-#       loop that found it used to index one below the array
+#       loop that finds it must not index one below the array
 # 19-20 the report the program prints after a run (the moduli used, the
 #       reversal, the search intervals), which no other test looks at; the
 #       numbers of primes are pinned so that retuning does not change it
-# 21    the -v report of the numerator packing (item 28), on a curve whose
+# 21    the -v report of the numerator packing, on a curve whose
 #       odd denominators take one numerator in eight and whose even ones
 #       one in four or none
 RP=./ratpoints

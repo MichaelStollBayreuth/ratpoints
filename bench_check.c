@@ -37,7 +37,7 @@
  *                                                                     *
  * The per-denominator part, forming the bc[k] themselves, is set up   *
  * outside the timed loop, because the rule the constants feed charges *
- * only the marginal cost of one more check.                          *
+ * only the marginal cost of one more check.                           *
  *                                                                     *
  * What to look at, and what not to.  Only the RATIOS between the      *
  * rows are used by the program, so a machine on which every check is  *
@@ -59,8 +59,8 @@
  * runs from +37% on the odd-degree rows with small coefficients to    *
  * -13% at the top of the degree range.  Against the sieve's own       *
  * per-check figures, which is the comparison that matters, the same   *
- * formula is within 6%; PARAM-NOTES.md, on the adaptive-parameters    *
- * branch of the git repository, has those measurements.               *
+ * formula is within 6% (there a check costs 44 cycles plus 1.44 times *
+ * what this benchmark reports).                                       *
  ***********************************************************************/
 
 #include <stdio.h>

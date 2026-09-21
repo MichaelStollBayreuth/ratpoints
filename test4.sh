@@ -1,5 +1,5 @@
 #!/bin/sh
-# The suite that exercises every branch of the code (TODO item 20).  Each
+# The suite that exercises nearly every line of the code.  Each
 # line runs ./ratpoints once; "make test4" compares the output of the whole
 # script with testbase4.  Unlike test1 and its relatives, which run a
 # thousand curves through one setting, this one runs a few hundred settings

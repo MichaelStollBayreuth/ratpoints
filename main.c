@@ -369,7 +369,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'U': /* the number of numerator words at which a second-phase
                    * prime pays for setting itself up; scales -R down for
-                   * short runs.  Zero leaves -R flat, as before 3.0.0 */
+                   * short runs.  Zero leaves -R flat */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
@@ -385,7 +385,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'C': /* what building one row of a sieve table costs, in units
                    * of one first-phase AND per word; zero ranks the primes
-                   * by what they say alone, as before 3.0.0 */
+                   * by what they say alone */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
@@ -408,8 +408,8 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'W': /* what one exact check costs, in rdtsc cycles; negative
                    * means estimate it from the degree and the coefficients,
-                   * and 306 is what earlier versions assumed for every
-                   * curve */
+                   * and 306 is the value for a degree-6 curve with small
+                   * coefficients */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }

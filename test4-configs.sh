@@ -7,9 +7,9 @@
 # the default of 2.2.4) and the larger one (PRIME_SIZE 9, 96 primes, where
 # the mask of the primes a modulus involves runs out of bits), and composite
 # moduli off (RATPOINTS_COMPOSITE_MAX 1) and up to 1023 (every odd modulus
-# below the table's bound is a candidate).  The points found must not depend on any of these, and
-# test4.sh prints nothing that does, so every build is compared with the
-# same testbase4.  "make test4configs" runs this.
+# below the table's bound is a candidate).  The points found must not depend
+# on any of these, and test4.sh prints nothing that does, so every build is
+# compared with the same testbase4.  "make test4configs" runs this.
 #
 # Each configuration is built in a directory of its own, build-test4-<name>,
 # from symbolic links to the sources, so that the build in the working
