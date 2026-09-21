@@ -27,12 +27,13 @@
  * A curve is in this list when sieving_info has to look beyond        *
  * RATPOINTS_DEFAULT_NUM_PRIMES to find enough informative ones, which *
  * is what happens when f is a square modulo every residue for several *
- * of the smallest primes: those say nothing about which numerators    *
- * can occur and are thrown away.  It is the densest curves this       *
- * happens to, so they are the last thirty entries of testdata-many.h, *
- * and they are the ones on which the range of primes is decided by    *
- * the curve rather than by the default.  They span the whole range    *
- * that occurs: between 31 and 36 primes have to be looked at.         *
+ * of the smallest primes: those say next to nothing about which       *
+ * numerators can occur and do not count.  It is the densest curves    *
+ * this happens to, so they are the last thirty entries of             *
+ * testdata-many.h, and they are the ones on which the range of primes *
+ * is decided by the curve rather than by the default.  They span the  *
+ * whole range that occurs: between 31 and 36 primes have to be looked *
+ * at.                                                                 *
  *                                                                     *
  * The suite is meant for a large height bound -- see TESTHEIGHT in    *
  * the Makefile, currently 2*10^5 -- where almost all of the time goes *
