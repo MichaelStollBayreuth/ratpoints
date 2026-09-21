@@ -1572,6 +1572,21 @@ static inline unsigned long barrett(unsigned long u, unsigned long p,
  * coeffs_mod_p and is_f_square_p hand back what the caller needs for the
  * test on forbidden divisors of the denominator.
  */
+/* EXPERIMENT (branch coprime-info): a prime at which f is a square at every
+ * residue still says one thing when denominators divisible by it occur: the
+ * row of those denominators admits only the numerators not divisible by p,
+ * so the pair (0,0) mod p goes, a density of 1 - 1/p^2.  RP_WEAK=1 in the
+ * environment keeps such a prime as a candidate modulus (examine_prime
+ * returns 2), for the first two stages only; the third stage runs after the
+ * test for common factors and has no use for it.  RP_WEAK=2 offers it to
+ * the second stage only. */
+static int rp_weak_mode(void)
+{ static int mode = -1;
+
+  if(mode < 0) { const char *s = getenv("RP_WEAK"); mode = s ? atoi(s) : 0; }
+  return(mode);
+}
+
 static int examine_prime(ratpoints_args *args, long pn,
                          int use_c_long, long *c_long,
                          long *coeffs_mod_p, int **is_f_square_p,
@@ -1656,7 +1671,8 @@ static int examine_prime(ratpoints_args *args, long pn,
   /* check if there are no solutions mod p */
   if(np == 0 && !is_f_square[p]) { return(-1); }
 
-  if(np >= p) { return(0); } /* the prime carries no information */
+  if(np >= p && !(rp_weak_mode() && is_f_square[p]))
+  { return(0); } /* the prime carries no information */
 
   { /* The mean density of admissible numerators over the classes of the
      * denominator mod p: np/p for the p-1 unit classes, and (p-1)/p for the
@@ -1676,7 +1692,7 @@ static int examine_prime(ratpoints_args *args, long pn,
     prec_entry->r = r;
     prec_entry->p = p;
     prec_entry->mask = (pn < LONG_LENGTH) ? 1UL << pn : 0UL;
-    prec_entry->nf = 0;
+    prec_entry->nf = (np >= p) ? -1 : 0; /* -1: coprimality only */
   }
 
   /* set up sieve_entry :
@@ -1717,7 +1733,7 @@ static int examine_prime(ratpoints_args *args, long pn,
 
     prec_entry->ssp = se;
   }
-  return(1);
+  return((np >= p) ? 2 : 1);
 }
 
 /************************************************************************
@@ -2457,6 +2473,7 @@ static long sieving_info(ratpoints_args *args,
   /* How many primes to look at.  The loop below may raise this: see the
    * comment at its end. */
   long pn_lim = args->num_primes;
+  long n_weak = 0; /* EXPERIMENT: candidates that carry coprimality alone */
   double target = (args->survivors_per_word > 0.0) ? args->survivors_per_word
                                                    : RATPOINTS_SURVIVORS_PER_WORD;
   long sp2_extra = (args->sp2_extra >= 0) ? args->sp2_extra
@@ -2508,6 +2525,10 @@ static long sieving_info(ratpoints_args *args,
     { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms,
                   call_cost);
       prime_se[pn] = prec[pnp].ssp;
+      if(info == 2)
+      { n_weak++;
+        if(rp_weak_mode() == 2) { prec[pnp].key = 1.0e300; }
+      }
       pnp++;
     }
 
@@ -2588,7 +2609,7 @@ static long sieving_info(ratpoints_args *args,
                             : primes_for_phase_1(prec, pnp, bpw_swept,
                                                  target, sp2_extra);
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
-      if(pnp < want) { pn_lim++; }
+      if(pnp - n_weak < want) { pn_lim++; }
     }
 
   } /* end for pn */
@@ -2702,6 +2723,7 @@ static long sieving_info(ratpoints_args *args,
     for(n = 0; n < pnp; n++)
     { phase_1_key(&prec[n], cost_table, args->run_words, args->run_denoms,
                   call_cost);
+      if(prec[n].nf < 0 && rp_weak_mode() == 2) { prec[n].key = 1.0e300; }
     }
     /* and the composite moduli join the candidates, keyed the same way */
     add_moduli(args, prec, &pnp, prime_se, pinf, pn_lim, &npw,
@@ -2762,7 +2784,7 @@ static long sieving_info(ratpoints_args *args,
   { long n = args->sp2;
 
     while(n < pnp)
-    { if(prec[n].nf > 0)
+    { if(prec[n].nf != 0)
       { long k;
 
         for(k = n; k + 1 < pnp; k++) { prec[k] = prec[k+1]; }
@@ -2865,8 +2887,11 @@ static long sieving_info(ratpoints_args *args,
 
           if(pnp > 0)
           { r_typ = 0.0;
-            for(n = 0; n < pnp; n++) { r_typ += prec[n].r; }
-            r_typ /= (double)pnp;
+            long cnt = 0;
+
+            for(n = 0; n < pnp; n++)
+            { if(prec[n].nf >= 0) { r_typ += prec[n].r; cnt++; } }
+            r_typ = (cnt > 0) ? r_typ/(double)cnt : 1.0;
           }
           if(S*(1.0 - per_surv - r_typ) <= per_denom) { break; }
         }
@@ -2875,7 +2900,8 @@ static long sieving_info(ratpoints_args *args,
         pn_lim++;
         if(info < 0)
         { return(prime[pn_lim-1]); /* no points mod p */ }
-        if(info == 0) { continue; } /* it says nothing; try the next one */
+        if(info == 0 || info == 2)
+        { continue; } /* it says nothing to this stage; try the next one */
         /* the third stage builds no table, so its primes are ranked by what
          * they say alone, which is what the selection above does */
         prec[pnp].key = prec[pnp].r;
