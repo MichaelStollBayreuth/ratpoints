@@ -2,7 +2,7 @@
 # Run test4.sh against the library built with the other compile-time
 # switches: the register widths (64, 128 by SSE2 and by the older SSE
 # intrinsics, 512 emulated, 256 being what the tree is built with), one
-# register in the first phase (RATPOINTS_CHUNK=1), the second phase one word
+# register in the first stage (RATPOINTS_CHUNK=1), the second stage one word
 # at a time (USE_LONG_IN_PHASE_2), the smaller prime table (PRIME_SIZE 7,
 # the default of 2.2.4) and the larger one (PRIME_SIZE 9, 96 primes, where
 # the mask of the primes a modulus involves runs out of bits), and composite

@@ -23,7 +23,7 @@
  *                                                                     *
  * Main program file for the ratpoints executable                      *
  *                                                                     *
- * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6, 2026            *
+ * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6-21, 2026         *
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -367,7 +367,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
           i++;
           break;
-        case 'U': /* the number of numerator words at which a second-phase
+        case 'U': /* the number of numerator words at which a second-stage
                    * prime pays for setting itself up; scales -R down for
                    * short runs.  Zero leaves -R flat */
           if(argc == i) { error(6); }
@@ -377,14 +377,14 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           break;
         case 'A': /* how much of the choice to correct during the run from
                    * what the sieve is doing: 0 none, 1 (the default) the
-                   * third stage, 2 the second phase as well */
+                   * third stage, 2 the second stage as well */
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
           i++;
           break;
         case 'C': /* what building one row of a sieve table costs, in units
-                   * of one first-phase AND per word; zero ranks the primes
+                   * of one first-stage AND per word; zero ranks the primes
                    * by what they say alone */
           if(argc == i) { error(6); }
           i++;

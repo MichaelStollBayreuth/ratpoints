@@ -204,7 +204,7 @@ wider.
 % needs only SSE2 instructions, so it runs wherever the older \verb+USE_SSE+
 % variant did, and it is never slower, because its test for an empty register
 % compares the whole register against zero instead of extracting both halves
-% into general registers. That is worth about 30\% of the second phase of the
+% into general registers. That is worth about 30\% of the second stage of the
 % sieve, which comes to 9\% of a run long enough for the sieve to dominate it
 % and about 3\% of \texttt{make test1}. The older variant is still available as
 % \verb+${CCFLAGS128s}+.
@@ -506,6 +506,8 @@ The archive contains the following files.
         how to remeasure the constants of Section~\ref{sec:sp3choice}
   \item \texttt{ratpoints-doc-3.0.tex} --- the source of this documentation
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
+  \item \texttt{README.md} --- a short description and an overview of what
+        is new in this version
   \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
 \end{itemize}%
 }

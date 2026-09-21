@@ -19,7 +19,7 @@
 #
 #   Makefile
 #
-#   Michael Stoll, September 21, 2009; January 7, 2022; September 6, 2026
+#   Michael Stoll, September 21, 2009; January 7, 2022; September 6-21, 2026
 #   with changes by Bill Allombert, December 29, 2021
 
 # The main targets are
@@ -86,24 +86,24 @@ INSTALL_DIR = /usr/local
 # -funswitch-loops, the -O3 optimisation that compiles a loop with an
 #  invariant test inside it twice, once per outcome, is deliberately not
 #  used.  It removes 1 to 3% of the instructions -- the "which reduction" test
-#  in the per-call start loop and in the second-phase loop of sift.c, and the
+#  in the per-call start loop and in the second-stage loop of sift.c, and the
 #  tests on the numerator packing in the per-denominator loops of
 #  find_points.c -- and gains nothing in cycles: a wash on the two suites at
 #  height 16383 and 0 to 2% slower on the two at 200000, measured at three
 #  code alignments.  Instruction counts predict a gain; cycles are what count.
 CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
-# Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first phase one
+# Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first stage one
 #  64-bit word at a time instead of a whole bit-array at a time. The first
-#  phase and the scan for survivors stay at the full register width either
+#  stage and the scan for survivors stay at the full register width either
 #  way. It is a wash to 4% slower at 128 and 256 bits, and the reason is worth
 #  knowing: the number of AND steps is the same either way, because the other
 #  words of a surviving bit-array were already zero, and a narrow and a wide
 #  read of the same table come from one cache line. At 64 bits the two are the
 #  same code.
-# Add "-DRP_PHASE_TIMING" to have sift.c time the two phases of the sieve
+# Add "-DRP_PHASE_TIMING" to have sift.c time the two stages of the sieve
 #  separately and write a report to stderr when the program exits; add
-#  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving phase 1, or
+#  "-DRP_PHASE_COUNTS" as well to count the bit-arrays surviving stage 1, or
 #  "-DRP_STOP_AFTER=<n>" to cut the pipeline short after a chosen stage, so
 #  that the cost of a stage can be had as a difference of two runs.
 #  These are development aids; see the comment at the top of sift.c.
@@ -118,7 +118,7 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 # Add "-DRP_MULMOD_DIVIDE" to reduce modulo a sieving prime by dividing rather
 #  than by multiplying with the reciprocal, which is what the third sieving
 #  stage, the start-of-sieve computation, the row look-up of the second
-#  phase, the reduction of the denominator modulo each sieving prime and the
+#  stage, the reduction of the denominator modulo each sieving prime and the
 #  Jacobi symbol test cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
 #  the start-of-sieve computation into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
@@ -134,7 +134,7 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  curves, -falign-loops=32 lands between 0.992 and 1.010 with no consistent
 #  sign, and 64 is worse.
 # Add "-DRATPOINTS_CHUNK=<n>" to force the use of 2 <= n <= 16 registers
-#  in phase 1 of sieving. For n=1, the loop is left to the compiler.
+#  in stage 1 of sieving. For n=1, the loop is left to the compiler.
 #  If SSE/AVX registers are used and this is not set, 16 registers will be used.
 #  In some cases, using n=8 may be faster
 #  (e.g., Intel(R) Xeon(R) CPU E3-1220 V2 with -DUSE_AVX -mavx).
@@ -147,7 +147,7 @@ CCFLAGS64 =
 # only SSE2, which every x86-64 machine has, so this is as portable as the
 # USE_SSE variant below and never slower: its test for an empty register
 # compares the whole register against zero instead of extracting both halves
-# into general registers. That is worth 30% of the second sieving phase, hence
+# into general registers. That is worth 30% of the second sieving stage, hence
 # 9% of a long run, but only about 3% of "make test1", whose height bounds are
 # small enough that the set-up is a large share of the time.
 CCFLAGS128 = -DUSE_AVX128
@@ -203,7 +203,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-3.0.tex \
-            gpl-2.0.txt testbase2 testdata-many.h testbase-many \
+            README.md gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
@@ -260,7 +260,7 @@ tune: rptest rptest-many
 # The same, measured on the large-height suites instead (see testhigh and
 # testhighmany below).  Which one to use depends on the runs that matter: at
 # the 16383 of "make test" two fifths of the time on the random curves goes
-# into work other than the two sieving phases -- choosing the primes, the
+# into work other than the two sieving stages -- choosing the primes, the
 # set-up per denominator, the reductions of the denominators, the exact checks
 # -- on which the threshold and the offset have little or no effect (the sieve
 # tables alone are 4%, and the cost of building a table is the one constant
@@ -306,8 +306,9 @@ test1: rptest testbase
 	cmp -s testbase rptest.out || ${FAIL}
 
 # The same, but for curves with many rational points, which sieve very
-# differently: about one numerator in 10^4 survives the first phase on a
-# random curve, up to a hundred times more on these.  The two tests take
+# differently: the small primes say little about them, so the first stage
+# needs about sixteen moduli where a random curve needs ten, and five times
+# as many candidates per denominator survive the second.  The two tests take
 # about the same time and should be used together whenever the constants
 # that choose sp1 and sp2 (see ratpoints.h) are retuned; a change that
 # helps one regime can easily hurt the other.
@@ -322,7 +323,7 @@ test1many: rptest-many testbase-many
 # by the primes and does not grow with the height, while the sifting does.  On
 # the random curves the tables are 4% of "make test1" (22% when these suites
 # were added) but 0.3% here, the whole set-up per denominator 8.5% against
-# 1.3%, and the two sieving phases go from 57% to 90% of the run.  So these
+# 1.3%, and the two sieving stages go from 57% to 90% of the run.  So these
 # are the suites to judge a change to the sieving loops by, and the ones to
 # point "make tune" at if the runs that matter are long ones.  Each takes
 # about a minute.

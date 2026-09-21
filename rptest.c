@@ -1,7 +1,7 @@
 /***********************************************************************
  * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * Test program for ratpoints                                          *
  *                                                                     *
- * Michael Stoll, May 27, 2009; January 2, 2022                        *
+ * Michael Stoll, May 27, 2009; Jan 2, 2022; Sep 21, 2026              *
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
           if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
           i++;
           break;
-        case 'U': /* run length at which a phase-2 prime pays for its set-up */
+        case 'U': /* run length at which a stage-2 prime pays for its set-up */
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);

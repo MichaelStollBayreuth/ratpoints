@@ -1,7 +1,7 @@
 /***********************************************************************
  * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * The sieving procedure for ratpoints                                 *
  *                                                                     *
- * Michael Stoll, Apr 14; 2009, January 7, 2022                        *
+ * Michael Stoll, Apr 14, 2009; Jan 7, 2022; Sep 21, 2026              *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -31,23 +31,24 @@
 
 
 /* ---------------------------------------------------------------------
- * Development instrumentation: split the work of _ratpoints_sift0 into
- * its three stages and record how much survives each of them.  Build
+ * Development instrumentation: time the work of _ratpoints_sift0 in
+ * three parts and record how much survives each of them.  Build
  * with -DRP_PHASE_TIMING for the timings, and additionally with
  * -DRP_PHASE_COUNTS for the survivor counts, which need a popcount pass
- * over the survivors and two more per surviving unit in phase 2.  The
+ * over the survivors and two more per surviving unit in part 2.  The
  * two flags should not be combined when the timings are what is wanted.
  * A machine-readable line is written to stderr when the program exits.
  *
- * The three stages are
- *   1  sieving with the first sp1 primes,
- *   2  scanning the survivors and sieving them with the next sp2-sp1,
- *   3  the exact check with gmp, which runs inside stage 2 and is
+ * The three parts are
+ *   1  the first sieving stage (the first sp1 moduli),
+ *   2  the scan of the survivors, the second sieving stage (the next
+ *      sp2-sp1 moduli), the extraction and the third stage,
+ *   3  the exact check with gmp, which runs inside part 2 and is
  *      subtracted from it.
  *
  * The timer is rdtsc, which counts reference cycles at a constant rate
  * and is therefore a clock, not a core-cycle counter.  Frequency drift
- * affects the stages alike, so the ratios are sound; for core cycles run
+ * affects the parts alike, so the ratios are sound; for core cycles run
  * the whole thing under "perf stat -e cpu_core/cycles/" and split that.
  * --------------------------------------------------------------------- */
 
@@ -66,44 +67,44 @@ unsigned long long _rp_check_cycles = 0, _rp_check_calls = 0;
  * Written by _ratpoints_check_point in find_points.c . */
 unsigned long long _rp_bc_cycles = 0, _rp_bc_calls = 0;
 /* the per-denominator loop that computes b modulo each prime of the first
- * two phases */
+ * two stages */
 unsigned long long _rp_bp_cycles = 0, _rp_bp_dens = 0, _rp_bp_steps = 0;
 /* building a sieve table: once for each pair (prime, denominator class), so
  * at most p times for the prime p however long the run is.  rows counts the
  * bit-arrays written, which is what the cost should be proportional to. */
 unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
 /* filling in sieve_spec once per denominator for each prime of the first two
- * phases; the third stage's check_spec is filled on demand, outside this
+ * stages; the third stage's check_spec is filled on demand, outside this
  * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
 /* clearing the two boundary words.  There is no pass over the whole array:
- * the first phase's first modulus writes the 2-adic pattern as it sieves,
+ * the first stage's first modulus writes the 2-adic pattern as it sieves,
  * and nothing is padded.  So little is done here that the two rdtsc reads
  * around it are a good part of what it reports: take the figure as an upper
  * bound on the cost, not as a measurement of it. */
 unsigned long long _rp_fill_cycles = 0, _rp_fill_arrays = 0;
 /* and the whole of sift(), so that what is left of it once the set-up and
- * the two phases are taken out can be seen */
+ * the two stages are taken out can be seen */
 unsigned long long _rp_sift_cycles = 0, _rp_sift_calls = 0;
 unsigned long long _rp_sift0_calls = 0, _rp_arrays_swept = 0;
 long _rp_sp1 = -1, _rp_sp2 = -1, _rp_sp3 = -1;
 /* the whole run, so that core cycles from "perf stat" can be apportioned
- * to the phases: cycles_i = perf_cycles * cyc_i / cyctot */
+ * to the stages: cycles_i = perf_cycles * cyc_i / cyctot */
 unsigned long long _rp_t_start = 0;
 static void _rp_t_begin(void) __attribute__((constructor));
 static void _rp_t_begin(void) { _rp_t_start = __rdtsc(); }
 #ifdef RP_PHASE_COUNTS
-/* bits set on entry to phase 1, after phase 1, and after phase 2;
+/* bits set on entry to stage 1, after stage 1, and after stage 2;
  * and the number of units (bit-arrays, or words under
- * USE_LONG_IN_PHASE_2) that are non-zero after phase 1 */
+ * USE_LONG_IN_PHASE_2) that are non-zero after stage 1 */
 unsigned long long _rp_bits_in = 0, _rp_bits_1 = 0, _rp_bits_2 = 0;
 unsigned long long _rp_units_surviving = 0;
-/* work actually done in phase 2: AND steps in the sp2-sp1 loop (which
+/* work actually done in stage 2: AND steps in the sp2-sp1 loop (which
  * stops early once nums is empty) and iterations of the bit-extraction
  * loops, which run once per set bit. */
 unsigned long long _rp_and2 = 0, _rp_ext2 = 0;
-/* and in phase 1, where every prime is applied to every word: the product of
- * the arrays swept and sp1, which is what the phase-1 cost is proportional
+/* and in stage 1, where every prime is applied to every word: the product of
+ * the arrays swept and sp1, which is what the stage-1 cost is proportional
  * to and hence what divides into it to give the cost of one AND. */
 unsigned long long _rp_and1 = 0;
 
@@ -119,7 +120,7 @@ static inline unsigned _rp_popcnt(const ratpoints_bit_array *a)
 # define RP_TIC(t) unsigned long long t = __rdtsc()
 # define RP_TOC(t, acc) (acc) += __rdtsc() - (t)
 /* wrap one call to _ratpoints_check_point, so that the exact verification
- * can be subtracted from the cost of the second phase */
+ * can be subtracted from the cost of the second stage */
 # define RP_CHECK(call) \
     ({ unsigned long long t_ = __rdtsc(); long r_ = (call); \
        _rp_check_cycles += __rdtsc() - t_; _rp_check_calls++; r_; })
@@ -176,16 +177,16 @@ static void _rp_phase_report(void)
 
 /* ---------------------------------------------------------------------
  * Development instrumentation: cut the pipeline short, so that the cost
- * of one stage can be had as a difference of two whole-program cycle
+ * of one step can be had as a difference of two whole-program cycle
  * counts and nothing has to be attributed by a timer inside the loop.
  * Build with -DRP_STOP_AFTER=<n>:
- *   1  stop after the first phase (no second phase at all)
+ *   1  stop after the first stage (no second stage at all)
  *   2  ... after locating the survivors (no sieving, no extraction)
  *   3  ... after sieving them with the next sp2-sp1 primes
  *   4  ... after extracting the bits, but without the exact check
  *   0 or unset: the whole thing, i.e. the real program.
- * Differences between consecutive levels give the stages, and because
- * every level sieves the first phase identically, level 1 cancels out of
+ * Differences between consecutive levels give the steps, and because
+ * every level sieves the first stage identically, level 1 cancels out of
  * all of them.  The truncated levels accumulate what they would have
  * used into _rp_sink, which is printed at exit so that the compiler
  * cannot drop the work whose cost is being measured.
@@ -265,7 +266,7 @@ static inline long mod_mul(long a, long p, unsigned long m)
 /* ---------------------------------------------------------------------
  * The third stage.
  *
- * What is left after the second phase is a handful of numerators per
+ * What is left after the second stage is a handful of numerators per
  * denominator, and each of them would go straight to the exact check, which
  * homogenises f, evaluates it in multi-precision arithmetic and takes an
  * integer square root.  That is two orders of magnitude dearer than one
@@ -448,7 +449,7 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
  **************************************************************************/
 
 #if (defined(RATPOINTS_CHUNK) && (RATPOINTS_CHUNK > 1) && (RATPOINTS_CHUNK <= 16))
-/* One leg of the first phase over the tail of a range: the w bit arrays
+/* One leg of the first stage over the tail of a range: the w bit arrays
  * that begin off bit arrays past the last whole chunk, w a power of two
  * below RATPOINTS_CHUNK.  Every call passes w as a constant and the
  * function is inlined, so the array of registers becomes w vector
@@ -460,7 +461,7 @@ int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
  * copies at the end of every table are there for (see init.c and
  * gen_find_points_h.c), so a leg reads its rows off bit arrays past those
  * pointers and leaves them as they are.  (They are recomputed at the next
- * call anyway; nothing reads them after the first phase.) */
+ * call anyway; nothing reads them after the first stage.) */
 #ifndef RP_UNROLL_REGS  /* -DRP_UNROLL_REGS= builds without the pragma */
 # if (defined(__GNUC__) && __GNUC__ >= 8) || defined(__clang__)
 #  define RP_UNROLL_REGS _Pragma("GCC unroll 8")  /* gcc 8 and later, clang */
@@ -526,10 +527,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME_EVEN);
 
 #ifdef DEBUG
-  /* There is nothing in the survivors array to print: the first phase's
+  /* There is nothing in the survivors array to print: the first stage's
    * first modulus writes it, so on entry it holds either nothing at all (the
    * first call) or the previous denominator's leavings.  What goes into it
-   * is this pattern, with the two ends cleared after the phase. */
+   * is this pattern, with the two ends cleared after the stage. */
   { printf("\nsift0(b = %ld) @ start: %ld bit arrays from ",
            b, w_high - w_low);
     PRINT_RBA(bits64);
@@ -576,8 +577,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
    * It will need to be extended in the obvious way to allow more,
    * e.g., 32 registers when using 512-bit vector operations. */
 
-  /* First set the start fields for the first phase of sieving.  (The second
-   * phase finds its rows directly; see there.)
+  /* First set the start fields for the first stage of sieving.  (The second
+   * stage finds its rows directly; see there.)
    *
    * This is the busiest reduction in the program: sp1 of them for every call,
    * and a call handles at most RATPOINTS_ARRAY_SIZE bit arrays, so at a large
@@ -601,7 +602,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   }
 
   if(sp1 == 0)
-  { /* No first phase at all, which -n 0 asks for.  Then nothing has written
+  { /* No first stage at all, which -n 0 asks for.  Then nothing has written
      * the bit arrays, since the loop below folds that into the first prime
      * and there is no first prime; write the pattern here instead. */
     long i;
@@ -614,7 +615,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
     /* where the whole chunks end and the tail begins */
     long w_high_full = w_high - (w_high - w_low)%RATPOINTS_CHUNK;
 
-    /* Take RATPOINTS_CHUNK bit-arrays and apply phase 1 to them,
+    /* Take RATPOINTS_CHUNK bit-arrays and apply stage 1 to them,
      * then repeat with the next RATPOINTS_CHUNK bit-arrays. */
     for(w_low_new = w_low; w_low_new < w_high_full; surv += RATPOINTS_CHUNK, w_low_new += RATPOINTS_CHUNK)
     { long n;
@@ -623,7 +624,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
        * from as it goes.  That makes a pass that fills the array beforehand
        * unnecessary, which saves one store and one load per bit array, on
        * 1.7e10 of them in "make testhigh".  The boundary words are dealt
-       * with after the phase instead, which comes to the same thing because
+       * with after the stage instead, which comes to the same thing because
        * AND is commutative. */
       ratpoints_bit_array *siv0 = sieves[0].start;
 #if (RATPOINTS_CHUNK >= 1)
@@ -1019,7 +1020,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   RP_TOC(_rp_t1, _rp_phase1_cycles);
 
   /* The two ends of the numerator interval.  Since AND is commutative,
-   * clearing these bits after the first phase clears the same bits as
+   * clearing these bits after the first stage clears the same bits as
    * clearing them before it would, and doing it here touches two bit arrays
    * per call rather than needing a pass over all of them. */
   { RP_TIC(t_fill);
@@ -1038,7 +1039,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef DEBUG
   { long n, c = 0;
 
-    printf("\nsift0(b = %ld) after phase 1 [high numerators to the left]:\n", b);
+    printf("\nsift0(b = %ld) after stage 1 [high numerators to the left]:\n", b);
     for(n = w_high - w_low - 1; n >= 0; n--, c++)
     { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
       PRINT_RBA(survivors[n]);
@@ -1052,7 +1053,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
 #if RP_STOP_AFTER != 1
 
-  /* Second phase of the sieve: test each surviving bit array with more primes */
+  /* Second stage of the sieve: test each surviving bit array with more primes */
   { ratpoints_bit_array *surv0 = &survivors[0];
     ratpoints_bit_array *surv_end = &survivors[w_high - w_low];
     long i;
@@ -1106,7 +1107,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 
 #ifdef USE_LONG_IN_PHASE_2
-      /* Keep the first phase and the scan at the full register width, but do
+      /* Keep the first stage and the scan at the full register width, but do
        * the rest one 64-bit word at a time: of a surviving bit-array, only
        * the words that are themselves non-zero are sieved with the remaining
        * primes and then extracted.  No different table layout is needed --
