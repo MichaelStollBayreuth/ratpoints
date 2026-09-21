@@ -705,6 +705,20 @@ t '1 0 126 0 441' 200 -q -p 3 -C 0
 t '1 0 0 0 100000000000000000001' 100 -q -n 20 -N 25 -C 0
 t '0 1 2' 40 -q -x -n 15 -N 30 -p 30 -C 0
 t '0 1 2' 40 -q -x -n 15 -N 30 -p 30
+# a prime at which f is a square at every residue still says that numerator
+# and denominator are not both divisible by it, provided denominators
+# divisible by it occur: f = (x^3+x+1)^2 + 3(3x-1)(x-3) is such a curve at
+# 3, with the points x = 1/3 and x = 3.  With one prime looked at the sieve
+# has the modulus 3 (and 9), whose row for 3 | b admits the numerators prime
+# to 3 and must keep 1/3; then 3 as a factor of composite moduli.  For
+# 2x^6 + x^2 + 1, also a square at every residue modulo 3, no denominator
+# is divisible by 3 and the prime says nothing at all, so that -p 1 leaves
+# the sieve without a modulus
+t '10 -28 10 2 2 0 1' 300 -q -p 1
+t '10 -28 10 2 2 0 1' 300 -q -p 1 -n 1 -N 1 -P 0
+t '10 -28 10 2 2 0 1' 300 -q -n 25 -N 30 -C 0
+t '10 -28 10 2 2 0 1' 300 -q
+t '1 0 1 0 0 0 2' 300 -q -p 1
 v '1 0 126 0 441' 100 -v -A 2 -r 0.01 -R 2 -U 1000 -C 20 -Q 0.05 -W 300
 e '1 2 3' 10 -r
 e '1 2 3' 10 -R

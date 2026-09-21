@@ -127,7 +127,9 @@ extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
  * prime's from examine_prime(), a composite's made by make_modulus() when
  * the ranking takes it and NULL until then -- and its prime-power factors
  * as codes: pn for the prime prime[pn], RATPOINTS_NUM_PRIMES + i for the
- * i-th prime power examined (rp_power). */
+ * i-th prime power examined (rp_power).  nf is the number of factors of a
+ * composite modulus, 0 for a prime, and -1 for a prime that says only that
+ * numerator and denominator are not both divisible by it (examine_prime). */
 typedef struct { double r; double key; double cost; long p; unsigned long mask;
                  ratpoints_sieve_entry *ssp; short nf; short fac[RP_MAX_FACTORS]; }
         entry;
@@ -1563,12 +1565,24 @@ static inline unsigned long barrett(unsigned long u, unsigned long p,
  * Fills in the table is_f_square[0..p], where entry a says whether f(a) is a
  * square modulo p and the last entry whether there are points at infinity,
  * and counts the residues that admit points.  When the prime carries any
- * information -- that is, when some residue does not -- a sieve entry is
- * built for it and *prec_entry is filled in with that entry and the density
- * r of the admissible residues.
+ * information a sieve entry is built for it and *prec_entry is filled in
+ * with that entry and the density r of the admissible residues.
  *
- * Returns 1 in that case, 0 when the prime says nothing, and -1 when the
- * curve has no points modulo p at all, so that it has no rational points.
+ * Returns 1 when some residue admits no point.  Returns 2 when every residue
+ * does but denominators divisible by p occur: such a prime still says one
+ * thing, namely that numerator and denominator are not both divisible by p
+ * -- the row of the denominators divisible by p (sieves0) admits only the
+ * numerators that are not -- which is a density of 1 - 1/p^2.  That is
+ * little for a modulus of its own, but it comes free as a factor of a
+ * composite modulus (33 in place of 11, 15 when both 3 and 5 are like
+ * this), and curves with very many rational points have several such
+ * primes; it is worth 1.5% on them at a height bound of 16383 (TODO item
+ * 31).  The entry is marked nf = -1: it is a candidate for the first two
+ * stages and a factor for add_moduli, but it does not count as one of the
+ * primes the look-further rule wants, and the third stage, which runs after
+ * the test for common factors, has no use for it.  Returns 0 when the prime
+ * says nothing at all, and -1 when the curve has no points modulo p, so
+ * that it has no rational points.
  * coeffs_mod_p and is_f_square_p hand back what the caller needs for the
  * test on forbidden divisors of the denominator.
  */
@@ -1656,7 +1670,8 @@ static int examine_prime(ratpoints_args *args, long pn,
   /* check if there are no solutions mod p */
   if(np == 0 && !is_f_square[p]) { return(-1); }
 
-  if(np >= p) { return(0); } /* the prime carries no information */
+  if(np >= p && !is_f_square[p])
+  { return(0); } /* the prime carries no information */
 
   { /* The mean density of admissible numerators over the classes of the
      * denominator mod p: np/p for the p-1 unit classes, and (p-1)/p for the
@@ -1676,7 +1691,7 @@ static int examine_prime(ratpoints_args *args, long pn,
     prec_entry->r = r;
     prec_entry->p = p;
     prec_entry->mask = (pn < LONG_LENGTH) ? 1UL << pn : 0UL;
-    prec_entry->nf = 0;
+    prec_entry->nf = (np >= p) ? -1 : 0; /* -1: coprimality alone */
   }
 
   /* set up sieve_entry :
@@ -1717,7 +1732,7 @@ static int examine_prime(ratpoints_args *args, long pn,
 
     prec_entry->ssp = se;
   }
-  return(1);
+  return((np >= p) ? 2 : 1);
 }
 
 /************************************************************************
@@ -2234,7 +2249,7 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
 /* Offer the composite moduli below RATPOINTS_MAX_PRIME_EVEN as candidates:
  * every odd m that is not a prime, factored into prime powers, with r the
  * product of its factors' densities and the key the ranking uses for a
- * prime of that size, provided every factor is informative and every prime
+ * prime of that size, provided every factor says something and every prime
  * involved is among those looked at.  A prime power is examined the first
  * time a modulus needs it; pinf[pn] says whether denominators divisible by
  * prime[pn] occur.  Candidates are appended to prec[] from *pnp_p on. */
@@ -2275,7 +2290,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
       for(e = 0; rest % p == 0; e++) { rest /= p; }
       if(nf >= RP_MAX_FACTORS || pn >= LONG_LENGTH) { ok = 0; break; }
       if(e == 1)
-      { if(prime_se[pn] == NULL) { ok = 0; break; } /* uninformative */
+      { if(prime_se[pn] == NULL) { ok = 0; break; } /* says nothing */
         r *= prime_se[pn]->r; fac[nf] = pn;
       }
       else
@@ -2457,6 +2472,8 @@ static long sieving_info(ratpoints_args *args,
   /* How many primes to look at.  The loop below may raise this: see the
    * comment at its end. */
   long pn_lim = args->num_primes;
+  long n_weak = 0; /* the primes among the candidates that say only that
+                    * numerator and denominator are coprime (nf = -1) */
   double target = (args->survivors_per_word > 0.0) ? args->survivors_per_word
                                                    : RATPOINTS_SURVIVORS_PER_WORD;
   long sp2_extra = (args->sp2_extra >= 0) ? args->sp2_extra
@@ -2508,6 +2525,7 @@ static long sieving_info(ratpoints_args *args,
     { phase_1_key(&prec[pnp], cost_table, args->run_words, args->run_denoms,
                   call_cost);
       prime_se[pn] = prec[pnp].ssp;
+      if(info == 2) { n_weak++; }
       pnp++;
     }
 
@@ -2571,8 +2589,9 @@ static long sieving_info(ratpoints_args *args,
      * the survivors of the first with sp2 - sp1 further primes, and there
      * have to be that many left over; a curve with very many rational points
      * makes f a square modulo every residue for the smallest primes, so those
-     * carry no information and are dropped above, and without this the second
-     * phase can end up with nothing to sieve with at all.
+     * say next to nothing (they are not counted here, see n_weak) or nothing
+     * at all (they are dropped above), and without this the second phase can
+     * end up with nothing to sieve with at all.
      * Adding a prime can only raise pnp, and with the old stop rule could
      * only lower sp1 (the n smallest of a larger set have a smaller
      * product); with the cost in the rule (phase_1_wants) a new entry can
@@ -2588,7 +2607,7 @@ static long sieving_info(ratpoints_args *args,
                             : primes_for_phase_1(prec, pnp, bpw_swept,
                                                  target, sp2_extra);
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
-      if(pnp < want) { pn_lim++; }
+      if(pnp - n_weak < want) { pn_lim++; }
     }
 
   } /* end for pn */
@@ -2756,13 +2775,16 @@ static long sieving_info(ratpoints_args *args,
     }
   }
 
-  /* The third stage and the correction during the run see primes only: the
-   * composite moduli not taken leave the pool (their primes stay, unless a
-   * modulus taken involves them, in which case they left already). */
+  /* The third stage and the correction during the run see primes only, and
+   * only primes that exclude a residue: the composite moduli not taken leave
+   * the pool (their primes stay, unless a modulus taken involves them, in
+   * which case they left already), and so do the primes that say no more
+   * than that numerator and denominator are coprime (nf = -1), which the
+   * test for common factors has seen to by then. */
   { long n = args->sp2;
 
     while(n < pnp)
-    { if(prec[n].nf > 0)
+    { if(prec[n].nf != 0)
       { long k;
 
         for(k = n; k + 1 < pnp; k++) { prec[k] = prec[k+1]; }
@@ -2861,12 +2883,14 @@ static long sieving_info(ratpoints_args *args,
         if(!may_extend || pn_lim >= RATPOINTS_NUM_PRIMES) { break; }
         if(args->sp3_extra < 0)
         { double r_typ = 1.0; /* no informative prime seen: assume none */
-          long n;
+          long n, cnt = 0;
 
           if(pnp > 0)
           { r_typ = 0.0;
-            for(n = 0; n < pnp; n++) { r_typ += prec[n].r; }
-            r_typ /= (double)pnp;
+            /* a modulus that says only "coprime" is not what is looked for */
+            for(n = 0; n < pnp; n++)
+            { if(prec[n].nf >= 0) { r_typ += prec[n].r; cnt++; } }
+            r_typ = (cnt > 0) ? r_typ/(double)cnt : 1.0;
           }
           if(S*(1.0 - per_surv - r_typ) <= per_denom) { break; }
         }
@@ -2875,7 +2899,10 @@ static long sieving_info(ratpoints_args *args,
         pn_lim++;
         if(info < 0)
         { return(prime[pn_lim-1]); /* no points mod p */ }
-        if(info == 0) { continue; } /* it says nothing; try the next one */
+        if(info == 0 || info == 2)
+        { continue; } /* it says nothing, or nothing this stage can use,
+                       * which runs after the test for common factors; try
+                       * the next one */
         /* the third stage builds no table, so its primes are ranked by what
          * they say alone, which is what the selection above does */
         prec[pnp].key = prec[pnp].r;
