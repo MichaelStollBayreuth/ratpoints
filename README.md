@@ -9,10 +9,9 @@ The program is distributed under the GNU GPL, version 2 (or later).
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.0.pdf).
 
-The current version is **ratpoints-3.0.0** from September 19, 2026. Compared to version 2.2.4, it works
-out for itself what it used to be told, sieves between two and ten times faster, comes with a test
-suite that exercises every branch of the code, and fixes the bugs listed in the change log of the
-documentation. It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**. Programs
+The current version is **ratpoints-3.0.0** from September 21, 2026. Compared to version 2.2.4, it works
+out for itself what it used to be told, sieves between two and ten times faster, and comes with a test
+suite that exercises nearly every line of the code. It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**. Programs
 using the library must be recompiled, since `ratpoints_args` has gained fields.
 
 The main improvements over version 2.2.x:
@@ -31,8 +30,8 @@ The main improvements over version 2.2.x:
   exact test costs on that curve, and corrected while
   the program runs from what the sieve is actually finding.
 * **Composite moduli.**
-  The odd numbers below 64 sieve alongside the primes;
-  this improves the efficiency of the first two sieving phases.
+  The odd composite numbers below 64 sieve alongside the primes;
+  this improves the efficiency of the first two sieving stages.
 * **Finer 2-adic information.**
   The numerator patterns are taken modulo 64 instead of 16,
   and the bit arrays of each denominator class pack the numerators
@@ -50,7 +49,7 @@ The main improvements over version 2.2.x:
 * **A test suite.**
   `make test` runs random and point-rich curves, curves of other degrees, one
   invocation per bug fixed, a suite of a few hundred invocations chosen so
-  that every branch of the code runs at least once (its reference checked
+  that nearly every line of the code runs at least once (its reference checked
   by brute force, independently of the sieve) and the library interface,
   and it fails when a test fails; `make test4configs` repeats the suite on the
   other compile-time configurations, and `make coverage` measures what
@@ -76,16 +75,16 @@ to between 0.03 and 0.40.
 
 On a CPU with AVX512F capability, the program can use **512-bit** AVX registers
 as well; see the documentation for how to enable it.
-That variant has not been tested on such a CPU, only in the emulation
+I have not been able to test that variant on such a CPU, only in the emulation
 the compiler allows, and whether it is faster depends on the machine:
 the one data point, kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland)
-for a curve with many rational points on a Zen 5 CPU, shows a speedup of 13-14%
+for a curve with many rational points on a Zen 5 CPU (with version 2.2.3), shows a speedup of 13-14%
 over the 256-bit version. It is advisable to run `make test` and compare
 the timings on your own machine.
 
 ### AI Declaration
 
-The bugs this version fixes compared to version 2.2.2 were found
+The bugs fixed in versions 2.2.3 and 2.2.4 were found
 and the changes making the 512-bit version work (in the emulation that
 my machine allows) were made by Claude Code (Anthropic),
 in multiple sessions supervised by myself.
