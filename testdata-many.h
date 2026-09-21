@@ -1,7 +1,7 @@
 /***********************************************************************
  * ratpoints-3.0.0                                                      *
  *  - A program to find rational points on hyperelliptic curves         *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                        *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                  *
  *                                                                      *
  * This program is free software: you can redistribute it and/or        *
  * modify it under the terms of the GNU General Public License          *
@@ -27,9 +27,9 @@
  *                                                                      *
  * The two files exercise the two regimes that matter in practice and   *
  * that behave very differently: on a random curve about one numerator  *
- * in 10^4 survives the first phase of the sieve, on these curves up    *
+ * in 10^4 survives the first stage of the sieve, on these curves up    *
  * to a hundred times more, so the best division of labour between the  *
- * two phases is quite different.  Anything tuned on one of them alone  *
+ * two stages is quite different.  Anything tuned on one of them alone  *
  * -- in particular the constants that decide sp1 and sp2, see          *
  * ratpoints.h -- should be checked against the other.                  *
  *                                                                      *

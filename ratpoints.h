@@ -1,7 +1,7 @@
 /***********************************************************************
  * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,8 +23,8 @@
  *                                                                     *
  * Header file for the ratpoints program and library                   *
  *                                                                     *
- * Michael Stoll, September 21, 2009; January 7, 2022                  *
- * with changes by Bill Allombert, December 29, 2021                   *
+ * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 21, 2026              *
+ * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
 /* Use the GNU multiprecision library. */
@@ -90,7 +90,7 @@
  * regimes that matter, and a value that suits one can be poor for the
  * other.  The offset matters much less than the threshold. */
 #ifndef RATPOINTS_SURVIVORS_PER_WORD
-# define RATPOINTS_SURVIVORS_PER_WORD 0.003 /* when to stop the first phase */
+# define RATPOINTS_SURVIVORS_PER_WORD 0.003 /* when to stop the first stage */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
 # define RATPOINTS_SP2_EXTRA 11             /* sp2 = sp1 + this, capped */

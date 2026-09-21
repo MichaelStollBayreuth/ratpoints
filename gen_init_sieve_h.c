@@ -1,7 +1,7 @@
 /***********************************************************************
  * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * This program writes the file init_sieve.h                           *
  *                                                                     *
- * Michael Stoll, Jan 9, 2008                                          *
+ * Michael Stoll, Jan 9, 2008; Sep 21, 2026                            *
  ***********************************************************************/
 
 #include "rp-private.h"

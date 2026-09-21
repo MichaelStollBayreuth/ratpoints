@@ -13,7 +13,7 @@
 # Which pair of tests, and at what height bound, is set by TUNE_TESTS and
 # TUNE_HEIGHT below.  The default is the pair "make test" uses, at their own
 # height of 16383.  That is a short run in which two fifths of the time goes
-# into work other than the two sieving phases (choosing the primes, the set-up
+# into work other than the two sieving stages (choosing the primes, the set-up
 # per denominator, the exact checks), so a setting is judged partly on work it
 # does not affect; "make tunehigh" measures the same thing on the
 # large-height suites instead, where the sieve is nearly all of it.  Use that
@@ -47,7 +47,7 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # The candidates for each constant.  There are two ways to say what they are.
 # R_VALUES, E_VALUES, U_VALUES, C_VALUES and Q_VALUES are an absolute ladder,
 # bracketing the compiled-in values either way; a factor of two in the
-# threshold is worth about one prime in the first phase.  R_FACTORS, E_DELTAS,
+# threshold is worth about one prime in the first stage.  R_FACTORS, E_DELTAS,
 # U_FACTORS, C_FACTORS and Q_FACTORS instead describe a neighbourhood of the
 # settings being measured against -- multiples of the threshold, of the run
 # length, of the table cost and of the third stage's per-denominator cost, and
@@ -72,7 +72,7 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # the other, since they see very different U.
 #
 # The fourth constant is what one row of a sieve table costs, in units of one
-# first-phase AND per word.  It decides how strongly the ranking of the primes
+# first-stage AND per word.  It decides how strongly the ranking of the primes
 # prefers a small prime to a larger one that says a little more, which matters
 # at a small height bound and hardly at all at a large one, where the tables
 # are a negligible share of the run.  Its basin is flat -- on the machine the

@@ -68,12 +68,12 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
  * RBA(a)     : fill a ratpoints_bit_array with copies of the word a
  * zero       : all bits zero == RBA(0UL)
  * AND(a,b)   : bit-wise and operation: a &= b
- *              (used in phase 2 to test several bit-arrays at once)
+ *              (used in stage 2 to test several bit-arrays at once)
  * EXT0(a)    : extract first word (as unsigned long)
  * EXT(a,i)   : extract word with index i (as unsigned long)
  * TEST(a)    : tests if a is zero: TEST(a) == 0 <==> a == zero
  *              TEST should be fast if possible; it is used frequently
- *              in phase 2 of the sieve.
+ *              in stage 2 of the sieve.
  * MASKL(a,s) : set lower s bits of a to zero
  * MASKU(a,s) : set upper s bits of a to zero
  *              MASKL and MASKU don't have to be terribly efficient;
@@ -114,7 +114,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
  * This is the 512-bit analogue of the AVX2 version below.
  * The obvious fall-back (see the #else branch) is quite bad here: gcc spills
  * the whole 64-byte vector to the stack and reads it back in 8-byte pieces,
- * which defeats store-to-load forwarding in the innermost loop of phase 2. */
+ * which defeats store-to-load forwarding in the innermost loop of stage 2. */
 # define TEST(a) ( _mm512_test_epi64_mask((__m512i)(a), (__m512i)(a)) != 0 )
 /* and the test the scan over the survivors uses; see TESTZ below */
 # define TESTZ(a) ( _mm512_test_epi64_mask((__m512i)(a), (__m512i)(a)) == 0 )
@@ -132,7 +132,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (64)));
                      survl += qsh; *survl++ &= (~0UL)>>rsh; \
                      for(l = qsh+1; l < RBA_PACK; l++) { *survl++ = 0UL; } }
 #ifndef RATPOINTS_CHUNK
-/* Number of registers used in phase 1 of sieving.
+/* Number of registers used in stage 1 of sieving.
  * One could use 32 here (there are as many ZMM registers),
  * but this would require extending the code in sift.c . */
 # define RATPOINTS_CHUNK 16
@@ -164,7 +164,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (32)));
 #endif
 #ifdef __AVX__
 /* Whether a bit array is empty, for the loop in sift.c that scans the
- * survivors of the first phase.  That loop runs into a sentinel, so this
+ * survivors of the first stage.  That loop runs into a sentinel, so this
  * test is the whole of its body: a load, one vptest and the branch per bit
  * array.  (vptest against an all-ones register could take the memory
  * operand directly, but gcc 14 loads it anyway and then rebuilds the
@@ -194,7 +194,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (32)));
                      else if(sh >= LONG_LENGTH) { survl[2] &= ~(0UL)>>(sh - LONG_LENGTH); survl[3] = 0UL; } \
                      else { survl[3] &= ~(0UL)>>sh; } }
 #ifndef RATPOINTS_CHUNK
-# define RATPOINTS_CHUNK 16  /* Number of registers used in phase 1 of sieving, max. 16. */
+# define RATPOINTS_CHUNK 16  /* Number of registers used in stage 1 of sieving, max. 16. */
 #endif
 
 #elif defined(USE_AVX128)
@@ -220,7 +220,7 @@ typedef unsigned long ratpoints_bit_array __attribute__ ((vector_size (16)));
                      if(sh >= LONG_LENGTH) { survl[0] &= ~(0UL)>>(sh - LONG_LENGTH); survl[1] = 0UL; } \
                      else { survl[1] &= ~(0UL)>>sh; } }
 #ifndef RATPOINTS_CHUNK
-# define RATPOINTS_CHUNK 16  /* Number of registers used in phase 1 of sieving, max. 16. */
+# define RATPOINTS_CHUNK 16  /* Number of registers used in stage 1 of sieving, max. 16. */
 #endif
 
 #elif defined(USE_SSE)
@@ -246,7 +246,7 @@ typedef __v2di ratpoints_bit_array;
                      if(sh >= LONG_LENGTH) { survl[0] &= ~(0UL)>>(sh - LONG_LENGTH); survl[1] = 0UL; } \
                      else { survl[1] &= ~(0UL)>>sh; } }
 #ifndef RATPOINTS_CHUNK
-# define RATPOINTS_CHUNK 16  /* Number of registers used in phase 1 of sieving, max. 16. */
+# define RATPOINTS_CHUNK 16  /* Number of registers used in stage 1 of sieving, max. 16. */
 #endif
 
 #else
@@ -274,7 +274,7 @@ typedef unsigned long ratpoints_bit_array;
 #endif /* various register lengths */
 
 /* Whether a bit array is all zero.  The loop that scans the survivors of
- * the first phase in sift.c uses this on the bit arrays in memory; the AVX
+ * the first stage in sift.c uses this on the bit arrays in memory; the AVX
  * variants above have a form of their own, and everywhere else it is TEST
  * negated. */
 #ifndef TESTZ
@@ -341,14 +341,14 @@ typedef unsigned long ratpoints_bit_array;
 /* This is used to hold the preliminary sieving information for one modulus
  * p, a prime or a composite modulus (see ratpoints_sieve_entry below).
  * The table at ptr has p bit arrays (and a few more repeating the first
- * ones, for the first phase to run past the end), and the one for word
+ * ones, for the first stage to run past the end), and the one for word
  * number i is at index (i + offset) mod p.  Besides the shift that the
  * packing of the numerators needs (see rp_num_class), offset carries a
  * multiple of p of at least RP_ROW_BIAS, so that i + offset is never
  * negative for a word number the program handles and the reduction needs
  * no sign fix; the per-class table it is copied from in sift() (find_points.c)
- * has it built in.  start and end serve the first phase, which walks the
- * table with a pointer; the second phase computes the row from i directly. */
+ * has it built in.  start and end serve the first stage, which walks the
+ * table with a pointer; the second stage computes the row from i directly. */
 typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                  ratpoints_bit_array *start; ratpoints_bit_array *end; } sieve_spec;
 
@@ -365,7 +365,7 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
  * magic), the remainder of u modulo p is the top half of (m*u mod 2^64) * p,
  * and the quotient floor(u/p) is the top half of m*u; both are exact for
  * every u below 2^32, which every caller checks for in its own way.  The
- * callers are the third stage and its set-up, the start of the first phase
+ * callers are the third stage and its set-up, the start of the first stage
  * and the row look-up of the second (sift.c), and the reduction of the
  * denominator modulo each sieving prime and the Jacobi symbol test on the
  * denominators (find_points.c).
@@ -389,7 +389,7 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
 /* The largest value that is reduced that way; above it the callers fall
  * back on the division.  See mod_mul() and stage3() in sift.c. */
 #define RP_MULMOD_LIMIT 4294967295L
-/* The second phase keeps the value it reduces, a word number plus an offset
+/* The second stage keeps the value it reduces, a word number plus an offset
  * that carries RP_ROW_BIAS, below 2*RP_ROW_BIAS by the test at the head of
  * _ratpoints_sift0; that is only exact if the two limits agree.  An array
  * of negative size does not compile. */
@@ -539,12 +539,12 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
 /* The following function is provided in sift.c : */
 /* cls is the numerator class of the denominator: its packing, which says
  * what numerator a bit stands for, and the 2-adic pattern every bit array
- * starts from, which the first phase ANDs in as it sieves rather than having
+ * starts from, which the first stage ANDs in as it sieves rather than having
  * it written into the array beforehand.  mask_low and mask_high say how many
  * bits to clear at the two ends of the numerator interval (zero for an end
- * that is not a boundary); both are applied after the first phase, which
+ * that is not a boundary); both are applied after the first stage, which
  * gives the same result because AND is commutative.  The range
- * w_high - w_low can be any length: the first phase takes it in chunks of
+ * w_high - w_low can be any length: the first stage takes it in chunks of
  * RATPOINTS_CHUNK bit arrays and sieves what is left over in narrower legs
  * (the arm for RATPOINTS_CHUNK 1 takes any length as well). */
 long _ratpoints_sift0(long b, long w_low, long w_high,

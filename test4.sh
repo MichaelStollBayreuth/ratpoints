@@ -243,8 +243,8 @@ t '32 48 55 -44' 100 -q
 t '-40 56 45' 100 -q
 
 echo '---- the sieving primes ----'
-# no first phase at all; one modulus; second phase empty; third stage
-# empty; every prime in the first phase; more primes than the table has
+# no first stage at all; one modulus; second stage empty; third stage
+# empty; every prime in the first stage; more primes than the table has
 t '1 0 126 0 441' 200 -q -n 0
 t '1 0 126 0 441' 200 -q -n 0 -N 0
 t '1 0 126 0 441' 200 -q -n 1
@@ -657,11 +657,11 @@ t '10 10 5 -7 0 3 -2' 300 -q -r 0.001 -R 3 -U 100 -C 5 -Q 0.001 -W 500
 t '10 10 5 -7 0 3 -2' 300 -q -P 40
 t '3 2 -1 12' 200 -q -R 0 -P 0
 # the correction during the run: off, the third stage only (the default),
-# the second phase too.  It first looks after a million words, which the
+# the second stage too.  It first looks after a million words, which the
 # curve with twelve points reaches at a height bound of 40000, so these
-# take a moment; with a weak first phase (-r 0.5) and free tables (-C 0)
-# the second phase is found wanting and gets a prime added, with -R 0 there
-# is no second phase to correct
+# take a moment; with a weak first stage (-r 0.5) and free tables (-C 0)
+# the second stage is found wanting and gets a prime added, with -R 0 there
+# is no second stage to correct
 t '1 0 126 0 441' 200 -q -A 0
 t '1 0 126 0 441' 200 -q -A 1
 t '1 0 126 0 441' 200 -q -A 2
@@ -688,7 +688,7 @@ t '10 10 5 -7 0 3 -2' 30000 -q -A 2 -r 0.5 -R 1 -C 0
 # 131 x, and goes on
 t '1 131 2 0 1' 100 -q -n 5 -N 10 -P 25
 # the square-everywhere curve again, made to look at every prime the table
-# has by asking for thirty second-phase moduli without the scaling
+# has by asking for thirty second-stage moduli without the scaling
 t '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -q -R 30 -U 0
 # composite moduli: with the tables free (-C 0) and many moduli asked for,
 # the ranking takes prime powers and products, among them products with a

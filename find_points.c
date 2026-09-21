@@ -23,7 +23,7 @@
  *                                                                     *
  * Core program file for ratpoints                                     *
  *                                                                     *
- * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 6, 2026               *
+ * Michael Stoll, Sep 21, 2009; Jan 7, 2022; Sep 6-21, 2026            *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -52,7 +52,7 @@
      and this pattern of prime[n] words is then repeated, so that the array
      can be read as prime[n] + RATPOINTS_CHUNK-1 bit-arrays
      (the last RATPOINTS_CHUNK-1 of them being the wrap-around copies that
-      _ratpoints_sift0 relies on in phase 1; compare init.c).
+      _ratpoints_sift0 relies on in stage 1; compare init.c).
      The array carries an alignment attribute, since it is accessed through
      pointers of type  ratpoints_bit_array * ; see gen_find_points_h.c.
  */
@@ -66,7 +66,7 @@ extern unsigned long long _rp_bc_cycles, _rp_bc_calls;
 # define RP_BC_TIC(t) unsigned long long t = __rdtsc()
 # define RP_BC_TOC(t) do { _rp_bc_cycles += __rdtsc() - (t); _rp_bc_calls++; } \
                       while(0)
-/* and the loop that computes b modulo each modulus of the first two phases,
+/* and the loop that computes b modulo each modulus of the first two stages,
  * once per denominator and modulus; the primes of the third stage have no
  * such cost, since their set-up is done on demand (fill_checks in sift.c) */
 extern unsigned long long _rp_bp_cycles, _rp_bp_dens, _rp_bp_steps;
@@ -75,7 +75,7 @@ extern unsigned long long _rp_arrays_swept;
  * earn back over the run; see run_shape */
 extern unsigned long long _rp_init_cycles, _rp_init_calls, _rp_init_rows;
 extern unsigned long long _rp_setup_cycles, _rp_setup_dens;
-/* and the phase counters themselves, for the per-curve line at the end of
+/* and the stage counters themselves, for the per-curve line at the end of
  * find_points_work */
 extern unsigned long long _rp_phase1_cycles, _rp_phase2_cycles;
 extern unsigned long long _rp_check_cycles, _rp_sift0_calls;
@@ -120,8 +120,8 @@ extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
 /* A candidate modulus in the ranking: its density r, its key and the cost
  * the key was made from (what the modulus costs per word swept in the
- * first phase, one AND plus its fixed costs spread over the run; the rule
- * that ends the first phase weighs it, see take_entries), the modulus p,
+ * first stage, one AND plus its fixed costs spread over the run; the rule
+ * that ends the first stage weighs it, see take_entries), the modulus p,
  * the primes it involves as a mask over their indices (a modulus involving
  * one of the primes beyond the first 64 is not offered), its entry -- a
  * prime's from examine_prime(), a composite's made by make_modulus() when
@@ -293,7 +293,7 @@ void find_points_init(ratpoints_args *args)
   /* the reciprocals _ratpoints_sift0 reduces word numbers with.  They belong
    * to the moduli, not to the denominators, so they are filled in once per
    * curve; and they are kept out of sieve_spec because that structure is read
-   * in the innermost loop of the first phase, where its size tells.  As many
+   * in the innermost loop of the first stage, where its size tells.  As many
    * as sieve_list has (RATPOINTS_NUM_PRIMES would do, since every entry in
    * the list owns a prime no other has; the doubling is headroom). */
   args->magics = malloc(2*RATPOINTS_NUM_PRIMES * sizeof(unsigned long));
@@ -1073,7 +1073,7 @@ static long num_packings(const rp_num_class *cls)
  * keeps the word number plus the shift non-negative (RP_ROW_BIAS).  Classes
  * with the same packing share a row.  offsets has room for num_packings()
  * rows of np entries, one per modulus that may come to be sieved with
- * (adapt_primes can promote a prime into the second phase during the run).
+ * (adapt_primes can promote a prime into the second stage during the run).
  * On the way the sieve entries get 2^-k mod p for the strides in use (dinv,
  * read by fill_bp_list), by halving from 1: 2^-1 mod p is (p+1)/2, which
  * works for any odd modulus. */
@@ -1135,7 +1135,7 @@ static int compare_entries(const void *a, const void *b)
   return (diff > 0) ? 1 : (diff < 0) ? -1 : 0;
 }
 
-/* Beyond the second phase a prime builds no table, so all that separates
+/* Beyond the second stage a prime builds no table, so all that separates
  * two of them is what they say: there the order is by density alone. */
 static int compare_by_r(const void *a, const void *b)
 {
@@ -1144,14 +1144,14 @@ static int compare_by_r(const void *a, const void *b)
 }
 
 /* What one more modulus -- a prime, or a composite modulus -- costs the
- * sieve, per word swept, in units of what a first-phase AND costs there.
+ * sieve, per word swept, in units of what a first-stage AND costs there.
  *
  * per_word is the part that is paid for every word (or for every surviving
  * bit array, which comes to the same thing once multiplied by the survival
- * rate): 1 in the first phase, COST_PHASE2*rate in the second, and the
+ * rate): 1 in the first stage, COST_PHASE2*rate in the second, and the
  * third stage's own cost per survivor in the third.  The other two terms are
  * paid once and spread over the run: the sieve table, which the third stage
- * does not build, and the entry of bp_list, which the first two phases pay
+ * does not build, and the entry of bp_list, which the first two stages pay
  * for every denominator.  (The third stage's primes have neither: their
  * set-up is done on demand, and they are ranked by another rule, below.)
  */
@@ -1160,7 +1160,7 @@ static double prime_cost(long p, double per_word, int tabled,
 { double cost = per_word + RATPOINTS_COST_BP*n_denoms/u_words;
 
   if(tabled)
-  { /* a prime of the first two phases has a sieve_spec filled in for it as
+  { /* a prime of the first two stages has a sieve_spec filled in for it as
      * well, once per denominator */
     cost += RATPOINTS_COST_SETUP*n_denoms/u_words;
     if(cost_table > 0.0)
@@ -1184,12 +1184,12 @@ static double prime_key(double r, long p, double per_word, int tabled,
   return(prime_cost(p, per_word, tabled, cost_table, u_words, n_denoms)/info);
 }
 
-/* Key a candidate for the first phase, and keep the cost the key was made
- * from: the rule that ends the phase compares it with what the candidate
- * would save (take_entries).  call_cost is what a first-phase modulus pays
+/* Key a candidate for the first stage, and keep the cost the key was made
+ * from: the rule that ends the stage compares it with what the candidate
+ * would save (take_entries).  call_cost is what a first-stage modulus pays
  * per word for the calls of the sieve, RATPOINTS_COST_CALL per call spread
  * over the run (the row pointer's reduction at the head of every call and
- * the narrower legs past the last whole chunk; the second phase has
+ * the narrower legs past the last whole chunk; the second stage has
  * neither, it finds its rows directly). */
 static void phase_1_key(entry *e, double cost_table, double u_words,
                         double n_denoms, double call_cost)
@@ -1269,7 +1269,7 @@ static double check_cost(const ratpoints_args *args)
  *
  * The sieve itself knows better.  The scan visits every bit array anyway, so
  * counting the non-empty ones costs an increment on a path taken half a per
- * cent of the time; the survivors of the second phase and of the test for
+ * cent of the time; the survivors of the second stage and of the test for
  * common factors are counted as cheaply.  Two such counts pin both terms of
  *
  *          S(n) = floor + chance * R(n)
@@ -1289,7 +1289,7 @@ static double check_cost(const ratpoints_args *args)
  * after that the next one waits until twice as much has been seen */
 #define RP_ADAPT_WORDS 1000000UL
 #define RP_ADAPT_ARRAYS 1000UL   /* ...and this many non-empty bit arrays */
-#define RP_ADAPT_BITS 200UL      /* ...and this many survivors of phase 2 */
+#define RP_ADAPT_BITS 200UL      /* ...and this many survivors of stage 2 */
 
 static void adapt_primes(ratpoints_args *args)
 { ratpoints_sieve_entry **sieve_list
@@ -1312,7 +1312,7 @@ static void adapt_primes(ratpoints_args *args)
 
   /* The two rates the run has shown, per numerator word.  The first is
    * cumulative -- sp1 never moves, so every word swept measures the same
-   * thing -- but the second is not: everything downstream of the first phase
+   * thing -- but the second is not: everything downstream of the first stage
    * was counted under whatever sp2 was in force, so those counters are reset
    * whenever sp2 changes and only the words since then divide into them. */
   { double words_2 = (double)(args->n_words - args->n_words_2);
@@ -1332,7 +1332,7 @@ static void adapt_primes(ratpoints_args *args)
   level = s1 - chance*r1;          /* the floor */
   if(level < 0.0) { level = 0.0; }
 
-  /* How many primes the second phase should use.  Adding the next one costs
+  /* How many primes the second stage should use.  Adding the next one costs
    * what it does on every bit array still in play, plus the fixed costs it
    * has to earn back over the run, and saves the survivors it removes -- all
    * of which would otherwise be extracted, tested for common factors, run
@@ -1405,7 +1405,7 @@ static void adapt_primes(ratpoints_args *args)
     double sp2_old = level + chance*r2;
     long sp3;
 
-    /* the second phase may just have moved; carry the measurement across */
+    /* the second stage may just have moved; carry the measurement across */
     if(sp2_old > 0.0) { S *= s/sp2_old; }
 
     for(sp3 = args->sp2; sp3 < max; sp3++)
@@ -1425,25 +1425,25 @@ static void adapt_primes(ratpoints_args *args)
 #endif
 }
 
-/* What a word that survives the first phase costs from there on, relative
+/* What a word that survives the first stage costs from there on, relative
  * to what it costs in a long run.  It meets the extra moduli of the second
- * phase, one AND on a surviving word each (RATPOINTS_COST_PHASE2) for as
+ * stage, one AND on a surviving word each (RATPOINTS_COST_PHASE2) for as
  * long as it survives them, and what survives those is extracted and
  * tested, RATPOINTS_COST_SURVIVOR per survivor (about one per surviving
- * word at these rates).  In a long run extra is eleven and the second phase
+ * word at these rates).  In a long run extra is eleven and the second stage
  * kills nearly every survivor cheaply, and the factor is one.  In a run of
  * a few thousand words extra is 0 or 1 and every surviving word reaches the
- * extraction, which costs several times more, so the first phase should
+ * extraction, which costs several times more, so the first stage should
  * sieve harder than the target says.  RATPOINTS_SURVIVORS_PER_WORD is
  * fitted at 16383, where extra is about two: there this factor and the cost
  * factor of phase_1_wants are both about three at the modulus where the
- * phase stops and nearly cancel.  The moduli the second phase would take
- * are approximated by the next entries of the pool, in key order (the phase
+ * stage stops and nearly cancel.  The moduli the second stage would take
+ * are approximated by the next entries of the pool, in key order (the stage
  * ranks them again by a key of its own, which favours smaller moduli of
  * higher density: the survivors modelled here die a little faster than the
  * real ones will, so the factor errs low).  The long-run value is an
- * endless second phase of the mean density of the next RATPOINTS_SP2_EXTRA
- * entries -- the second phase of a long run -- whether or not this run has
+ * endless second stage of the mean density of the next RATPOINTS_SP2_EXTRA
+ * entries -- the second stage of a long run -- whether or not this run has
  * them; when the pool has nothing beyond the modulus in hand, its own
  * density stands in.  The result is floored at one: a surviving word cannot
  * cost less than the long run's, whatever the densities say. */
@@ -1471,7 +1471,7 @@ static double downstream_factor(const entry *prec, long n, long pnp,
   return((k < 1.0) ? 1.0 : k);
 }
 
-/* The rule that ends the first phase.  Modulus n of the pool is worth
+/* The rule that ends the first stage.  Modulus n of the pool is worth
  * adding while the expected survivors per 64-bit word it removes --
  * bits_per_word times the product rate of the densities taken so far,
  * times 1 - r_n --, weighted by what they cost downstream (above), exceed
@@ -1486,11 +1486,11 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * per cent; at a height bound of a few hundred, where the run is a few
  * dozen words and a table has more rows than that, it is by a factor of a
  * hundred for the small primes and several hundred at the modulus where the
- * phase stops, and the phase stops after some seven moduli where a rule
+ * stage stops, and the stage stops after some seven moduli where a rule
  * blind to these costs takes a dozen whose tables are a fifth of the run.  The
  * first modulus is always taken: the chunked sieve writes the 2-adic
  * pattern on its pass, so its ANDs cost nothing beyond that (its tables do,
- * but a sieve without a first phase is no sieve). */
+ * but a sieve without a first stage is no sieve). */
 static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
                          double bits_per_word, double rate, double target,
                          long extra)
@@ -1499,7 +1499,7 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
               *downstream_factor(prec, n, pnp, extra)
               > target*prec[n].cost); }
 
-/* How many primes the first phase would need under that rule.  prec[] must
+/* How many primes the first stage would need under that rule.  prec[] must
  * be sorted by increasing key.  If the target cannot be reached with the
  * primes available, all of them are used.  The choice itself is made by
  * take_entries(), with the composite moduli in the pool; this estimate,
@@ -1519,7 +1519,7 @@ static long primes_for_phase_1(entry *prec, long pnp,
   return(pnp > 0 ? pnp : 1);
 }
 
-/* How many primes the second phase adds to the first.  A phase-2 prime is
+/* How many primes the second stage adds to the first.  A stage-2 prime is
  * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
@@ -1707,7 +1707,7 @@ static int examine_prime(ratpoints_args *args, long pn,
     se->is_f_square = is_f_square;
     se->inverses = &inverses[pn][0];
     /* the reciprocal the sieve reduces with: the third stage (see stage3()
-     * in sift.c), and the first and second phases through the magics array
+     * in sift.c), and the first and second stages through the magics array
      * of sieving_info.  One division per prime and curve, against one per
      * survivor and one per call saved. */
     se->magic = ULONG_MAX/(unsigned long)p + 1;
@@ -1807,7 +1807,7 @@ static void clipped_padding(const rp_num_class *cl, long H,
  * u_words counts the words swept, padding included, since that is what the
  * per-word costs are spread over; u_pad says how many of them are padding,
  * for the estimates that want the numerators themselves; n_calls is the
- * number of calls of the sieve, which a first-phase modulus pays a fixed
+ * number of calls of the sieve, which a first-stage modulus pays a fixed
  * cost for (RATPOINTS_COST_CALL).
  *
  * The result is an estimate, and a biased one -- the Jacobi factor is an
@@ -1980,7 +1980,7 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
    * height bound cut pads what clipped_padding says for its class, the
    * mean over the classes kept; an end inside the bound pads half a bit
    * array on average.  (The range is not padded to whole chunks of
-   * RATPOINTS_CHUNK bit arrays: the tail legs of the first phase sieve
+   * RATPOINTS_CHUNK bit arrays: the tail legs of the first stage sieve
    * what is left over.) */
   { double pad = (good > 0)
                    ? clo*pad_lo/(double)good + chi*pad_hi/(double)good
@@ -2232,7 +2232,7 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
   return((r < 1.0 - 1.0e-9) ? 1 : 0);
 }
 
-/* the largest table cost per numerator word, in units of a first-phase
+/* the largest table cost per numerator word, in units of a first-stage
  * AND, at which a composite modulus is offered at all: above it the modulus
  * cannot pay whatever it says, and at a small height bound this keeps the
  * set-up from looking at the prime powers */
@@ -2380,8 +2380,8 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * stage of the sieve: an entry sharing a prime with one taken before (used,
  * a mask of primes) is dropped from the pool, the ones taken stay where
  * they are, from prec[from] on.  With want >= 0 that many are taken; with
- * want < 0 the first-phase rule decides (phase_1_wants, with extra the
- * number of moduli the second phase will add): entries are taken while the
+ * want < 0 the first-stage rule decides (phase_1_wants, with extra the
+ * number of moduli the second stage will add): entries are taken while the
  * expected survivors per word swept that the entry removes -- bits_per_word
  * (per word swept, see bpw_swept in sieving_info) times the product rate of
  * the densities so far, times 1 - r --, weighted by what they cost
@@ -2449,8 +2449,8 @@ static long sieving_info(ratpoints_args *args,
   unsigned long used = 0UL; /* the primes the moduli taken involve */
   double u_pad = 0.0; /* of run_words, the padding to whole bit arrays */
   double n_calls = 0.0; /* calls of the sieve the run will make */
-  double call_cost = 0.0; /* what they cost a first-phase modulus, per word */
-  /* The survivors per word the two rules of the first phase and the key of
+  double call_cost = 0.0; /* what they cost a first-stage modulus, per word */
+  /* The survivors per word the two rules of the first stage and the key of
    * the second compare with the costs per word: bits_per_word is per word
    * of numerators, the costs are spread over every word swept, and the
    * padding to whole bit arrays (u_pad) is swept and masked, so it
@@ -2577,12 +2577,12 @@ static long sieving_info(ratpoints_args *args,
     }
 
     /* Once the primes we were told to look at are used up, look at more if
-     * the choice below would otherwise be cramped.  The second phase sieves
+     * the choice below would otherwise be cramped.  The second stage sieves
      * the survivors of the first with sp2 - sp1 further primes, and there
      * have to be that many left over; a curve with very many rational points
      * makes f a square modulo every residue for the smallest primes, so those
      * say next to nothing (they are not counted here, see n_weak) or nothing
-     * at all (they are dropped above), and without this the second phase can
+     * at all (they are dropped above), and without this the second stage can
      * end up with nothing to sieve with at all.
      * Adding a prime raises pnp and on the whole lowers sp1 (the n smallest
      * of a larger set have a smaller product), but with the cost in the rule
@@ -2741,11 +2741,11 @@ static long sieving_info(ratpoints_args *args,
     args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, &rate,
                              bpw_swept, target, sp2_extra);
 
-    /* Rank what is left again, for the second phase.  There a modulus is
-     * applied only to the bit arrays that survived the first phase, so its
+    /* Rank what is left again, for the second stage.  There a modulus is
+     * applied only to the bit arrays that survived the first stage, so its
      * per-word cost is smaller by the survival rate -- which makes the fixed
      * cost of its table weigh far more heavily, and the size of the modulus
-     * matter far more than it does in the first phase. */
+     * matter far more than it does in the first stage. */
     if(args->sp1 < pnp)
     { long n;
 
@@ -2810,7 +2810,7 @@ static long sieving_info(ratpoints_args *args,
    * S is the expected number of survivors a denominator still has when the
    * stage begins.  It is the number of numerators the denominator considers,
    * thinned by the 2-adic pre-sieve and by the primes of the first two
-   * phases, and thinned again by the test for common factors, which runs
+   * stages, and thinned again by the test for common factors, which runs
    * before this stage and which no prime can help with: a numerator sharing
    * a factor with the denominator stands for a fraction that has already
    * been looked at with a smaller denominator, so it passes every prime.
@@ -2897,7 +2897,7 @@ static long sieving_info(ratpoints_args *args,
         /* the third stage builds no table, so its primes are ranked by what
          * they say alone, which is what the selection above does */
         prec[pnp].key = prec[pnp].r;
-        prec[pnp].cost = 0.0; /* never a first-phase candidate */
+        prec[pnp].cost = 0.0; /* never a first-stage candidate */
         pnp++;
         continue; /* choose again with the new prime in the pool */
       }
@@ -2928,10 +2928,10 @@ static long sieving_info(ratpoints_args *args,
   }
 
   /* The third stage may have looked at further primes, and those are now in
-   * sieve_list, where adapt_primes() can promote one into the second phase
+   * sieve_list, where adapt_primes() can promote one into the second stage
    * during the run -- at which point it does build a sieve table.  So the
    * buffer the tables come out of has to cover every prime looked at, not
-   * just the ones the first two phases started with.  Nothing has been taken
+   * just the ones the first two stages started with.  Nothing has been taken
    * from it yet: the tables are built lazily while sieving. */
   { long extra = 0, n;
 
@@ -2955,7 +2955,7 @@ static long sieving_info(ratpoints_args *args,
     ensure_ba_buffer(args, pn_lim, extra);
   }
 
-  /* the reciprocals the first two phases reduce word numbers with, in the order
+  /* the reciprocals the first two stages reduce word numbers with, in the order
    * the moduli are used; see the note in find_points_init */
   { long n;
     unsigned long *magics = (unsigned long *)args->magics;
@@ -2982,7 +2982,7 @@ static long sieving_info(ratpoints_args *args,
 
   if(args->flags & RATPOINTS_VERBOSE)
   { printf("  %.1f bits set per word, %ld primes looked at"
-           " ==> use %ld moduli in the first phase, %ld altogether,\n"
+           " ==> use %ld moduli in the first stage, %ld altogether,\n"
            "  and %ld primes more in the third stage\n",
            bits_per_word, pn_lim, args->sp1, args->sp2,
            args->sp3 - args->sp2);
@@ -3094,9 +3094,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
             ssp[n].ptr = (*(se->init))(se, bp, args);
             RP_INIT_TOC(t_init, p);
           }
-          /* the end of the table, which the first phase's wrap-around
+          /* the end of the table, which the first stage's wrap-around
            * compares against; the start field is set by sift0 at the head
-           * of every call, for the first-phase moduli, and nothing reads
+           * of every call, for the first-stage moduli, and nothing reads
            * it before that */
           ssp[n].end = ssp[n].ptr + p;
 
@@ -3152,14 +3152,14 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         for( ; w_low0 < w_high; w_low0 = w_high0, w_high0 += range)
         { if(w_high0 > w_high)
           { w_high0 = w_high; range = w_high0 - w_low0; }
-          /* The bit arrays are not written here.  The first phase's
+          /* The bit arrays are not written here.  The first stage's
            * first prime ANDs the 2-adic pattern in as it sieves, which
            * saves a store and a load on every one of them; what is left
            * for sift0 to do afterwards is the two boundary words, and it
            * is told about them like this.  The range is not padded to a
            * multiple of RATPOINTS_CHUNK either: sift0 sieves the bit
            * arrays past the last whole chunk in narrower legs.  (Padding
-           * would have to be sieved with every modulus of the first phase,
+           * would have to be sieved with every modulus of the first stage,
            * walked by the scan of the second and zeroed -- a seventh of
            * all bit arrays swept at height 16383, and four fifths of them
            * at height 1000.) */
@@ -3188,7 +3188,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * Find points by looping over the denominators and sieving numerators    *
  **************************************************************************/
 
-/* The denominator, divided by 2^k modulo each prime of the first two phases
+/* The denominator, divided by 2^k modulo each prime of the first two stages
  * -- k the stride its numerators are packed with, so that this is the
  * residue whose sieve table the denominator reads (see rp_num_class) -- in
  * bp_list, computed afresh for every denominator by the multiply-high
@@ -4109,14 +4109,14 @@ static long find_points_work_1(ratpoints_args *args,
 #if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
   /* Development instrumentation: what run_shape predicted for this curve
    * against what the run actually did.  Needs both switches, since the
-   * counters it reads belong to the phase timing. */
+   * counters it reads belong to the stage timing. */
   { static unsigned long long last_arrays = 0, last_dens = 0;
     static unsigned long long last_cyc1 = 0, last_cyc2 = 0, last_cyc3 = 0;
     static unsigned long long last_and2 = 0, last_rows = 0, last_calls = 0;
 
     fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
             " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu kodd=%ld"
-            /* and this curve's share of the phase counters (for the cost
+            /* and this curve's share of the stage counters (for the cost
              * of an AND against the footprint of the rows; rdtsc,
              * so scale by a pinned cycle count over the process before
              * comparing runs); and2 is 0 without RP_PHASE_COUNTS */
