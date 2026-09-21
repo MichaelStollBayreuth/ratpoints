@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.4                                                     *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -23,7 +23,7 @@
  *                                                                     *
  * Main program file for the ratpoints executable                      *
  *                                                                     *
- * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6 and 13, 2026     *
+ * Michael Stoll, May 27, 2009; Jan 7-18, 2022; Sep 6-21, 2026         *
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -37,7 +37,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \
@@ -68,6 +68,9 @@ char *usage_str =
     "                 [-f format] [-fs str] [-fm str] [-fe str] [-y] [-Y]\n"
     "                 [[-l low1] -u up1 ... -l lown [-u upn]]\n"
     "                 [-n num_primes1] [-N num_primes2] [-p max_primes]\n"
+    "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
+    "                 [-C table_cost] [-A adapt]\n"
+    "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
     "                 [-F max_forbidden] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
@@ -246,8 +249,16 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->num_inter     = 0;  /* No interval up to now */
   args->b_low         = 1;  /* denominators go from 1 to h */
   args->b_high        = -1;
-  args->sp1           = -1; /* gives default value */
-  args->sp2           = -1; /* gives default value */
+  args->sp1           = -1; /* negative: choose from the curve */
+  args->sp2           = -1; /* negative: choose from the curve */
+  args->survivors_per_word = -1.0; /* negative: compiled-in default */
+  args->sp2_extra     = -1; /* negative: compiled-in default */
+  args->sp2_u0        = -1.0; /* negative: compiled-in default */
+  args->cost_table    = -1.0; /* negative: compiled-in default */
+  args->adapt         = -1; /* negative: adapt when free to */
+  args->sp3_extra     = -1; /* negative: choose from the curve */
+  args->sp3_per_denom = -1.0; /* negative: compiled-in default */
+  args->check_cost    = -1.0; /* negative: estimate it from the curve */
   args->array_size    = RATPOINTS_ARRAY_SIZE;    /* default */
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
@@ -337,6 +348,71 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->sp2)) != 1) { error(6); }
+          i++;
+          break;
+        case 'r': /* the survivors of the first stage per 64-bit word swept
+                   * that one more modulus has to remove, for a modulus that
+                   * costs one AND per word; decides sp1 when -n is absent
+                   * (ratpoints.h, RATPOINTS_SURVIVORS_PER_WORD) */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->survivors_per_word)) != 1)
+          { error(6); }
+          i++;
+          break;
+        case 'R': /* how many primes to add to sp1 to get sp2, when -N is
+                   * absent */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
+          i++;
+          break;
+        case 'U': /* the number of numerator words at which a second-stage
+                   * prime pays for setting itself up; scales -R down for
+                   * short runs.  Zero leaves -R flat */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
+          i++;
+          break;
+        case 'A': /* how much of the choice to correct during the run from
+                   * what the sieve is doing: 0 none, 1 (the default) the
+                   * third stage, 2 the second stage as well */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
+          i++;
+          break;
+        case 'C': /* what building one row of a sieve table costs, in units
+                   * of one first-stage AND per word; zero ranks the primes
+                   * by what they say alone */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
+          i++;
+          break;
+        case 'P': /* how many primes the third stage adds to sp2; negative
+                   * means choose it from the curve */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->sp3_extra)) != 1) { error(6); }
+          i++;
+          break;
+        case 'Q': /* what one third-stage prime costs per denominator, as a
+                   * fraction of one exact check; decides -P when it is
+                   * absent */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles; negative
+                   * means estimate it from the degree and the coefficients,
+                   * and 306 is the value for a degree-6 curve with small
+                   * coefficients */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }
           i++;
           break;
         case 'f': /* printing format */
@@ -595,9 +671,12 @@ void message(long n, long total, ratpoints_args *args)
             } }
             printf("\n");
             break;
-    case 4: printf("%ld primes used for first stage of sieving,\n", args->sp1);
-            printf("%ld primes used for both stages of sieving together.\n",
-                   args->sp2);
+    case 4: printf("%ld moduli used for first stage of sieving,\n",
+                   args->sp1_used);
+            printf("%ld moduli used for both stages of sieving together,\n",
+                   args->sp2_used);
+            printf("%ld further primes used in the third stage.\n",
+                   args->sp3_used - args->sp2_used);
             break;
     case 5: printf("\nCurve equation is  y^2 = ");
             print_poly(args->cof, args->degree);

@@ -1,29 +1,35 @@
 #!/bin/sh
 # Run test4.sh against the library built with the other compile-time
-# switches: the register widths (64, 128 by the SSE intrinsics and by
-# SSE2, 512, 256 being what the tree is built with), one register in the
-# first phase (RATPOINTS_CHUNK=1), the second phase one word at a time
-# (USE_LONG_IN_PHASE_2), and the larger prime table (PRIME_SIZE 8, the
-# default of 2.3).  The points found must not depend on any of these, and
-# test4.sh prints nothing that does, so every build is compared with the
-# same testbase4.  "make test4configs" runs this.
+# switches: the register widths (64, 128 by SSE2 and by the older SSE
+# intrinsics, 512 emulated, 256 being what the tree is built with), one
+# register in the first stage (RATPOINTS_CHUNK=1), the second stage one word
+# at a time (USE_LONG_IN_PHASE_2), the smaller prime table (PRIME_SIZE 7,
+# the default of 2.2.4) and the larger one (PRIME_SIZE 9, 96 primes, where
+# the mask of the primes a modulus involves runs out of bits), and composite
+# moduli off (RATPOINTS_COMPOSITE_MAX 1) and up to 1023 (every odd modulus
+# below the table's bound is a candidate).  The points found must not depend
+# on any of these, and test4.sh prints nothing that does, so every build is
+# compared with the same testbase4.  "make test4configs" runs this.
 #
 # Each configuration is built in a directory of its own, build-test4-<name>,
 # from symbolic links to the sources, so that the build in the working
 # directory is left alone; the directories are removed afterwards unless
-# KEEP is set.  About a quarter of a minute for all of them.  The exit
-# status is 1 when the output of a build differs from the reference and 2
-# when a build failed (whatever the other builds did).
+# KEEP is set.  About a minute for all of them.  The exit status is 1 when
+# the output of a build differs from the reference and 2 when a build
+# failed (whatever the other builds did).
 #
 # The configurations, as name:flags, the flags separated by commas; they
 # replace CCFLAGS1 of the Makefile (and PRIME_SIZE, for the one that
 # changes it).  A third field "nopart2" compares the output without the
-# second part of test4.sh, the reports of -v: two of those look at the
-# primes beyond 127 when the table has them.
-CONFIGS=${CONFIGS:-'64: 128:-DUSE_SSE 128a:-DUSE_AVX128 512:-DUSE_AVX512
+# second part of test4.sh, the reports of -v: two of those say what the
+# primes beyond 127 say, which a table of 30 primes cannot.
+CONFIGS=${CONFIGS:-'64: 128:-DUSE_AVX128 128s:-DUSE_SSE 512:-DUSE_AVX512
   chunk1:-DUSE_AVX,-mavx2,-DRATPOINTS_CHUNK=1
   long2:-DUSE_AVX,-mavx2,-DUSE_LONG_IN_PHASE_2
-  prime8:-DUSE_AVX,-mavx2,PRIME_SIZE=8:nopart2'}
+  prime7:-DUSE_AVX,-mavx2,PRIME_SIZE=7:nopart2
+  prime9:-DUSE_AVX,-mavx2,PRIME_SIZE=9
+  comp1:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1
+  comp1023:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1023'}
 
 status=0
 for cfg in $CONFIGS; do
@@ -32,7 +38,7 @@ for cfg in $CONFIGS; do
   part2=yes
   case "$rest" in *:nopart2) part2=no; rest=${rest%:nopart2} ;; esac
   flags=$(echo "$rest" | tr ',' ' ')
-  psize=7
+  psize=8
   case "$flags" in
     *PRIME_SIZE=*) psize=$(echo "$flags" | sed 's/.*PRIME_SIZE=\([0-9]*\).*/\1/')
                    flags=$(echo "$flags" | sed 's/PRIME_SIZE=[0-9]*//') ;;

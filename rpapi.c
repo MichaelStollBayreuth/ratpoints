@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2026  Michael Stoll                                   *
  *                                                                     *
@@ -26,8 +26,8 @@
  * error codes they return, a callback that stops the search or        *
  * declines a point, the flags set through the API, and a sequence of  *
  * searches on one initialised structure.  "make testapi" compares the *
- * output with testbase-api.  The copy for 2.2.4 of a program written  *
- * for 2.3; the searches themselves are covered by rptest and test4.sh. *
+ * output with testbase-api.  The searches themselves are covered by   *
+ * rptest and test4.sh.                                                *
  *                                                                     *
  * Michael Stoll, September 19, 2026                                   *
  ***********************************************************************/
@@ -68,6 +68,9 @@ static void curve(ratpoints_args *args, long degree, const long *cof,
   args->domain = domain; args->num_inter = 0;
   args->b_low = 1; args->b_high = height;
   args->sp1 = -1; args->sp2 = -1;
+  args->survivors_per_word = -1.0; args->sp2_extra = -1; args->sp2_u0 = -1.0;
+  args->cost_table = -1.0; args->adapt = -1; args->sp3_extra = -1;
+  args->sp3_per_denom = -1.0; args->check_cost = -1.0;
   args->array_size = 0; args->sturm = RATPOINTS_DEFAULT_STURM;
   args->num_primes = -1; args->max_forbidden = -1;
   args->flags = 0;
@@ -96,6 +99,8 @@ int main(void)
   find_points_init(&args);
   args.degree = 2;
   report("find_points_work: y^2 = x^2 + 1, height 10", find_points_work(&args, count, NULL));
+  printf("  moduli used: %ld in the first stage, %ld in both, %ld primes in the third\n",
+         args.sp1_used, args.sp2_used, args.sp3_used - args.sp2_used);
   printf("  the region searched: %ld interval(s), [%g, %g]\n", args.num_inter,
          args.domain[0].low, args.domain[0].up);
 
@@ -110,6 +115,8 @@ int main(void)
   report("domain = NULL", find_points_work(&args, count, NULL));
   curve(&args, 0, constant, 10);
   report("degree 0", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 10); args.degree = -1;
+  report("degree -1", find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); mpz_set_si(c[1], 0); mpz_set_si(c[2], 0);
   report("degree 2 with c[1] = c[2] = 0 (degree 0 after stripping)",
          find_points_work(&args, count, NULL));
@@ -135,6 +142,7 @@ int main(void)
   curve(&args, 2, pyth, 10); args.num_primes = 1000; args.sp2 = 500; args.sp1 = 600;
   report("num_primes 1000, sp2 500, sp1 600",
          find_points_work(&args, count, NULL));
+  printf("  moduli used: %ld in the first stage, %ld in both\n", args.sp1_used, args.sp2_used);
   curve(&args, 2, pyth, 10); args.max_forbidden = 1000;
   report("max_forbidden 1000", find_points_work(&args, count, NULL));
   /* the input fields come back as they went in */

@@ -1,5 +1,5 @@
 #!/bin/sh
-# The suite that exercises every branch of the code (TODO item 20).  Each
+# The suite that exercises nearly every line of the code.  Each
 # line runs ./ratpoints once; "make test4" compares the output of the whole
 # script with testbase4.  Unlike test1 and its relatives, which run a
 # thousand curves through one setting, this one runs a few hundred settings
@@ -29,14 +29,11 @@
 # can be run against a build with other flags: test4-configs.sh does that
 # for the register widths and the other compile-time switches.
 #
-# This is the copy for 2.2.4.  The first part prints points and messages
-# that are the same in 2.2.4 and 2.3 (and the reference agrees with 2.3's
-# there, line for line); the second part looks at the reports of -v, whose
-# texts differ between the versions, so the reference is 2.2.4's own.  The
-# script in the 2.3 sources has a third part for the options 2.3 added
-# (-r -R -U -C -A -P -Q -W), and its second part pins the third sieving
-# stage with -P, which 2.2.4 does not have; those options are left out
-# here.
+# The first part prints points and messages that are the same in 2.2.4 and
+# 3.0.0; the second part looks at the reports of -v, whose texts differ
+# between the versions; the third uses options that 2.2.4 does not have.
+# The copy of this script in the 2.2.4 sources omits the third part and has
+# its own reference.
 
 RP=${RP:-./ratpoints}
 # no program to run: exit 2 (the comparison with the reference is make's,
@@ -54,7 +51,7 @@ f() { filt=$1; shift
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
-# the options, which differ between 2.2.4 and 2.3)
+# the options, which differ between 2.2.4 and 3.0.0)
 e() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo
       out=$("$RP" "$@"); st=$?
       printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\['
@@ -71,10 +68,9 @@ m() { t "$@" | grep -v '^This is ratpoints-\|used for\|further primes\|primes us
 # nothing else, but the numbers chosen do, and the message continues on a
 # second line), the lists of the moduli each stage uses (the ranking
 # depends on the width of a bit array), and what the exact check is put at
-# (the compiled-in constants).  Two of the reports look at primes beyond
-# 127 when the table has them, so they differ in a build with PRIME_SIZE 8
-# (the table ends at 127 with the 7 of 2.2.4); test4-configs.sh compares
-# that build without this part
+# (the compiled-in constants).  Two of the reports say what the primes
+# beyond 127 say, and differ in a build with PRIME_SIZE 7, whose table ends
+# there; test4-configs.sh compares that build without this part
 v() { t "$@" | awk '
   /bits set per word/ { skip = 1; next }
   /^  use [0-9]+ (moduli|primes) for (first|second|third) stage:/ { skip = 1; next }
@@ -247,8 +243,8 @@ t '32 48 55 -44' 100 -q
 t '-40 56 45' 100 -q
 
 echo '---- the sieving primes ----'
-# no first phase at all; one modulus; second phase empty; third stage
-# empty; every prime in the first phase; more primes than the table has
+# no first stage at all; one modulus; second stage empty; third stage
+# empty; every prime in the first stage; more primes than the table has
 t '1 0 126 0 441' 200 -q -n 0
 t '1 0 126 0 441' 200 -q -n 0 -N 0
 t '1 0 126 0 441' 200 -q -n 1
@@ -596,7 +592,7 @@ e '1 2 3' 1000 "$@"
 set --
 
 echo '==== part 2: the report -v prints ===='
-v '1 0 126 0 441' 100 -v -n 3 -N 5
+v '1 0 126 0 441' 100 -v -n 3 -N 5 -P 2
 v '1 0 126 0 441' 100 -v -s -k -j -x
 v '1 0 126 0 441' 100 -v -dl 2 -du 50
 v '1 0 126 0 441' 100 -v -l 0 -u 1
@@ -612,23 +608,23 @@ v '-1000000000000 0 0 0 1' 100 -v
 v '-1000000 0 0 0 3' 100 -v
 v '2 0 3' 200 -v
 v '2 0 1 0 2' 100 -v
-v '2 131 4 0 2' 100 -v -n 5 -N 10
+v '2 131 4 0 2' 100 -v -n 5 -N 10 -P 25
 v '2 63 1 0 2' 100 -v
-v '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -v -n 3 -N 5
+v '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -v -n 3 -N 5 -P 2
 v '1 0 0 1' 100 -v -dl 5 -du 8
-v '5 3 7' 100 -v -n 3 -N 5
-v '5 3 7' 100 -v -n 3 -N 5 -j
-v '1 1 9' 100 -v -n 3 -N 5
-v '1 1 27' 100 -v -n 3 -N 5
-v '1 3 27' 100 -v -n 3 -N 5
-v '1 1 18' 100 -v -n 3 -N 5
-v '1 2 3' 100 -v -n 3 -N 5
-v '-36 -54 -5' 100 -v -n 3 -N 5
-v '44 -2 -12' 100 -v -n 3 -N 5
-v '32 48 55 -44' 100 -v -n 3 -N 5
+v '5 3 7' 100 -v -n 3 -N 5 -P 2
+v '5 3 7' 100 -v -n 3 -N 5 -P 2 -j
+v '1 1 9' 100 -v -n 3 -N 5 -P 2
+v '1 1 27' 100 -v -n 3 -N 5 -P 2
+v '1 3 27' 100 -v -n 3 -N 5 -P 2
+v '1 1 18' 100 -v -n 3 -N 5 -P 2
+v '1 2 3' 100 -v -n 3 -N 5 -P 2
+v '-36 -54 -5' 100 -v -n 3 -N 5 -P 2
+v '44 -2 -12' 100 -v -n 3 -N 5 -P 2
+v '32 48 55 -44' 100 -v -n 3 -N 5 -P 2
 v '1 2 1' 20 -v
 v '0 0 1' 20 -v
-v '10 10 5 -7 0 3 -2' 300 -v -n 4 -N 6
+v '10 10 5 -7 0 3 -2' 300 -v -n 4 -N 6 -P 0
 # the bits set per word, the one number of the report that depends on the
 # curve alone
 f "grep 'bits set per word' | sed 's/,.*//'" '1 0 126 0 441' 100 -v
@@ -636,3 +632,107 @@ f "grep 'bits set per word' | sed 's/,.*//'" '3 2 -1 12' 100 -v
 f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
+
+echo '==== part 3: the options of 3.0.0 ===='
+# the constants of the rules that choose the sieving primes, set on the
+# command line: the threshold, the offset, the run length, the table cost,
+# the third stage's cost per denominator and the cost of an exact check;
+# the values that switch a term off (0) and values well away from the
+# defaults
+t '1 0 126 0 441' 200 -q -r 0.001
+t '1 0 126 0 441' 200 -q -r 0.5
+t '1 0 126 0 441' 200 -q -R 0
+t '1 0 126 0 441' 200 -q -R 20
+t '1 0 126 0 441' 200 -q -U 0
+t '1 0 126 0 441' 200 -q -U 1e9
+t '1 0 126 0 441' 200 -q -C 0
+t '1 0 126 0 441' 200 -q -C 1000
+t '1 0 126 0 441' 200 -q -P 0
+t '1 0 126 0 441' 200 -q -P 50
+t '1 0 126 0 441' 200 -q -Q 0
+t '1 0 126 0 441' 200 -q -Q 10
+t '1 0 126 0 441' 200 -q -W 306
+t '1 0 126 0 441' 200 -q -W 10000
+t '10 10 5 -7 0 3 -2' 300 -q -r 0.001 -R 3 -U 100 -C 5 -Q 0.001 -W 500
+t '10 10 5 -7 0 3 -2' 300 -q -P 40
+t '3 2 -1 12' 200 -q -R 0 -P 0
+# the correction during the run: off, the third stage only (the default),
+# the second stage too.  It first looks after a million words, which the
+# curve with twelve points reaches at a height bound of 40000, so these
+# take a moment; with a weak first stage (-r 0.5) and free tables (-C 0)
+# the second stage is found wanting and gets a prime added, with -R 0 there
+# is no second stage to correct
+t '1 0 126 0 441' 200 -q -A 0
+t '1 0 126 0 441' 200 -q -A 1
+t '1 0 126 0 441' 200 -q -A 2
+t '1 0 126 0 441' 100000 -q
+t '1 0 126 0 441' 40000 -q -A 0
+t '1 0 126 0 441' 40000 -q -A 1
+t '1 0 126 0 441' 40000 -q -A 2
+t '1 0 126 0 441' 40000 -q -A 2 -r 0.0001
+t '1 0 126 0 441' 40000 -q -A 2 -n 5
+t '1 0 126 0 441' 40000 -q -A 2 -r 0.5 -R 1 -C 0
+t '1 0 126 0 441' 40000 -q -A 2 -r 0.5 -R 1 -C 0 -P 0
+t '1 0 126 0 441' 40000 -q -A 2 -r 0.5 -R 0
+t '1 0 126 0 441' 40000 -q -A 2 -C 0
+t '1 0 126 0 441' 40000 -q -A 1 -Q 0.05
+t '1 0 126 0 441' 40000 -q -A 1 -C 5
+t '1 0 126 0 441' 40000 -q -A 1 -R 40
+t '10 10 5 -7 0 3 -2' 30000 -q -A 2
+t '10 10 5 -7 0 3 -2' 30000 -q -A 2 -R 0
+t '10 10 5 -7 0 3 -2' 30000 -q -A 2 -P 0
+t '10 10 5 -7 0 3 -2' 30000 -q -A 1 -P 2
+t '10 10 5 -7 0 3 -2' 30000 -q -A 1 -p 6
+t '10 10 5 -7 0 3 -2' 30000 -q -A 2 -r 0.5 -R 1 -C 0
+# the third stage looks at 131, which says nothing about f = (x^2+1)^2 +
+# 131 x, and goes on
+t '1 131 2 0 1' 100 -q -n 5 -N 10 -P 25
+# the square-everywhere curve again, made to look at every prime the table
+# has by asking for thirty second-stage moduli without the scaling
+t '2007238469666518094547220599513022568322942623866 2 1 2 2 0 1' 100 -q -R 30 -U 0
+# composite moduli: with the tables free (-C 0) and many moduli asked for,
+# the ranking takes prime powers and products, among them products with a
+# prime power as a factor; -7x^4 + 18x^3 - 20x^2 - 6x + 19 is a square
+# modulo 9 at every x and its leading coefficient is not one modulo 3, so
+# 9 (and every multiple of it) carries nothing; with three primes looked
+# at most products have a factor beyond them; and with the coefficients
+# not fitting a long
+t '1 0 126 0 441' 200 -q -n 25 -N 30 -C 0
+t '5 3 7' 200 -q -n 25 -N 30 -C 0
+t '3 2 -1 12' 200 -q -n 25 -N 30 -C 0
+t '19 -6 -20 18 -7' 200 -q -n 10 -N 15 -C 0
+t '1 0 126 0 441' 200 -q -p 3 -C 0
+t '1 0 0 0 100000000000000000001' 100 -q -n 20 -N 25 -C 0
+t '0 1 2' 40 -q -x -n 15 -N 30 -p 30 -C 0
+t '0 1 2' 40 -q -x -n 15 -N 30 -p 30
+# a prime at which f is a square at every residue still says that numerator
+# and denominator are not both divisible by it, provided denominators
+# divisible by it occur: f = (x^3+x+1)^2 + 3(3x-1)(x-3) is such a curve at
+# 3, with the points x = 1/3 and x = 3.  With one prime looked at the sieve
+# has the modulus 3 (and 9), whose row for 3 | b admits the numerators prime
+# to 3 and must keep 1/3; then 3 as a factor of composite moduli.  For
+# 2x^6 + x^2 + 1, also a square at every residue modulo 3, no denominator
+# is divisible by 3 and the prime says nothing at all, so that -p 1 leaves
+# the sieve without a modulus
+t '10 -28 10 2 2 0 1' 300 -q -p 1
+t '10 -28 10 2 2 0 1' 300 -q -p 1 -n 1 -N 1 -P 0
+t '10 -28 10 2 2 0 1' 300 -q -n 25 -N 30 -C 0
+t '10 -28 10 2 2 0 1' 300 -q
+t '1 0 1 0 0 0 2' 300 -q -p 1
+v '1 0 126 0 441' 100 -v -A 2 -r 0.01 -R 2 -U 1000 -C 20 -Q 0.05 -W 300
+e '1 2 3' 10 -r
+e '1 2 3' 10 -R
+e '1 2 3' 10 -U
+e '1 2 3' 10 -A
+e '1 2 3' 10 -C
+e '1 2 3' 10 -P
+e '1 2 3' 10 -Q
+e '1 2 3' 10 -W
+e '1 2 3' 10 -r x
+e '1 2 3' 10 -R x
+e '1 2 3' 10 -U x
+e '1 2 3' 10 -A x
+e '1 2 3' 10 -C x
+e '1 2 3' 10 -P x
+e '1 2 3' 10 -Q x
+e '1 2 3' 10 -W x

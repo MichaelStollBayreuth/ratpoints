@@ -1,7 +1,7 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,7 +23,7 @@
  *                                                                     *
  * This program writes the file init_sieve.h                           *
  *                                                                     *
- * Michael Stoll, Jan 9, 2008                                          *
+ * Michael Stoll, Jan 9, 2008; Sep 21, 2026                            *
  ***********************************************************************/
 
 #include "rp-private.h"
@@ -34,6 +34,16 @@ ratpoints_bit_array work[RATPOINTS_MAX_PRIME];
 int main(int argc, char *argv[])
 {
   long n;
+
+  /* See the corresponding comment in gen_find_points_h.c : the list of
+   * primes depends on RATPOINTS_NUM_PRIMES.  (Which of the two
+   * CODE_INIT_SIEVE macros a prime gets depends only on the prime, since
+   * LONG_LENGTH is fixed at 64.) */
+  printf("#define RP_IS_H_NUM_PRIMES %d\n", (int)RATPOINTS_NUM_PRIMES);
+  printf("#if (RP_IS_H_NUM_PRIMES != RATPOINTS_NUM_PRIMES)\n"
+         "# error \"init_sieve.h was generated for a different configuration"
+         " -- run 'make clean' first\"\n"
+         "#endif\n\n");
 
   for(n = 0; n < RATPOINTS_NUM_PRIMES; n++)
   { long p = prime[n];

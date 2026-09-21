@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-2.2.4                                                     *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -23,7 +23,7 @@
  *                                                                     *
  * This program writes the file find_points.h                          *
  *                                                                     *
- * Michael Stoll, Mar 8, 2009; Sep 6 and 13, 2026                      *
+ * Michael Stoll, Mar 8, 2009; Sep 6-21, 2026                          *
  * with changes by Bill Allombert, Dec 29, 2021                        *
  ***********************************************************************/
 
@@ -47,6 +47,25 @@ int main(int argc, char *argv[])
 {
   long n;
 
+  /* Record the configuration this file is generated for and check it when it
+   * is compiled.  The contents depend on the register width (sieves0[] via
+   * RBA_PACK and RATPOINTS_CHUNK) and on the prime size, but nothing in the
+   * build system ties the generated file to the flags.  Compiling a stale
+   * find_points.h against a wider configuration would leave sieves0[]
+   * partly zero -- too few initializers are perfectly legal C, so there
+   * would be no warning. */
+  /* RBA_PACK pins the width down: RBA_LENGTH == RBA_PACK * LONG_LENGTH, and
+   * LONG_LENGTH is fixed at 64. */
+  printf("#define RP_FP_H_RBA_PACK %d\n", (int)RBA_PACK);
+  printf("#define RP_FP_H_CHUNK %d\n", (int)RATPOINTS_CHUNK);
+  printf("#define RP_FP_H_NUM_PRIMES %d\n", (int)RATPOINTS_NUM_PRIMES);
+  printf("#if (RP_FP_H_RBA_PACK != RBA_PACK) \\\n"
+         "    || (RP_FP_H_CHUNK != RATPOINTS_CHUNK) \\\n"
+         "    || (RP_FP_H_NUM_PRIMES != RATPOINTS_NUM_PRIMES)\n"
+         "# error \"find_points.h was generated for a different configuration"
+         " -- run 'make clean' first\"\n"
+         "#endif\n\n");
+
   { int work[RATPOINTS_MAX_PRIME];
 
     printf("static const int "
@@ -66,14 +85,6 @@ int main(int argc, char *argv[])
       }
       printf((n < RATPOINTS_NUM_PRIMES - 1) ? "},\n " : "}\n};\n");
     }
-  }
-
-  printf("static const long offsets[RATPOINTS_NUM_PRIMES] =\n{");
-  for(n = 0; n < RATPOINTS_NUM_PRIMES; n++)
-  { long p = prime[n];
-
-    { printf("%ld", inv_mod_p(p, (2*RBA_LENGTH)%p)); }
-    printf((n < RATPOINTS_NUM_PRIMES - 1) ? "," : "};\n\n");
   }
 
   printf("static const long "

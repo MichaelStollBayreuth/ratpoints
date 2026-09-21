@@ -1,4 +1,37 @@
-examples/
-TODO.md
-build-coverage/
-build-test4-*/
+# build products
+*.o
+*.s
+*.i
+*.a
+/find_points.h
+/init_sieve.h
+/gen_find_points_h
+/gen_init_sieve_h
+/config.stamp
+/build.stamp
+/ratpoints
+/ratpoints-debug
+/rptest
+/rptest-many
+/rptest-high-many
+/rptest-degrees
+/rpapi
+/bench_init
+/bench_check
+/tuning.mk
+/build-coverage/
+/build-test4-*/
+# output of the tests
+*.out
+# by-products of pdflatex (the PDF of the manual is tracked)
+*.aux
+*.log
+*.toc
+# archives made by "make dist"
+/ratpoints-*.tar.gz
+# editor backups
+*~
+# local material that is not part of the distribution
+/examples/
+/DEVELOPMENT-NOTES.md
+/review-*/

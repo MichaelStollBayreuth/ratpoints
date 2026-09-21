@@ -7522,9 +7522,9 @@ exit 8
 Incorrect interval arguments (not alternating, too many, or not ordered).
 exit 7
 ==== part 2: the report -v prints ====
-# <1 0 126 0 441> <100> <-v> <-n> <3> <-N> <5>
+# <1 0 126 0 441> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7543,9 +7543,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -7557,8 +7557,8 @@ Isolate the connected components:
 
 There are points at infinity
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 2 2 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -7583,7 +7583,7 @@ Now start the sieving procedure...
 
 # <1 0 126 0 441> <100> <-v> <-s> <-k> <-j> <-x>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7602,9 +7602,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   no isolation of connected components to be done
   do not verify the points
   do not reverse the polynomial
@@ -7614,8 +7614,8 @@ find_points:
 
 There are points at infinity
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 2 2 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -7634,7 +7634,7 @@ Now start the sieving procedure...
 
 # <1 0 126 0 441> <100> <-v> <-dl> <2> <-du> <50>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7653,9 +7653,9 @@ find_points:
   height bound: 100
   denominators from 2 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
   do not reverse the polynomial
 
@@ -7667,8 +7667,8 @@ Isolate the connected components:
 
 There are points at infinity
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 2 2 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -7691,7 +7691,7 @@ Now start the sieving procedure...
 
 # <1 0 126 0 441> <100> <-v> <-l> <0> <-u> <1>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7712,9 +7712,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
   do not reverse the polynomial
 
@@ -7726,8 +7726,8 @@ Isolate the connected components:
 
 There are points at infinity
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 2 2 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -7748,7 +7748,7 @@ Now start the sieving procedure...
 
 # <0 1 2> <40> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7767,9 +7767,9 @@ find_points:
   height bound: 40
   denominators from 1 to 40
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -7784,8 +7784,8 @@ There are points at infinity
 Degree is odd, leading coefficient is +/-1
   ==> can restrict to squares as denominators
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -7848,7 +7848,7 @@ Now start the sieving procedure...
 
 # <2 3 1> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7867,9 +7867,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -7879,10 +7879,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-50.000000, -1.000000] [-0.500000, 50.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 2 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    3|b 5|b 11|b 13|b 19|b 29|b 37|b 43|b 53|b 59|b 61|b 67|b 83|b 101|b 107|b 109|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -7959,7 +7961,7 @@ Now start the sieving procedure...
 
 # <0 1 0 2> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -7978,9 +7980,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -7996,8 +7998,8 @@ There are points at infinity
 Degree is odd, leading coefficient is +/-1
   ==> can restrict to squares as denominators
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8012,7 +8014,7 @@ Now start the sieving procedure...
 
 # <1 0 0 1> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8031,9 +8033,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8048,8 +8050,8 @@ There are points at infinity
 Degree is odd, leading coefficient is +/-1
   ==> can restrict to squares as denominators
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8068,7 +8070,7 @@ Now start the sieving procedure...
 
 # <3 2 -1 12> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8087,9 +8089,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8106,8 +8108,8 @@ Degree is odd, leading coefficient is not +/-1
       to squares times certain divisors of the leading coefficient:
     divisors: 1 2 3 6
 
-Obtain information from the polynomial mod 16:
-  use odd numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 4 4 - 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8159,7 +8161,7 @@ Now start the sieving procedure...
 
 # <5 0 0 1065023> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8178,9 +8180,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8198,8 +8200,8 @@ Degree is odd, leading coefficient is not +/-1
   no complete factorization obtained, or too many divisors
   ==> cannot use this feature
 
-Obtain information from the polynomial mod 16:
-  use odd numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 4 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8213,7 +8215,7 @@ Now start the sieving procedure...
 
 # <1 0 0 3710369067405> <100000> <-v> <-l> <0> <-u> <0.00005>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8234,9 +8236,9 @@ find_points:
   height bound: 100000
   denominators from 1 to 100000
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
   do not reverse the polynomial
 
@@ -8254,8 +8256,8 @@ Degree is odd, leading coefficient is not +/-1
   no complete factorization obtained, or too many divisors
   ==> cannot use this feature
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8271,7 +8273,7 @@ Now start the sieving procedure...
 
 # <-1 0 -1> <50> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8290,9 +8292,9 @@ find_points:
   height bound: 50
   denominators from 1 to 50
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8306,7 +8308,7 @@ Isolate the connected components:
 
 # <-1000000000000 0 0 0 1> <100> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8325,9 +8327,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8337,10 +8339,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-0.003906, 0.003906] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 2 2 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    3|b 7|b 11|b 19|b 23|b 31|b 43|b 47|b 59|b 67|b 71|b 79|b 83|b 103|b 107|b 127|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -8351,7 +8355,7 @@ Now start the sieving procedure...
 
 # <-1000000 0 0 0 3> <100> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8370,9 +8374,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8382,10 +8386,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, -24.000000] [24.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 4 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    3|b 5|b 7|b 17|b 19|b 29|b 31|b 41|b 43|b 53|b 67|b 79|b 89|b 101|b 103|b 113|b 127|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -8394,7 +8400,7 @@ Now start the sieving procedure...
 
 # <2 0 3> <200> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8413,9 +8419,9 @@ find_points:
   height bound: 200
   denominators from 1 to 200
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8425,15 +8431,15 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-200.000000, 200.000000] 
 
-Obtain information from the polynomial mod 16:
-  no denominator admits a numerator mod 16 ==> no points
+Obtain information from the polynomial mod 64:
+  no denominator admits a numerator mod 64 ==> no points
 
 
 0 rational points found.
 
 # <2 0 1 0 2> <100> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8452,9 +8458,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8464,15 +8470,15 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  no denominator admits a numerator mod 16 ==> no points
+Obtain information from the polynomial mod 64:
+  no denominator admits a numerator mod 64 ==> no points
 
 
 0 rational points found.
 
-# <2 131 4 0 2> <100> <-v> <-n> <5> <-N> <10>
+# <2 131 4 0 2> <100> <-v> <-n> <5> <-N> <10> <-P> <25>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8491,9 +8497,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      10
-  number of primes for first stage:   5
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:      10
+  number of moduli for first stage:   5
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8503,19 +8509,18 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, -3.843750] [-0.015625, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
-
-Now start the sieving procedure...
+  no points mod p = 131 ==> no rational points
 
 
 0 rational points found.
 
 # <2 63 1 0 2> <100> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8534,9 +8539,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8546,8 +8551,8 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, -3.093750] [-0.035156, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
   no points mod p = 3 ==> no rational points
@@ -8555,9 +8560,9 @@ Find the points mod p for the first 30 odd primes p:
 
 0 rational points found.
 
-# <2007238469666518094547220599513022568322942623866 2 1 2 2 0 1> <100> <-v> <-n> <3> <-N> <5>
+# <2007238469666518094547220599513022568322942623866 2 1 2 2 0 1> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8576,9 +8581,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8588,10 +8593,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    137|b 139|b 151|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -8602,7 +8609,7 @@ Now start the sieving procedure...
 
 # <1 0 0 1> <100> <-v> <-dl> <5> <-du> <8>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8621,9 +8628,9 @@ find_points:
   height bound: 100
   denominators from 5 to 8
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
   do not reverse the polynomial
 
@@ -8638,8 +8645,8 @@ There are points at infinity
 Degree is odd, leading coefficient is +/-1
   ==> can restrict to squares as denominators
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - 8 - 4 - 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -8651,9 +8658,9 @@ Now start the sieving procedure...
 
 1 rational points found.
 
-# <5 3 7> <100> <-v> <-n> <3> <-N> <5>
+# <5 3 7> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8672,9 +8679,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8684,10 +8691,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 4 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 11|b 13|b 17|b 23|b 41|b 43|b 61|b 67|b 71|b 73|b 79|b 89|b 97|b 101|b 107|b 127|b 7^2|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -8780,9 +8789,9 @@ Now start the sieving procedure...
 
 86 rational points found.
 
-# <5 3 7> <100> <-v> <-n> <3> <-N> <5> <-j>
+# <5 3 7> <100> <-v> <-n> <3> <-N> <5> <-P> <2> <-j>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8801,9 +8810,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
   do not perform Jacobi symbol test
 
@@ -8814,10 +8823,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 4 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 11|b 13|b 17|b 23|b 41|b 43|b 61|b 67|b 71|b 73|b 79|b 89|b 97|b 101|b 107|b 127|b 7^2|b
 
 Now start the sieving procedure...
 
@@ -8910,9 +8921,9 @@ Now start the sieving procedure...
 
 86 rational points found.
 
-# <1 1 9> <100> <-v> <-n> <3> <-N> <5>
+# <1 1 9> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -8931,9 +8942,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -8945,10 +8956,12 @@ Isolate the connected components:
 
 There are points at infinity
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - - 2 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    v_3(b)=1
 
 Points at infinity:
 (1 : 3 : 0)
@@ -9127,9 +9140,9 @@ Now start the sieving procedure...
 
 170 rational points found.
 
-# <1 1 27> <100> <-v> <-n> <3> <-N> <5>
+# <1 1 27> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9148,9 +9161,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9160,10 +9173,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 4 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 7|b 17|b 19|b 29|b 31|b 41|b 43|b 53|b 67|b 79|b 89|b 101|b 103|b 113|b 127|b v_3(b)=1 3^4|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9254,9 +9269,9 @@ Now start the sieving procedure...
 
 84 rational points found.
 
-# <1 3 27> <100> <-v> <-n> <3> <-N> <5>
+# <1 3 27> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9275,9 +9290,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9287,10 +9302,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 4 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 7|b 17|b 19|b 29|b 31|b 41|b 43|b 53|b 67|b 79|b 89|b 101|b 103|b 113|b 127|b 3^3|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9437,9 +9454,9 @@ Now start the sieving procedure...
 
 140 rational points found.
 
-# <1 1 18> <100> <-v> <-n> <3> <-N> <5>
+# <1 1 18> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9458,9 +9475,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9470,10 +9487,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 2 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 11|b 13|b 19|b 29|b 37|b 43|b 53|b 59|b 61|b 67|b 83|b 101|b 107|b 109|b v_3(b)=1 3^3|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9572,9 +9591,9 @@ Now start the sieving procedure...
 
 92 rational points found.
 
-# <1 2 3> <100> <-v> <-n> <3> <-N> <5>
+# <1 2 3> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9593,9 +9612,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9605,10 +9624,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-100.000000, 100.000000] 
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 7|b 17|b 19|b 29|b 31|b 41|b 43|b 53|b 67|b 79|b 89|b 101|b 103|b 113|b 127|b 3^2|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9729,9 +9750,9 @@ Now start the sieving procedure...
 
 114 rational points found.
 
-# <-36 -54 -5> <100> <-v> <-n> <3> <-N> <5>
+# <-36 -54 -5> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9750,9 +9771,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9762,10 +9783,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-10.500000, -0.710938] 
 
-Obtain information from the polynomial mod 16:
-  use all numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 1 - - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    11|b 13|b 17|b 19|b 31|b 37|b 53|b 59|b 71|b 73|b 79|b 97|b 113|b 5^2|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9852,9 +9875,9 @@ Now start the sieving procedure...
 
 80 rational points found.
 
-# <44 -2 -12> <100> <-v> <-n> <3> <-N> <5>
+# <44 -2 -12> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9873,9 +9896,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9885,10 +9908,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-2.000000, 1.835938] 
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 4 - 2 - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 11|b 17|b 23|b 29|b 41|b 47|b 53|b 59|b 71|b 83|b 89|b 101|b 107|b 113|b 3^2|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -9929,9 +9954,9 @@ Now start the sieving procedure...
 
 34 rational points found.
 
-# <32 48 55 -44> <100> <-v> <-n> <3> <-N> <5>
+# <32 48 55 -44> <100> <-v> <-n> <3> <-N> <5> <-P> <2>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -9950,9 +9975,9 @@ find_points:
   height bound: 100
   denominators from 1 to 100
   number of primes to consider:      30
-  number of primes for sieving:       5
-  number of primes for first stage:   3
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       5
+  number of moduli for first stage:   3
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -9969,8 +9994,8 @@ Degree is odd, leading coefficient is not +/-1
       to squares times certain divisors of the leading coefficient:
     divisors: 1 2 11 22
 
-Obtain information from the polynomial mod 16:
-  use even numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 8 4 4 - 2 2 2
 
 Find the points mod p for the first 30 odd primes p:
 
@@ -9984,7 +10009,7 @@ Now start the sieving procedure...
 
 # <1 2 1> <20> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -10003,9 +10028,9 @@ find_points:
   height bound: 20
   denominators from 1 to 20
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -10019,7 +10044,7 @@ Polynomial is not square-free.
 
 # <0 0 1> <20> <-v>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -10038,18 +10063,18 @@ find_points:
   height bound: 20
   denominators from 1 to 20
   number of primes to consider:      30
-  number of primes for sieving:      19
-  number of primes for first stage:  11
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
 
 Polynomial is not square-free.
 
-# <10 10 5 -7 0 3 -2> <300> <-v> <-n> <4> <-N> <6>
+# <10 10 5 -7 0 3 -2> <300> <-v> <-n> <4> <-N> <6> <-P> <0>
 
-This is ratpoints-2.2.4 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
 
 This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under the
@@ -10068,9 +10093,9 @@ find_points:
   height bound: 300
   denominators from 1 to 300
   number of primes to consider:      30
-  number of primes for sieving:       6
-  number of primes for first stage:   4
-  maximal number of `forbidden divisors': 30
+  number of moduli for sieving:       6
+  number of moduli for first stage:   4
+  maximal number of `forbidden divisors': 64
   iterations for isolations of connected components: 10
 
 Check if polynomial should be reversed for better performance:
@@ -10080,10 +10105,12 @@ Isolate the connected components:
   can restrict to the following intervals:
   [-1.304688, 1.718750] 
 
-Obtain information from the polynomial mod 16:
-  use no numerators for odd denominators
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): - 2 - - - - -
 
 Find the points mod p for the first 30 odd primes p:
+  denominators excluded:
+    5|b 7|b 13|b 23|b 29|b 31|b 37|b 47|b 53|b 61|b 71|b 79|b 101|b 103|b 109|b 127|b (lcf/b) = -1
 
 Now start the sieving procedure...
 
@@ -10091,9 +10118,1260 @@ Now start the sieving procedure...
 0 rational points found.
 
 # <1 0 126 0 441> <100> <-v> | grep 'bits set per word' | sed 's/,.*//'
+  64.0 bits set per word
 # <3 2 -1 12> <100> <-v> | grep 'bits set per word' | sed 's/,.*//'
+  52.4 bits set per word
 # <4 28 -53> <100> <-v> | grep 'bits set per word' | sed 's/,.*//'
+  64.0 bits set per word
 # <1 0 126 0 441> <100> <-v> <-q> | grep -c .
 12
 # <1 0 126 0 441> <100> <-q> <-v> | grep -c .
 12
+==== part 3: the options of 3.0.0 ====
+# <1 0 126 0 441> <200> <-q> <-r> <0.001>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-r> <0.5>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-R> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-R> <20>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-U> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-U> <1e9>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-C> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-C> <1000>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-P> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-P> <50>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-Q> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-Q> <10>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-W> <306>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-W> <10000>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <10 10 5 -7 0 3 -2> <300> <-q> <-r> <0.001> <-R> <3> <-U> <100> <-C> <5> <-Q> <0.001> <-W> <500>
+# <10 10 5 -7 0 3 -2> <300> <-q> <-P> <40>
+# <3 2 -1 12> <200> <-q> <-R> <0> <-P> <0>
+(1 : 0 : 0)
+(1 : 4 : 1)
+(1 : -4 : 1)
+(3 : 18 : 1)
+(3 : -18 : 1)
+(11 : 126 : 1)
+(11 : -126 : 1)
+(97 : 3308 : 1)
+(97 : -3308 : 1)
+(-1 : 24 : 4)
+(-1 : -24 : 4)
+(3 : 48 : 4)
+(3 : -48 : 4)
+(23 : 1608 : 16)
+(23 : -1608 : 16)
+(-13 : 30 : 25)
+(-13 : -30 : 25)
+(13 : 1460 : 25)
+(13 : -1460 : 25)
+(3 : 4242 : 49)
+(3 : -4242 : 49)
+(-23 : 46748 : 169)
+(-23 : -46748 : 169)
+(-1 : 2 : 2)
+(-1 : -2 : 2)
+(11 : 178 : 2)
+(11 : -178 : 2)
+(11 : 4690 : 50)
+(11 : -4690 : 50)
+(-1 : 12 : 3)
+(-1 : -12 : 3)
+(1 : 18 : 3)
+(1 : -18 : 3)
+(131 : 8988 : 3)
+(131 : -8988 : 3)
+(191 : 15828 : 3)
+(191 : -15828 : 3)
+(157 : 23544 : 12)
+(157 : -23544 : 12)
+(1 : 1278 : 27)
+(1 : -1278 : 27)
+(97 : 17154 : 27)
+(97 : -17154 : 27)
+(-11 : 3528 : 48)
+(-11 : -3528 : 48)
+(61 : 12312 : 48)
+(61 : -12312 : 48)
+(71 : 21180 : 75)
+(71 : -21180 : 75)
+(-47 : 11376 : 108)
+(-47 : -11376 : 108)
+(-13 : 36204 : 147)
+(-13 : -36204 : 147)
+(1 : 66 : 6)
+(1 : -66 : 6)
+(13 : 402 : 6)
+(13 : -402 : 6)
+(37 : 1902 : 6)
+(37 : -1902 : 6)
+(73 : 50910 : 150)
+(73 : -50910 : 150)
+# <1 0 126 0 441> <200> <-q> <-A> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-A> <1>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <200> <-q> <-A> <2>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 126 0 441> <100000> <-q>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <1>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-r> <0.0001>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-n> <5>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-r> <0.5> <-R> <1> <-C> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-r> <0.5> <-R> <1> <-C> <0> <-P> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-r> <0.5> <-R> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <2> <-C> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <1> <-Q> <0.05>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <1> <-C> <5>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <1 0 126 0 441> <40000> <-q> <-A> <1> <-R> <40>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+(-124 : 697729 : 425)
+(-124 : -697729 : 425)
+(124 : 697729 : 425)
+(124 : -697729 : 425)
+(-425 : 14652309 : 2604)
+(-425 : -14652309 : 2604)
+(425 : 14652309 : 2604)
+(425 : -14652309 : 2604)
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <2>
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <2> <-R> <0>
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <2> <-P> <0>
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <1> <-P> <2>
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <1> <-p> <6>
+# <10 10 5 -7 0 3 -2> <30000> <-q> <-A> <2> <-r> <0.5> <-R> <1> <-C> <0>
+# <1 131 2 0 1> <100> <-q> <-n> <5> <-N> <10> <-P> <25>
+(1 : 1 : 0)
+(1 : -1 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+# <2007238469666518094547220599513022568322942623866 2 1 2 2 0 1> <100> <-q> <-R> <30> <-U> <0>
+(1 : 1 : 0)
+(1 : -1 : 0)
+# <1 0 126 0 441> <200> <-q> <-n> <25> <-N> <30> <-C> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <5 3 7> <200> <-q> <-n> <25> <-N> <30> <-C> <0>
+(-1 : 3 : 1)
+(-1 : -3 : 1)
+(44 : 117 : 1)
+(44 : -117 : 1)
+(-31 : 81 : 2)
+(-31 : -81 : 2)
+(5 : 15 : 2)
+(5 : -15 : 2)
+(-19 : 49 : 3)
+(-19 : -49 : 3)
+(-4 : 11 : 3)
+(-4 : -11 : 3)
+(20 : 55 : 3)
+(20 : -55 : 3)
+(101 : 269 : 3)
+(101 : -269 : 3)
+(-121 : 317 : 6)
+(-121 : -317 : 6)
+(-1 : 13 : 6)
+(-1 : -13 : 6)
+(11 : 35 : 6)
+(11 : -35 : 6)
+(4 : 21 : 7)
+(4 : -21 : 7)
+(-44 : 113 : 9)
+(-44 : -113 : 9)
+(4 : 25 : 9)
+(4 : -25 : 9)
+(79 : 215 : 9)
+(79 : -215 : 9)
+(-41 : 105 : 14)
+(-41 : -105 : 14)
+(-59 : 151 : 18)
+(-59 : -151 : 18)
+(1 : 41 : 18)
+(1 : -41 : 18)
+(-11 : 45 : 19)
+(-11 : -45 : 19)
+(61 : 177 : 19)
+(61 : -177 : 19)
+(-149 : 385 : 21)
+(-149 : -385 : 21)
+(19 : 77 : 21)
+(19 : -77 : 21)
+(124 : 343 : 21)
+(124 : -343 : 21)
+(5 : 65 : 27)
+(5 : -65 : 27)
+(29 : 109 : 27)
+(29 : -109 : 27)
+(-76 : 195 : 29)
+(-76 : -195 : 29)
+(-4 : 63 : 29)
+(-4 : -63 : 29)
+(-116 : 297 : 31)
+(-116 : -297 : 31)
+(-71 : 183 : 31)
+(-71 : -183 : 31)
+(44 : 159 : 37)
+(44 : -159 : 37)
+(179 : 501 : 37)
+(179 : -501 : 37)
+(-29 : 99 : 38)
+(-29 : -99 : 38)
+(151 : 429 : 38)
+(151 : -429 : 38)
+(-95 : 245 : 42)
+(-95 : -245 : 42)
+(-11 : 91 : 42)
+(-11 : -91 : 42)
+(-20 : 105 : 47)
+(-20 : -105 : 47)
+(124 : 369 : 47)
+(124 : -369 : 47)
+(11 : 129 : 53)
+(11 : -129 : 53)
+(-109 : 283 : 54)
+(-109 : -283 : 54)
+(-116 : 301 : 57)
+(-116 : -301 : 57)
+(-20 : 125 : 57)
+(-20 : -125 : 57)
+(79 : 271 : 57)
+(79 : -271 : 57)
+(41 : 189 : 58)
+(41 : -189 : 58)
+(4 : 135 : 59)
+(4 : -135 : 59)
+(76 : 267 : 59)
+(76 : -267 : 59)
+(19 : 159 : 62)
+(19 : -159 : 62)
+(55 : 225 : 62)
+(55 : -225 : 62)
+(-55 : 175 : 63)
+(-55 : -175 : 63)
+(-139 : 363 : 74)
+(-139 : -363 : 74)
+(-31 : 165 : 74)
+(-31 : -165 : 74)
+(124 : 413 : 81)
+(124 : -413 : 81)
+(-155 : 405 : 83)
+(-155 : -405 : 83)
+(-31 : 191 : 87)
+(-31 : -191 : 87)
+(-164 : 431 : 93)
+(-164 : -431 : 93)
+(-44 : 211 : 93)
+(-44 : -211 : 93)
+(-5 : 205 : 93)
+(-5 : -205 : 93)
+(-89 : 273 : 94)
+(-89 : -273 : 94)
+(1 : 231 : 103)
+(1 : -231 : 103)
+(145 : 495 : 103)
+(145 : -495 : 103)
+(29 : 267 : 106)
+(29 : -267 : 106)
+(179 : 585 : 109)
+(179 : -585 : 109)
+(-76 : 277 : 111)
+(-76 : -277 : 111)
+(41 : 295 : 111)
+(41 : -295 : 111)
+(89 : 383 : 111)
+(89 : -383 : 111)
+(71 : 351 : 113)
+(71 : -351 : 113)
+(-191 : 505 : 114)
+(-191 : -505 : 114)
+(-59 : 263 : 114)
+(-59 : -263 : 114)
+(121 : 457 : 114)
+(121 : -457 : 114)
+(-61 : 287 : 126)
+(-61 : -287 : 126)
+(20 : 315 : 133)
+(20 : -315 : 133)
+(-76 : 321 : 137)
+(-76 : -321 : 137)
+(-44 : 303 : 139)
+(-44 : -303 : 139)
+(-29 : 305 : 141)
+(-29 : -305 : 141)
+(116 : 507 : 149)
+(116 : -507 : 149)
+(-4 : 353 : 159)
+(-4 : -353 : 159)
+(-95 : 385 : 162)
+(-95 : -385 : 162)
+(19 : 387 : 166)
+(19 : -387 : 166)
+(199 : 717 : 166)
+(199 : -717 : 166)
+(44 : 427 : 171)
+(44 : -427 : 171)
+(164 : 647 : 171)
+(164 : -647 : 171)
+(-181 : 535 : 174)
+(-181 : -535 : 174)
+(71 : 473 : 174)
+(71 : -473 : 174)
+(131 : 583 : 174)
+(131 : -583 : 174)
+(55 : 455 : 177)
+(55 : -455 : 177)
+(109 : 563 : 186)
+(109 : -563 : 186)
+(-116 : 455 : 189)
+(-116 : -455 : 189)
+(-4 : 429 : 193)
+(-4 : -429 : 193)
+(-61 : 429 : 197)
+(-61 : -429 : 197)
+(-164 : 537 : 199)
+(-164 : -537 : 199)
+# <3 2 -1 12> <200> <-q> <-n> <25> <-N> <30> <-C> <0>
+(1 : 0 : 0)
+(1 : 4 : 1)
+(1 : -4 : 1)
+(3 : 18 : 1)
+(3 : -18 : 1)
+(11 : 126 : 1)
+(11 : -126 : 1)
+(97 : 3308 : 1)
+(97 : -3308 : 1)
+(-1 : 24 : 4)
+(-1 : -24 : 4)
+(3 : 48 : 4)
+(3 : -48 : 4)
+(23 : 1608 : 16)
+(23 : -1608 : 16)
+(-13 : 30 : 25)
+(-13 : -30 : 25)
+(13 : 1460 : 25)
+(13 : -1460 : 25)
+(3 : 4242 : 49)
+(3 : -4242 : 49)
+(-23 : 46748 : 169)
+(-23 : -46748 : 169)
+(-1 : 2 : 2)
+(-1 : -2 : 2)
+(11 : 178 : 2)
+(11 : -178 : 2)
+(11 : 4690 : 50)
+(11 : -4690 : 50)
+(-1 : 12 : 3)
+(-1 : -12 : 3)
+(1 : 18 : 3)
+(1 : -18 : 3)
+(131 : 8988 : 3)
+(131 : -8988 : 3)
+(191 : 15828 : 3)
+(191 : -15828 : 3)
+(157 : 23544 : 12)
+(157 : -23544 : 12)
+(1 : 1278 : 27)
+(1 : -1278 : 27)
+(97 : 17154 : 27)
+(97 : -17154 : 27)
+(-11 : 3528 : 48)
+(-11 : -3528 : 48)
+(61 : 12312 : 48)
+(61 : -12312 : 48)
+(71 : 21180 : 75)
+(71 : -21180 : 75)
+(-47 : 11376 : 108)
+(-47 : -11376 : 108)
+(-13 : 36204 : 147)
+(-13 : -36204 : 147)
+(1 : 66 : 6)
+(1 : -66 : 6)
+(13 : 402 : 6)
+(13 : -402 : 6)
+(37 : 1902 : 6)
+(37 : -1902 : 6)
+(73 : 50910 : 150)
+(73 : -50910 : 150)
+# <19 -6 -20 18 -7> <200> <-q> <-n> <10> <-N> <15> <-C> <0>
+(1 : 2 : 1)
+(1 : -2 : 1)
+(-3 : 25 : 4)
+(-3 : -25 : 4)
+(1 : 65 : 4)
+(1 : -65 : 4)
+(3 : 47 : 4)
+(3 : -47 : 4)
+(-5 : 197 : 8)
+(-5 : -197 : 8)
+(-5 : 478 : 11)
+(-5 : -478 : 11)
+(59 : 11258 : 67)
+(59 : -11258 : 67)
+(79 : 53038 : 127)
+(79 : -53038 : 127)
+# <1 0 126 0 441> <200> <-q> <-p> <3> <-C> <0>
+(1 : 21 : 0)
+(1 : -21 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+# <1 0 0 0 100000000000000000001> <100> <-q> <-n> <20> <-N> <25> <-C> <0>
+(0 : 1 : 1)
+(0 : -1 : 1)
+# <0 1 2> <40> <-q> <-x> <-n> <15> <-N> <30> <-p> <30> <-C> <0>
+(0 : 1)
+(-1 : 2)
+(-1 : 1)
+(1 : 2)
+(1 : 7)
+(1 : 14)
+(1 : 23)
+(1 : 34)
+(-4 : 7)
+(4 : 1)
+(4 : 17)
+(-9 : 17)
+(-9 : 14)
+(-9 : 2)
+(9 : 7)
+(9 : 31)
+(-16 : 31)
+(-16 : 23)
+(-16 : 7)
+(16 : 17)
+(-25 : 34)
+(-25 : 14)
+(-25 : 1)
+(25 : 14)
+(25 : 31)
+(-36 : 23)
+# <0 1 2> <40> <-q> <-x> <-n> <15> <-N> <30> <-p> <30>
+(0 : 1)
+(-1 : 2)
+(-1 : 1)
+(1 : 2)
+(1 : 7)
+(1 : 14)
+(1 : 23)
+(1 : 34)
+(-4 : 7)
+(4 : 1)
+(4 : 17)
+(-9 : 17)
+(-9 : 14)
+(-9 : 2)
+(9 : 7)
+(9 : 31)
+(-16 : 31)
+(-16 : 23)
+(-16 : 7)
+(16 : 17)
+(-25 : 34)
+(-25 : 14)
+(-25 : 1)
+(25 : 14)
+(25 : 31)
+(-36 : 23)
+# <10 -28 10 2 2 0 1> <300> <-q> <-p> <1>
+(-1 : 7 : 1)
+(-1 : -7 : 1)
+(1 : 1 : 0)
+(1 : -1 : 0)
+(1 : 37 : 3)
+(1 : -37 : 3)
+(3 : 31 : 1)
+(3 : -31 : 1)
+(5 : 115 : 4)
+(5 : -115 : 4)
+# <10 -28 10 2 2 0 1> <300> <-q> <-p> <1> <-n> <1> <-N> <1> <-P> <0>
+(-1 : 7 : 1)
+(-1 : -7 : 1)
+(1 : 1 : 0)
+(1 : -1 : 0)
+(1 : 37 : 3)
+(1 : -37 : 3)
+(3 : 31 : 1)
+(3 : -31 : 1)
+(5 : 115 : 4)
+(5 : -115 : 4)
+# <10 -28 10 2 2 0 1> <300> <-q> <-n> <25> <-N> <30> <-C> <0>
+(-1 : 7 : 1)
+(-1 : -7 : 1)
+(1 : 1 : 0)
+(1 : -1 : 0)
+(1 : 37 : 3)
+(1 : -37 : 3)
+(3 : 31 : 1)
+(3 : -31 : 1)
+(5 : 115 : 4)
+(5 : -115 : 4)
+# <10 -28 10 2 2 0 1> <300> <-q>
+(-1 : 7 : 1)
+(-1 : -7 : 1)
+(1 : 1 : 0)
+(1 : -1 : 0)
+(1 : 37 : 3)
+(1 : -37 : 3)
+(3 : 31 : 1)
+(3 : -31 : 1)
+(5 : 115 : 4)
+(5 : -115 : 4)
+# <1 0 1 0 0 0 2> <300> <-q> <-p> <1>
+(-1 : 2 : 1)
+(-1 : -2 : 1)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(1 : 2 : 1)
+(1 : -2 : 1)
+# <1 0 126 0 441> <100> <-v> <-A> <2> <-r> <0.01> <-R> <2> <-U> <1000> <-C> <20> <-Q> <0.05> <-W> <300>
+
+This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+
+Curve equation is  y^2 = 441 x^4 + 126 x^2 + 1
+
+
+find_points:
+  degree:       4
+  coefficients: 1 0 126 0 441
+  height bound: 100
+  denominators from 1 to 100
+  number of primes to consider:      30
+  number of moduli for sieving:     (chosen from the curve)
+  number of moduli for first stage: (chosen from the curve)
+  maximal number of `forbidden divisors': 64
+  iterations for isolations of connected components: 10
+
+Check if polynomial should be reversed for better performance:
+  criteria are not met ==> don't reverse
+
+Isolate the connected components:
+  can restrict to the following intervals:
+  [-100.000000, 100.000000] 
+
+There are points at infinity
+
+Obtain information from the polynomial mod 64:
+  the bit arrays hold one numerator in (for b odd, 2 mod 4, 4 mod 8, ..., 32 mod 64, 0 mod 64; - = none admissible): 2 2 2 2 2 2 2
+
+Find the points mod p for the first 30 odd primes p:
+
+Points at infinity:
+(1 : 21 : 0)
+(1 : -21 : 0)
+
+Now start the sieving procedure...
+
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-1 : 31 : 2)
+(-1 : -31 : 2)
+(1 : 31 : 2)
+(1 : -31 : 2)
+(-2 : 651 : 21)
+(-2 : -651 : 21)
+(2 : 651 : 21)
+(2 : -651 : 21)
+
+12 rational points found.
+
+# <1 2 3> <10> <-r>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-R>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-U>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-A>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-C>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-P>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-Q>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-W>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-r> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-R> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-U> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-A> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-C> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-P> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-Q> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-W> <x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6

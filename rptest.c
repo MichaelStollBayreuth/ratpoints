@@ -1,7 +1,7 @@
 /***********************************************************************
- * ratpoints-2.2                                                       *
+ * ratpoints-3.0.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
- * Copyright (C) 2008, 2009, 2022  Michael Stoll                       *
+ * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -23,15 +23,44 @@
  *                                                                     *
  * Test program for ratpoints                                          *
  *                                                                     *
- * Michael Stoll, May 27, 2009; January 2, 2022; Sep 13, 2026          *
+ * Michael Stoll, May 27, 2009; Jan 2, 2022; Sep 21, 2026              *
  ***********************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "ratpoints.h"
 
-#include "testdata.h"
+/* The list of test curves.  The default is testdata.h, a thousand random
+ * genus 2 curves and eight chosen ones; building with
+ *   -DRATPOINTS_TESTDATA='"testdata-many.h"'
+ * selects the curves with many rational points instead.  Both define
+ * NUM_TEST and long testdata[NUM_TEST][7]. */
+#ifndef RATPOINTS_TESTDATA
+# define RATPOINTS_TESTDATA "testdata.h"
+#endif
+#include RATPOINTS_TESTDATA
+
+/* A test data file either gives every curve the same degree, in which case a
+ * row of testdata[] is just the coefficients, or carries the degree in the
+ * first column of each row, which is what a file holding curves of several
+ * degrees must do -- padding with zeros will not serve, since a polynomial
+ * of degree d is not squarefree as a binary form of degree d+2.  The file
+ * says which by defining TEST_DEGREE or TEST_MAX_DEGREE. */
+#ifndef TEST_DEGREE
+# ifndef TEST_MAX_DEGREE
+#  define TEST_DEGREE 6      /* the default: curves of genus 2 */
+# endif
+#endif
+#ifdef TEST_DEGREE
+# define TEST_MAX_DEGREE TEST_DEGREE
+# define TEST_DEGREE_OF(n) ((long)(TEST_DEGREE))
+# define TEST_COEFF(n, k)  (testdata[n][k])
+#else
+# define TEST_DEGREE_OF(n) (testdata[n][0])
+# define TEST_COEFF(n, k)  (testdata[n][(k)+1])
+#endif
 
 mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
 
@@ -65,11 +94,24 @@ int main(int argc, char *argv[])
   ratpoints_args args;
 
   /* parameters; see documentation */
-  long degree        = 6;
+  long degree        = TEST_MAX_DEGREE;
   long height        = 16383;
-  long sieve_primes1 = RATPOINTS_DEFAULT_SP1;
-  long sieve_primes2 = RATPOINTS_DEFAULT_SP2;
-  long num_primes    = RATPOINTS_DEFAULT_NUM_PRIMES;
+  long sieve_primes1 = -1; /* negative: let ratpoints choose, as main.c does */
+  long sieve_primes2 = -1;
+  double survivors_per_word = -1.0; /* negative: compiled-in default */
+  long sp2_extra = -1;               /* negative: compiled-in default */
+  double sp2_u0 = -1.0;              /* negative: compiled-in default */
+  double cost_table = -1.0;          /* negative: compiled-in default */
+  long adapt = -1;                   /* negative: the default, stage 3 */
+  long sp3_extra = -1;               /* negative: choose from the curve */
+  double sp3_per_denom = -1.0;       /* negative: compiled-in default */
+  double check_cost = -1.0;          /* negative: estimate from the curve */
+  int print_time = 0;                /* -T: report the CPU time used */
+  long num_primes    = -1; /* negative: let ratpoints choose, as main.c
+                            * does.  This matters: an explicit value is
+                            * a hard limit, so passing the default here
+                            * would stop sieving_info from looking past
+                            * it on the curves that run out of primes. */
   long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
   long b_low         = 1;
   long b_high        = height;
@@ -134,6 +176,54 @@ int main(int argc, char *argv[])
           if(sscanf(argv[i], " %ld", &sieve_primes2) != 1) return(-6);
           i++;
           break;
+        case 'r': /* target survivors of the first stage per bit array */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &survivors_per_word) != 1) return(-6);
+          i++;
+          break;
+        case 'R': /* primes added to sp1 to get sp2 */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
+          i++;
+          break;
+        case 'U': /* run length at which a stage-2 prime pays for its set-up */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);
+          i++;
+          break;
+        case 'A': /* whether to correct the primes during the run */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &adapt) != 1) return(-6);
+          i++;
+          break;
+        case 'C': /* what one row of a sieve table costs */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &cost_table) != 1) return(-6);
+          i++;
+          break;
+        case 'P': /* primes added to sp2 for the third stage */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &sp3_extra) != 1) return(-6);
+          i++;
+          break;
+        case 'Q': /* what a third-stage prime costs per denominator */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &sp3_per_denom) != 1) return(-6);
+          i++;
+          break;
+        case 'W': /* what one exact check costs, in rdtsc cycles */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %lf", &check_cost) != 1) return(-6);
+          i++;
+          break;
         case 'j': /* do not use Jacobi sum test */
           no_jacobi = 1;
           i++;
@@ -168,6 +258,11 @@ int main(int argc, char *argv[])
           break;
         case 'z': /* no output */
           no_output = 1;
+          i++;
+          break;
+        case 'T': /* print the CPU time used, in seconds, and nothing else;
+                   * meant to be combined with -z, for tuning scripts */
+          print_time = 1;
           i++;
           break;
         case 'Z': /* do print points */
@@ -231,13 +326,15 @@ int main(int argc, char *argv[])
 
   /* Repeat computation iterations times */
   { long count;
+    clock_t t_start = clock();
 
     for(count = iterations; count; count--)
     { for(n = 0; n < NUM_TEST; n++)
       { /* set up polynomial */
         long k;
+        long deg = TEST_DEGREE_OF(n);
 
-        for(k = 0; k < 7; k++) { mpz_set_si(c[k], testdata[n][k]); }
+        for(k = 0; k <= deg; k++) { mpz_set_si(c[k], TEST_COEFF(n, k)); }
 
         /* Fill args structure. Recall:
           typedef struct {mpz_t *cof; long degree; long height;
@@ -249,19 +346,26 @@ int main(int argc, char *argv[])
             ratpoints_args; */
 
         args.cof           = &c[0];
-        args.degree        = degree;
+        args.degree        = deg;
         args.num_inter     = 0; /* in/out: comes back as the number of
                                  * intervals actually searched */
         if(!set_once || (count == iterations && n == 0))
-        { /* the other fields; with -O they are set here once.  The library
-           * fills in defaults for those that ask for one, and leaves the
-           * rest alone. */
+        { /* the input fields; with -O they are set here once and must come
+           * back from every call as they went in */
           args.height        = height;
           args.domain        = &domain[0];
           args.b_low         = b_low;
           args.b_high        = b_high;
           args.sp1           = sieve_primes1;
           args.sp2           = sieve_primes2;
+          args.survivors_per_word = survivors_per_word;
+          args.sp2_extra     = sp2_extra;
+          args.sp2_u0        = sp2_u0;
+          args.cost_table    = cost_table;
+          args.adapt         = adapt;
+          args.sp3_extra     = sp3_extra;
+          args.sp3_per_denom = sp3_per_denom;
+          args.check_cost    = check_cost;
           args.array_size    = array_size;
           args.sturm         = sturm_iter;
           args.num_primes    = num_primes;
@@ -281,14 +385,32 @@ int main(int argc, char *argv[])
         find_points_work(&args, process, (void *)info);
         if(no_output == 0) { printf("}\n"); }
         if(set_once)
-        { /* the fields the library must not touch (it fills in defaults for
-           * the others when asked, which is documented): a message here
-           * makes the output differ from the reference */
+        { /* every input field must be what it was set to above; a message
+           * here makes the output differ from the reference */
 #define RP_CHECK_L(field, value) \
           if(args.field != (value)) \
           { printf("input field " #field " changed: %ld -> %ld\n", \
                    (long)(value), (long)args.field); }
+#define RP_CHECK_D(field, value) \
+          if(args.field != (value)) \
+          { printf("input field " #field " changed: %g -> %g\n", \
+                   (double)(value), (double)args.field); }
           RP_CHECK_L(height, height)
+          RP_CHECK_L(b_low, b_low)
+          RP_CHECK_L(b_high, b_high)
+          RP_CHECK_L(sp1, sieve_primes1)
+          RP_CHECK_L(sp2, sieve_primes2)
+          RP_CHECK_D(survivors_per_word, survivors_per_word)
+          RP_CHECK_L(sp2_extra, sp2_extra)
+          RP_CHECK_D(sp2_u0, sp2_u0)
+          RP_CHECK_D(cost_table, cost_table)
+          RP_CHECK_L(adapt, adapt)
+          RP_CHECK_L(sp3_extra, sp3_extra)
+          RP_CHECK_D(sp3_per_denom, sp3_per_denom)
+          RP_CHECK_D(check_cost, check_cost)
+          RP_CHECK_L(array_size, array_size)
+          RP_CHECK_L(sturm, sturm_iter)
+          RP_CHECK_L(num_primes, num_primes)
           RP_CHECK_L(max_forbidden, max_forbidden)
           if((args.flags & RATPOINTS_FLAGS_INPUT_MASK) != flags)
           { printf("input flags changed: %x -> %x\n", flags,
@@ -296,10 +418,13 @@ int main(int argc, char *argv[])
           if(args.domain != &domain[0])
           { printf("input field domain changed\n"); }
 #undef RP_CHECK_L
+#undef RP_CHECK_D
         }
         /* fflush(NULL); */
       }
     }
+    if(print_time)
+    { printf("%.6f\n", (double)(clock() - t_start)/(double)CLOCKS_PER_SEC); }
   }
 
   /* clean up */
