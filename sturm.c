@@ -196,9 +196,9 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
          the polynomial is positive on the interval (first condition)
          or the maximal iteration depth has been reached (second condition) */
       { /* nl/2^del and nr/2^der, scaled by ldexp rather than by dividing by
-         * a shifted 1: exact, no division, and defined for every depth --
-         * the shift was an int shift, and args->sturm may be as large as
-         * LONG_LENGTH-2, so it was undefined past a depth of 31. */
+         * a shifted 1: exact, no division, and defined for every depth
+         * (args->sturm may be as large as LONG_LENGTH-2, and an int shift
+         * is undefined past a depth of 31). */
         double l = ldexp((double)nl, -(int)del);
         double u = ldexp((double)nr, -(int)der);
 

@@ -28,8 +28,8 @@
 #               test4, testapi and timing (see below)
 #   test1once   the curves of test1 with the input fields of args set once
 #               before the loop: the library must leave them alone
-#   test3       the invocations of test3.sh, regression tests for the bugs
-#               found in the review of September 2026, against testbase3
+#   test3       the invocations of test3.sh, regression tests for bugs
+#               that were fixed, against testbase3
 #   test1       1000 random genus 2 curves and eight chosen ones, checked
 #               against testbase
 #   test1many   curves with many rational points, against testbase-many;
@@ -37,10 +37,10 @@
 #               both should be used when judging a change to the sieve
 #   testhigh    the curves of test1 at a height bound of TESTHEIGHT below,
 #               where the sieve and not the set-up decides the running time
-#   testhighmany  the curves of test1many that run out of primes, at the same
-#               height; testhigh and testhighmany take about a minute each
-#   test4       the invocations of test4.sh, the suite that exercises every
-#               branch of the code -- every degree and shape of curve,
+#   testhighmany  the thirty curves of test1many with the most points, at the
+#               same height; testhigh and testhighmany take about a minute each
+#   test4       the invocations of test4.sh, the suite that exercises nearly
+#               every line of the code -- every degree and shape of curve,
 #               every option, restricted ranges, heights from 1 to 2^63-1,
 #               every error message -- against testbase4; a few seconds.
 #               verify-test4.py checks that reference by brute force
@@ -84,15 +84,13 @@ INSTALL = cp
 INSTALL_DIR = /usr/local
 
 # -funswitch-loops, the -O3 optimisation that compiles a loop with an
-#  invariant test inside it twice, once per outcome, was measured and is not
+#  invariant test inside it twice, once per outcome, is deliberately not
 #  used.  It removes 1 to 3% of the instructions -- the "which reduction" test
 #  in the per-call start loop and in the second-phase loop of sift.c, and the
-#  tests on the numerator packing (which_bits, as it then was) in the
-#  per-denominator loops of find_points.c -- and
-#  gains nothing in cycles: a
-#  wash on the two suites at height 16383 and 0 to 2% slower on the two at
-#  200000, measured at three code alignments (TRIO-NOTES.md on the sieve-trio
-#  branch).  Instruction counts predicted a gain; cycles are what count.
+#  tests on the numerator packing in the per-denominator loops of
+#  find_points.c -- and gains nothing in cycles: a wash on the two suites at
+#  height 16383 and 0 to 2% slower on the two at 200000, measured at three
+#  code alignments.  Instruction counts predict a gain; cycles are what count.
 CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first phase one
@@ -109,10 +107,10 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  "-DRP_STOP_AFTER=<n>" to cut the pipeline short after a chosen stage, so
 #  that the cost of a stage can be had as a difference of two runs.
 #  These are development aids; see the comment at the top of sift.c.
-# Add "-DRP_INIT_BRANCH" or "-DRP_INIT_ONEWAY" to put back, one at a time, the
-#  two things the sieve table set-up used to do: test is_f_square with a branch
-#  rather than shifting the value into place, and step the residue one row at a
-#  time rather than four.  Between them they cost 13% of "make test1" on the
+# Add "-DRP_INIT_BRANCH" or "-DRP_INIT_ONEWAY" to select, one at a time, the
+#  two simpler forms of the sieve table set-up: testing is_f_square with a branch
+#  rather than shifting the value into place, and stepping the residue one row at
+#  a time rather than four.  Between them they cost 13% of "make test1" on the
 #  machine this was written on; the flags are there to measure that again on
 #  yours.  "-DRP_INIT_NOACC" and "-DRP_INIT_NOREP" leave out a stage of
 #  sieve_init altogether, so that its share can be had as a difference of two
@@ -124,9 +122,9 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  Jacobi symbol test cost without that.  "-DRP_MOD_CHOICE" instead builds both forms of
 #  the start-of-sieve computation into one binary, selected by the
 #  environment variable RP_MOD_MUL, so that they can be timed against each
-#  other without the code-alignment difference two builds would bring; that is
-#  how the 2-3% in DIVISION-NOTES.md was measured. "-DRP_MOD_COUNTS" reports
-#  how often the old form actually divided.
+#  other without the code-alignment difference two builds would bring (the
+#  multiplication is worth 2 to 3%).  "-DRP_MOD_COUNTS" reports how often the
+#  chain of conditional subtractions actually divides.
 # When comparing two builds whose *source* differs, be aware that where gcc
 #  happens to place the hot loops is worth about 10% here, reproducibly, so
 #  repeating the runs will not reveal it. Rebuild both with, say,
@@ -136,14 +134,14 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  curves, -falign-loops=32 lands between 0.992 and 1.010 with no consistent
 #  sign, and 64 is worse.
 # Add "-DRATPOINTS_CHUNK=<n>" to force the use of 2 <= n <= 16 registers
-#  in phase 1 of sieving. For n=1, this reverts to the code used previously.
+#  in phase 1 of sieving. For n=1, the loop is left to the compiler.
 #  If SSE/AVX registers are used and this is not set, 16 registers will be used.
 #  In some cases, using n=8 may be faster
 #  (e.g., Intel(R) Xeon(R) CPU E3-1220 V2 with -DUSE_AVX -mavx).
 
 # The following uses 64-bit registers, i.e., plain unsigned longs.
 # This works on any machine the library builds on at all (a 64-bit long is
-# what the code needs in any case, since 3.0.0; see rp-private.h).
+# what the code needs in any case; see rp-private.h).
 CCFLAGS64 =
 # The following uses 128-bit registers. In spite of its name, USE_AVX128 needs
 # only SSE2, which every x86-64 machine has, so this is as portable as the
@@ -357,7 +355,7 @@ testhighmany: rptest-high-many testbase-high-many
 # test and not an independent one.  What makes it trustworthy is that the
 # points were checked once against a brute-force search over every coprime
 # pair (a, b) within a small height bound, written independently of the
-# sieve; see scripts/verify-degrees.py in the branch notes.
+# sieve.
 testdegrees: rptest-degrees testbase-degrees
 	time ./rptest-degrees > rptest-degrees.out
 	cmp -s testbase-degrees rptest-degrees.out || ${FAIL}
@@ -367,8 +365,8 @@ testdegrees: rptest-degrees testbase-degrees
 # (rptest prints a line whenever one has changed), and the points must be
 # the same.  The second run, with a lower bound on the denominator, makes
 # the library take its own decision not to reverse the polynomial, which
-# used to be stored in the caller's flags; the third gives values that the
-# library normalises, which used to be stored in the fields.
+# must not show in the caller's flags; the third gives values that the
+# library normalises, which must not show in the fields.
 test1once: rptest testbase
 	./rptest -O > rptest-once.out
 	cmp -s testbase rptest-once.out || ${FAIL}
@@ -377,13 +375,13 @@ test1once: rptest testbase
 	./rptest -O -dl 0 -du 1000000 -S 100 > rptest-once3.out
 	cmp -s testbase rptest-once3.out || ${FAIL}
 
-# Regression tests for the bugs found in the review of September 2026: a
-# list of invocations of ratpoints in test3.sh, against testbase3.
+# Regression tests for bugs that were fixed: a list of invocations of
+# ratpoints in test3.sh, against testbase3.
 test3: ratpoints testbase3 test3.sh
 	./test3.sh > test3.out 2>&1
 	cmp -s testbase3 test3.out || ${FAIL}
 
-# The suite that exercises every branch (see test4.sh): a few hundred
+# The suite that exercises nearly every line (see test4.sh): a few hundred
 # invocations of ratpoints, against testbase4.  The reference was checked
 # by brute force, independently of the sieve: verify-test4.py does that,
 # and can be run again whenever testbase4 changes.

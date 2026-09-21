@@ -13,11 +13,10 @@
 # is 1 when the output of a test differs from its reference and 2 when the
 # instrumented build failed.
 #
-# What the suite of item 20 left uncovered on 2026-09-19 is listed in
-# TESTSUITE-NOTES.md on the branch testsuite: guards against states the
-# callers cannot produce, arms reached only with other compile-time settings
+# What the tests leave uncovered is guards against states the callers
+# cannot produce, arms reached only with other compile-time settings
 # (test4-configs.sh covers those builds, but this script measures one), and
-# a few conditions the arithmetic makes impossible.
+# a few conditions the arithmetic makes impossible or nearly so.
 
 dir=build-coverage
 rm -rf "$dir"; mkdir "$dir"

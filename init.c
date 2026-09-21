@@ -37,8 +37,8 @@
  * is a branch on data with no pattern in it: at p = 127 it accounts for a
  * third of all the branches executed and misses about half the time, and the
  * loop it sits in is three quarters of the whole set-up.  Shifting the value
- * into place instead has no branch to miss.  RP_INIT_BRANCH restores the old
- * form for comparison. */
+ * into place instead has no branch to miss.  RP_INIT_BRANCH selects the
+ * branching form for comparison. */
 #ifdef RP_INIT_BRANCH
 # define RP_INIT_BIT(w, v, i) do { if(v) { (w) |= 1UL << (i); } } while(0)
 #else
@@ -246,7 +246,7 @@ static ratpoints_bit_array *sieve_init_##prime(void *se1, long b1, void *args1) 
 #include "init_sieve.h"
 
 /************************************************************************
- * The rows of a composite modulus (TODO item 21, 3.0.0)                  *
+ * The rows of a composite modulus                                      *
  ************************************************************************/
 
 /* Lay an m-periodic pattern of admissible bit indices out as a table row of

@@ -33,10 +33,10 @@
 #include <math.h>
 #include <string.h>
 
-/* The code assumes that an unsigned long has 64 bits, and has done so since
- * version 3.0.0; the last version that accommodates a 32-bit long is 2.2.4.
- * The test is for exactly 64 bits, and it is written so that it is right in
- * every mode of preprocessor arithmetic. */
+/* The code assumes that an unsigned long has 64 bits (version 2.2.4 is the
+ * last one that accommodates a 32-bit long).  The test is for exactly 64
+ * bits, and it is written so that it is right in every mode of preprocessor
+ * arithmetic. */
 #if (((ULONG_MAX >> 31) >> 31) >> 1) != 1
 # error "ratpoints needs a 64-bit long since version 3.0.0; use version 2.2.4 on this machine"
 #endif
@@ -87,14 +87,12 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
 
 #ifdef USE_AVX512
 /* Use 512 bit AVX registers for the bit arrays */
-/* Note that this has not been run on a CPU with AVX512F capability yet.
- * It has, however, been tested on a machine with AVX2 only, by compiling
+/* The tests run this variant on a machine with AVX2 only, by compiling
  * with -DUSE_AVX512 but without -mavx512f: gcc then lowers the 64-byte
  * vectors to pairs of 256-bit operations, so that the whole code path
- * (RBA_PACK == 8, the mask macros, phase 2) is exercised.  Done that way,
- * rptest and the test with the record curve reproduce testbase/testbase2
- * exactly.  What such a run cannot check is the genuine 512-bit
- * instructions, i.e., the TEST macro below. */
+ * (RBA_PACK == 8, the mask macros, the second stage) is exercised.  What
+ * such a run cannot check is the genuine 512-bit instructions, i.e., the
+ * TEST macro below. */
 
 #include <immintrin.h>
 
@@ -238,9 +236,7 @@ typedef __v2di ratpoints_bit_array;
 #define zero (RBA(0LL))
 #define AND(a,b) ((a) = (ratpoints_bit_array)__builtin_ia32_andps((__v4sf)(a), (__v4sf)(b)))
 #define EXT0(a) ((unsigned long)__builtin_ia32_vec_ext_v2di((__v2di)(a), 0))
-/* This used to ignore i and always extract word 1, which was safe only as
- * long as the one caller asked for nothing else.  It is a vector type, so
- * subscript it like the other variants do. */
+/* It is a vector type, so subscript it like the other variants do. */
 #define EXT(a,i) ((unsigned long)(a)[i])
 #define TEST(a) (EXT0(a) || EXT(a,1))
 #define MASKL(a,s) { unsigned long *survl = (unsigned long *)(a); long sh = (s); \
@@ -271,10 +267,9 @@ typedef unsigned long ratpoints_bit_array;
 #ifndef RATPOINTS_CHUNK
 # define RATPOINTS_CHUNK 1  /* Leave optimization to the compiler... */
 #endif
-/* USE_LONG_IN_PHASE_2 used to be forced here, to select a simpler second
- * phase in sift.c.  It no longer means that: it now sieves the survivors one
- * 64-bit word at a time instead of a whole bit-array at a time, and with
- * RBA_PACK == 1 the two are the same code.  Nothing to set. */
+/* USE_LONG_IN_PHASE_2 makes the second stage sieve the survivors one 64-bit
+ * word at a time instead of a whole bit array at a time; with RBA_PACK == 1
+ * the two are the same code, so there is nothing to set here. */
 
 #endif /* various register lengths */
 
@@ -472,11 +467,11 @@ typedef struct { ratpoints_bit_array bits; long k; long a0; const long *offset; 
 /* the type of the functions used for initializing the sieve */
 typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 
-/* A sieving modulus need not be a prime (3.0.0, TODO item 21).  A table row
- * only has to be periodic in the bit index with the modulus as its period,
- * selected by the denominator's residue, and the first two phases read it
- * the same way whatever the modulus is.  Three kinds of modulus are sieved
- * with: a prime p, with the machinery that always was; a prime power p^e,
+/* A sieving modulus need not be a prime.  A table row only has to be
+ * periodic in the bit index with the modulus as its period, selected by the
+ * denominator's residue, and the first two stages read it the same way
+ * whatever the modulus is.  Three kinds of modulus are sieved with: a prime
+ * p; a prime power p^e,
  * whose row for the residue b is the pattern of the a with F(a,b) a square
  * mod p^e -- f(a b^-1) for a unit b, frev(b a^-1) with frev(t) = t^D f(1/t)
  * for p | b and a unit a, exactly as get_2adic_info decides mod 2^6 --
@@ -500,9 +495,9 @@ typedef ratpoints_bit_array* (*ratpoints_init_fun)(void*, long, void*);
 /* What a prime power p^e = m says about the curve: bit x of fsq is set when
  * f(x) is a square mod m, bit t of gsq (p | t) when frev(t) is one; inv[x]
  * is x^-1 mod m for a unit x; r the mean density of admissible numerators
- * over the classes of the denominator mod m, exact (a prime's, from
- * examine_prime, counts the class it divides as 1: see there).  Filled by
- * examine_power() in find_points.c. */
+ * over the classes of the denominator mod m, computed the same way as a
+ * prime's (examine_prime), so that the two compete in one ranking.  Filled
+ * by examine_power() in find_points.c. */
 typedef struct { long p; long e; long m; double r; int np;
                  unsigned long fsq[RP_MODWORDS]; unsigned long gsq[RP_MODWORDS];
                  unsigned short inv[RATPOINTS_MAX_PRIME_EVEN]; }
@@ -551,7 +546,7 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
  * gives the same result because AND is commutative.  The range
  * w_high - w_low can be any length: the first phase takes it in chunks of
  * RATPOINTS_CHUNK bit arrays and sieves what is left over in narrower legs
- * (the arm for RATPOINTS_CHUNK 1 takes any length as it always did). */
+ * (the arm for RATPOINTS_CHUNK 1 takes any length as well). */
 long _ratpoints_sift0(long b, long w_low, long w_high,
            ratpoints_args *args, const rp_num_class *cls,
            ratpoints_bit_array *survivors,

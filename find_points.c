@@ -205,7 +205,7 @@ static void alloc_ba_buffer(ratpoints_args *args, long n, long extra)
 }
 
 /* Make sure the block holds the tables of the first n primes and extra
- * further bit arrays (the tables of composite moduli, TODO item 21).  Only
+ * further bit arrays (the tables of composite moduli).  Only
  * to be called while nothing has been taken from the block: it is a bump
  * allocator, reset at the start of every curve, and the tables are built
  * lazily while sieving, so before the first denominator it can simply be
@@ -254,7 +254,7 @@ void find_points_init(ratpoints_args *args)
   /* allocate space for se_buffer: an entry for every prime looked at, for
    * every composite modulus the ranking takes (at most one per prime it
    * involves, so at most as many again) and for every prime power that is a
-   * factor of one (TODO item 21) */
+   * factor of one */
   args->se_buffer
     = (ratpoints_sieve_entry *) malloc((2*RATPOINTS_NUM_PRIMES + num_powers())
                                         * sizeof(ratpoints_sieve_entry));
@@ -600,7 +600,7 @@ static inline int jacobi1(long b, const long lcf)
  * factor of lcf is in prime[] (trial division finds them) and the
  * denominators stay below 2^32 (the reductions multiply by a reciprocal, see
  * RP_MULDIV); otherwise it says so, and the denominator loop calls jacobi1
- * or jacobi as before.  A leading coefficient that fits a long always fits
+ * or jacobi instead.  A leading coefficient that fits a long always fits
  * the tables: distinct odd primes below 1024 with a product below 2^63 sum
  * to at most 6057 (the six largest and a 7), and only those with an odd
  * exponent need a table. */
@@ -909,8 +909,8 @@ static void setup_us1(ratpoints_args *args)
  * they lie in a single class a0 mod 2^k the bit arrays hold only the
  * numerators a0 + 2^k t: the odd denominators of a random curve take their
  * numerators from one class mod 4 on a fifth of the curves and from one
- * class mod 8 on a sixth, and the two-fold packing that "only odd
- * numerators" used to be is the case k = 1.  k and a0 are read off the
+ * class mod 8 on a sixth, and packing "only odd numerators" two-fold is
+ * the case k = 1.  k and a0 are read off the
  * pattern.  The theory says that k is the same for every odd class, and for
  * every class of the same 2-adic valuation of b -- the pattern of b = u b'
  * with u a unit mod 64 is u times that of b', and multiplication by a unit
@@ -1127,7 +1127,8 @@ static void class_offsets(rp_num_class *cls, ratpoints_sieve_entry **sieve_list,
 
 /* Moduli are ranked by what they say per unit of what they cost, not by
  * what they say alone; key is set by prime_key() below.  With the cost of a
- * table switched off the key is monotone in r and this is the old order. */
+ * table switched off the key is monotone in r and this is the order by
+ * density. */
 static int compare_entries(const void *a, const void *b)
 {
   double diff = (((entry *)a)->key - ((entry *)b)->key);
@@ -1246,7 +1247,7 @@ static double check_cost(const ratpoints_args *args)
           + RATPOINTS_CHECK_CALL + RATPOINTS_CHECK_ROOT*(root - 1.0);
   /* An odd degree needs one more multiplication, by b, to make the form of
    * even degree.  The term is larger than that multiplication alone, because
-   * it was fitted to what the sieve shows and an odd degree also restricts
+   * it is fitted to what the sieve shows and an odd degree also restricts
    * the denominators to squares, which leaves fewer survivors per
    * denominator and so a colder check. */
   if(degree & 1)
@@ -1474,10 +1475,9 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * adding while the expected survivors per 64-bit word it removes --
  * bits_per_word times the product rate of the densities taken so far,
  * times 1 - r_n --, weighted by what they cost downstream (above), exceed
- * the target times what the modulus costs per word.  (Until the tuning
- * session of 3.0.0 the rule compared the survivors the modulus meets, not
- * the ones it removes, and the target had the typical 1 - r of a half
- * folded in.)  The target, RATPOINTS_SURVIVORS_PER_WORD, is
+ * the target times what the modulus costs per word.  It is the survivors
+ * the modulus removes that count, not the ones it meets.  The target,
+ * RATPOINTS_SURVIVORS_PER_WORD, is
  * fitted for a long run and a modulus that costs one AND per word; the
  * fixed costs of a modulus -- its tables, its sieve_spec and bp_list
  * entries per denominator, its row pointer per call and the fetch of its
@@ -1486,8 +1486,8 @@ static double downstream_factor(const entry *prec, long n, long pnp,
  * per cent; at a height bound of a few hundred, where the run is a few
  * dozen words and a table has more rows than that, it is by a factor of a
  * hundred for the small primes and several hundred at the modulus where the
- * phase stops, and the phase stops after some seven primes where it used to
- * take a dozen whose tables were a fifth of the run (TODO item 29).  The
+ * phase stops, and the phase stops after some seven moduli where a rule
+ * blind to these costs takes a dozen whose tables are a fifth of the run.  The
  * first modulus is always taken: the chunked sieve writes the 2-adic
  * pattern on its pass, so its ANDs cost nothing beyond that (its tables do,
  * but a sieve without a first phase is no sieve). */
@@ -1501,12 +1501,11 @@ static int phase_1_wants(const entry *prec, long n, long pnp, long taken,
 
 /* How many primes the first phase would need under that rule.  prec[] must
  * be sorted by increasing key.  If the target cannot be reached with the
- * primes available, all of them are used.  Since 3.0.0 the choice itself is
- * made by take_entries(), with the composite moduli in the pool; this
- * estimate, over the primes alone, serves the rule that decides whether to
- * look at more primes.  (It used to err on the high side, a composite
- * modulus being able only to lower the count; with the cost in the rule a
- * composite's table can also raise it, so it is an estimate and no bound.) */
+ * primes available, all of them are used.  The choice itself is made by
+ * take_entries(), with the composite moduli in the pool; this estimate,
+ * over the primes alone, serves the rule that decides whether to look at
+ * more primes.  It is an estimate and no bound: a composite modulus can
+ * lower the count, and its table can also raise it. */
 static long primes_for_phase_1(entry *prec, long pnp,
                                double bits_per_word, double target, long extra)
 { double rate = 1.0;
@@ -1524,7 +1523,7 @@ static long primes_for_phase_1(entry *prec, long pnp,
  * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
- * offset, which is what every version before 3.0.0 used. */
+ * offset. */
 static long phase_2_offset(long extra, double u0, double u_words)
 { double e;
 
@@ -1576,8 +1575,8 @@ static inline unsigned long barrett(unsigned long u, unsigned long p,
  * little for a modulus of its own, but it comes free as a factor of a
  * composite modulus (33 in place of 11, 15 when both 3 and 5 are like
  * this), and curves with very many rational points have several such
- * primes; it is worth 1.5% on them at a height bound of 16383 (TODO item
- * 31).  The entry is marked nf = -1: it is a candidate for the first two
+ * primes; it is worth 1.5% on them at a height bound of 16383.  The entry
+ * is marked nf = -1: it is a candidate for the first two
  * stages and a factor for add_moduli, but it does not count as one of the
  * primes the look-further rule wants, and the third stage, which runs after
  * the test for common factors, has no use for it.  Returns 0 when the prime
@@ -1623,13 +1622,10 @@ static int examine_prime(ratpoints_args *args, long pn,
    * Up to RP_HORNER_STEPS steps fit in a long without one, which at the
    * default PRIME_SIZE is every degree up to 7; beyond that the accumulator
    * is reduced every RP_HORNER_STEPS steps.  The schedule is fixed rather
-   * than decided by testing the accumulator, which is what this used to do:
-   * that test is a data-dependent branch in the innermost loop, and with the
-   * reduction now two multiplications instead of a division it is cheaper to
-   * reduce on a schedule than to work out whether to.
-   * (It also puts right what raising PRIME_SIZE from 7 to 8 did to degree 8:
-   * it moved the boundary of the division-free path from degree 8 to 7, so
-   * genus 3 with an even model took a conditional division in every step.) */
+   * than decided by testing the accumulator: that test would be a
+   * data-dependent branch in the innermost loop, and with the reduction two
+   * multiplications instead of a division it is cheaper to reduce on a
+   * schedule than to work out whether to. */
   if(degree <= RP_HORNER_STEPS)
   { for(a = 1 ; a < p; a++)
     { unsigned long s = coeffs_mod_p[degree];
@@ -1678,13 +1674,12 @@ static int examine_prime(ratpoints_args *args, long pn,
      * class divisible by p, whose row (sieves0) admits the numerators not
      * divisible by p; that class counts only when such denominators occur.
      * A prime power's density (examine_power) is computed the same way, and
-     * the two compete in one ranking.  Until the tuning session of 3.0.0 the
-     * last class counted as 1, which is 1/p^2 too much -- the numerators
-     * that row removes are the ones the test for common factors removes
-     * anyway, and the constants had been fitted to the mixture (item 21
-     * measured the exact convention at 5% of testhighmany under those
-     * constants); it is one of the estimate corrections refitted as a
-     * group. */
+     * the two compete in one ranking.  (Counting the last class as 1 would
+     * be 1/p^2 too much.  The numerators that row removes are the ones the
+     * test for common factors removes anyway, so the difference matters
+     * little in itself; but the constants of the rules are fitted with this
+     * density in place and absorb the convention, so that changing it
+     * without refitting them costs up to 5% on point-rich curves.) */
     double r = is_f_square[p] ? ((double)((np + 1)*(p-1)))/((double)(p*p))
                               : (double)np/(double)p;
 
@@ -1964,9 +1959,10 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
       { keep *= 1.0 - forbidden_fraction(fd[i].p, fd[i].mask); }
       /* the Jacobi symbol lets through half of the rest -- a little more
        * than half, since the denominators whose odd part divides into the
-       * leading coefficient pass unconditionally: the count is 0.53 (item
-       * 24's review; the runs of 2026-09-18 put Dact/Dpred at 1.07 on nine
-       * tenths of the random curves at 16383 and 200000, which is 0.535) */
+       * leading coefficient pass unconditionally: the count is 0.53 (with
+       * one half the actual number of denominators is 1.07 times the
+       * predicted one on nine tenths of the random curves at 16383 and
+       * 200000, which is 0.535) */
       if(args->flags & RATPOINTS_USE_JACOBI) { keep *= 0.53; }
     }
   }
@@ -1974,19 +1970,18 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
   /* The bit arrays of a denominator hold one numerator in 2^k, k the stride
    * of its class (rp_num_class), so a class sweeps that share of its
    * numerators; the classes counted above are equally frequent among the
-   * denominators, so the mean over the classes kept is the factor.  (Until
-   * 3.0.0 only the packing by parity existed, and counting the even
-   * denominators of a curve with numerators of both parities at full width
-   * over-estimated U by up to a third.) */
+   * denominators, so the mean over the classes kept is the factor.
+   * (Ignoring the strides, that is counting every class at full width,
+   * would over-estimate U by up to a third.) */
   if(good > 0) { nums *= packed/(double)good; }
 
   /* The rounding to whole bit arrays: the bits of an interval run from
    * floor(low/RBA_LENGTH) to ceil(high/RBA_LENGTH) bit arrays.  An end the
    * height bound cut pads what clipped_padding says for its class, the
    * mean over the classes kept; an end inside the bound pads half a bit
-   * array on average.  (Until 3.0.0 the ranges were padded to whole chunks of
-   * RATPOINTS_CHUNK bit arrays on top of that; the tail legs of item 25
-   * took that away, this is what is left.) */
+   * array on average.  (The range is not padded to whole chunks of
+   * RATPOINTS_CHUNK bit arrays: the tail legs of the first phase sieve
+   * what is left over.) */
   { double pad = (good > 0)
                    ? clo*pad_lo/(double)good + chi*pad_hi/(double)good
                        + (2.0*inters - clo - chi)*0.5*(double)RBA_LENGTH
@@ -2021,16 +2016,13 @@ static void run_shape(ratpoints_args *args, unsigned long den_bits,
  * 64 for k = 0..31 with squares as denominators, d k^2 for each divisor d
  * of the leading coefficient with squares times divisors), each as often
  * as it comes up, and each weighted by the words it sweeps -- one in 2^k of
- * its numerators.  Until 3.0.0 the mean was over all 64 classes unweighted,
- * which on the square paths counted the 52 classes never visited; a monic
- * curve of odd degree sieves the twelve square classes only, where the
- * unweighted mean is higher (item 26's review; by 16 to 61% on the curves
- * probed in the tuning session).  The weighting by words takes more away
- * than that, on the square paths and on the plain one alike: the classes
- * with the larger strides pack their admissible numerators densely and
- * sweep few words, so per word swept the mean comes out below the old
- * one, by 3 to 11% on the square paths.  What the value is for is the
- * survivors per word swept, and that is what it now is.
+ * its numerators.  Both restrictions matter.  An unweighted mean over all
+ * 64 classes would count, on the square paths, the 52 classes never visited:
+ * a monic curve of odd degree sieves the twelve square classes only, where
+ * that mean is 16 to 61% too high.  And the classes with the larger strides
+ * pack their admissible numerators densely and sweep few words, so that
+ * weighting by words lowers the mean by a further 3 to 11%.  What the value
+ * is for is the survivors per word swept, and this is that quantity.
  * Per word rather than per bit-array on purpose: measurements across
  * register widths show that the survivor rate at the best sp1 is constant
  * per word, not per bit-array (see RATPOINTS_SURVIVORS_PER_WORD in
@@ -2144,7 +2136,7 @@ static unsigned long forbidden_valuations(ratpoints_args *args, long pn,
 }
 
 /************************************************************************
- * Composite sieving moduli (TODO item 21)                              *
+ * Composite sieving moduli                                             *
  ************************************************************************/
 
 /* x^-1 mod m for x coprime to m, by the extended Euclidean algorithm */
@@ -2447,7 +2439,7 @@ static long sieving_info(ratpoints_args *args,
   entry prec[RATPOINTS_NUM_PRIMES + RP_MAX_MODULI];
     /* This array is used for sorting in order to
        determine the `best' sieving moduli: the primes, then the composite
-       candidates (TODO item 21). */
+       candidates. */
   /* the entries of the informative primes, by index; whether denominators
    * divisible by each prime occur; the prime powers' entries, by index */
   ratpoints_sieve_entry *prime_se[RATPOINTS_NUM_PRIMES];
@@ -2592,12 +2584,11 @@ static long sieving_info(ratpoints_args *args,
      * say next to nothing (they are not counted here, see n_weak) or nothing
      * at all (they are dropped above), and without this the second phase can
      * end up with nothing to sieve with at all.
-     * Adding a prime can only raise pnp, and with the old stop rule could
-     * only lower sp1 (the n smallest of a larger set have a smaller
-     * product); with the cost in the rule (phase_1_wants) a new entry can
-     * also move the stop by one the other way, so the shortfall need not
-     * shrink at every step.  It shrinks on the whole, and the loop is bounded
-     * by RATPOINTS_NUM_PRIMES in any case.
+     * Adding a prime raises pnp and on the whole lowers sp1 (the n smallest
+     * of a larger set have a smaller product), but with the cost in the rule
+     * (phase_1_wants) a new entry can also move the stop by one the other
+     * way, so the shortfall need not shrink at every step.  It shrinks on
+     * the whole, and the loop is bounded by RATPOINTS_NUM_PRIMES in any case.
      */
     if(may_extend && pn + 1 == pn_lim && pn_lim < RATPOINTS_NUM_PRIMES)
     { long s1, want;
@@ -2619,15 +2610,15 @@ static long sieving_info(ratpoints_args *args,
    *
    * The search goes up to the square root of the height bound, or to the
    * end of prime[] if that comes first, and so beyond the compiled table of
-   * sieving primes, whose word patterns in sieves0 the arrays used to be
-   * limited to; for a prime beyond it the patterns are built here, in a
-   * buffer that stays with args.  Why the square root: the Jacobi symbol
+   * sieving primes, whose word patterns are in sieves0; for a prime beyond
+   * it the patterns are built here, in a buffer that stays with args.  Why the square root: the Jacobi symbol
    * test lets a denominator through when it has an even number of bad
    * primes -- those with (lcf/p) = -1 -- and with every bad prime up to
    * sqrt(b_high) in the arrays, what gets through both tests is the product
-   * of two bad primes beyond the table (b = q1*q2 or 2*q1*q2), which at a
-   * height bound of 200000 with the table ending at 251 was 1.2 per cent of
-   * the denominators sifted (the review's count, item P13). */
+   * of two bad primes beyond the square root (b = q1*q2 or 2*q1*q2), which
+   * cannot occur below the bound.  (With the arrays ending at 251, such
+   * products are 1.2 per cent of the denominators sifted at a height bound
+   * of 200000.) */
   if((args->flags & RATPOINTS_CHECK_DENOM)
        && !mpz_perfect_square_p(c[degree]))
        /* the test below asks for a non-square residue, which a square
@@ -2869,8 +2860,8 @@ static long sieving_info(ratpoints_args *args,
        * offering: r_typ, the mean density of the informative primes seen so
        * far, stands for the one about to be looked at.  On a curve with
        * very many rational points the small primes are useless and the
-       * informative ones come late, and the stage used to stop at the first
-       * poor prime in hand although the next ones would have paid (item 27).
+       * informative ones come late, so stopping at the first poor prime in
+       * hand would forgo later ones that pay.
        * When the caller fixed sp3 the stage takes what it is told to, and
        * looks further only when the pool is empty. */
       if(best < 0
@@ -3134,20 +3125,18 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
 
       /* From numerators to bits: bit t stands for a0 + 2^k t, so the bits
        * are ceil((low - a0)/2^k) .. floor((high - a0)/2^k); the shifts of
-       * signed values round down, as they do throughout the program.  (Only
-       * the two-fold packings existed until 3.0.0: low >>= 1 and so on.) */
+       * signed values round down, as they do throughout the program. */
       { long k = cls->k, a0 = cls->a0;
 
         low = (low - a0 + (1L << k) - 1) >> k;
         high = (high - a0) >> k;
       }
 
-      /* The bit interval is [low, high], both ends included.  (It used to
-       * be made half-open by high++, and the bit arrays counted as
-       * CEIL(high, RBA_LENGTH) = (high + RBA_LENGTH - 1) >> RBA_SHIFT; both
-       * overflow a long when the last bit is within RBA_LENGTH of LONG_MAX,
-       * which a height bound that close to it reaches, and the interval
-       * was then dropped without a word.) */
+      /* The bit interval is [low, high], both ends included.  (Making it
+       * half-open by high++, or counting the bit arrays as
+       * (high + RBA_LENGTH - 1) >> RBA_SHIFT, would overflow a long when the
+       * last bit is within RBA_LENGTH of LONG_MAX, which a height bound
+       * that close to it reaches.) */
       if(low <= high)
       { long w_low, w_high;
         long w_low0, w_high0;
@@ -3168,12 +3157,12 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
            * saves a store and a load on every one of them; what is left
            * for sift0 to do afterwards is the two boundary words, and it
            * is told about them like this.  The range is not padded to a
-           * multiple of RATPOINTS_CHUNK either, since 3.0.0: sift0 sieves
-           * the bit arrays past the last whole chunk in narrower legs.
-           * (Until then the padding was sieved with every prime of the
-           * first phase, walked by the scan of the second and zeroed --
-           * a seventh of all bit arrays swept at height 16383, and four
-           * fifths of them at height 1000.) */
+           * multiple of RATPOINTS_CHUNK either: sift0 sieves the bit
+           * arrays past the last whole chunk in narrower legs.  (Padding
+           * would have to be sieved with every modulus of the first phase,
+           * walked by the scan of the second and zeroed -- a seventh of
+           * all bit arrays swept at height 16383, and four fifths of them
+           * at height 1000.) */
           { long mask_low = 0, mask_high = 0;
 
             if(w_low0 == w_low)
@@ -3204,17 +3193,17 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * residue whose sieve table the denominator reads (see rp_num_class) -- in
  * bp_list, computed afresh for every denominator by the multiply-high
  * reduction (RP_MULMOD; two of them for a denominator beyond 2^32 divided by
- * the largest prime that can be compiled in, a division beyond 2^32).  It
- * used to be
- * stepped from the previous denominator, bp += d followed by while(bp >= p)
- * bp -= p: one to three data-dependent branches per prime and denominator,
- * mispredicted a quarter of the time, an eighth of all the branch misses of
- * make test1.  Computing it afresh also does away with the bookkeeping of
- * which entries were up to date when adapt_primes had just brought another
- * prime into play, which is why that correction is made here first: it is
- * due once the sieve has swept as many words as adapt_at says.  The primes
- * of the third stage are not in the list any more: what that stage needs is
- * looked up when a numerator reaches it, see fill_checks() in sift.c. */
+ * the largest prime that can be compiled in, a division beyond 2^32).
+ * The alternative, stepping each entry from the previous denominator by
+ * bp += d followed by while(bp >= p) bp -= p, costs one to three
+ * data-dependent branches per prime and denominator, mispredicted a quarter
+ * of the time -- an eighth of all the branch misses of make test1.
+ * Computing it afresh also needs no bookkeeping of which entries are up to
+ * date when adapt_primes has just brought another prime into play, which is
+ * why that correction is made here first: it is due once the sieve has
+ * swept as many words as adapt_at says.  The primes of the third stage are
+ * not in the list: what that stage needs is looked up when a numerator
+ * reaches it, see fill_checks() in sift.c. */
 static inline void fill_bp_list(long b, long k, long *bp_list,
                                 ratpoints_args *args,
                                 ratpoints_sieve_entry **sieve_list)
@@ -3287,10 +3276,10 @@ long find_points_work(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
   /* The input fields of args stay what the caller set them to.  The search
-   * normalises them and, where they say "choose", used to write its choice
-   * into them, which made a caller that fills args once and then loops over
-   * curves run every curve after the first with the first one's choices.  So
-   * they are saved here and put back on the way out; what was chosen is
+   * normalises them and, where they say "choose", works with its choice in
+   * them; a caller that fills args once and then loops over curves must
+   * not find the first curve's choices there for the next one.  So they
+   * are saved here and put back on the way out; what was chosen is
    * reported in sp1_used, sp2_used and sp3_used.  Deliberately left as the
    * search made them: cof and degree, which describe the polynomial the
    * search worked with -- reversed (RATPOINTS_REVERSED says so) or with
@@ -4127,8 +4116,8 @@ static long find_points_work_1(ratpoints_args *args,
 
     fprintf(stderr, "[runshape] Upred=%.6g Uact=%.6g Dpred=%.6g Dact=%.6g"
             " words=%lu arrays=%lu bits=%lu coprime=%lu checks=%lu kodd=%ld"
-            /* and this curve's share of the phase counters (TODO item 30:
-             * the cost of an AND against the footprint of the rows; rdtsc,
+            /* and this curve's share of the phase counters (for the cost
+             * of an AND against the footprint of the rows; rdtsc,
              * so scale by a pinned cycle count over the process before
              * comparing runs); and2 is 0 without RP_PHASE_COUNTS */
             " sp1=%ld sp2=%ld calls=%llu cyc1=%llu cyc2=%llu cyc3=%llu"

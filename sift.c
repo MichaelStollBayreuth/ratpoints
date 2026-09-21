@@ -76,14 +76,11 @@ unsigned long long _rp_init_cycles = 0, _rp_init_calls = 0, _rp_init_rows = 0;
  * phases; the third stage's check_spec is filled on demand, outside this
  * region (see fill_checks) */
 unsigned long long _rp_setup_cycles = 0, _rp_setup_dens = 0;
-/* clearing the two boundary words.  Until 3.0.0 this was a pass over the
- * whole array, writing the 2-adic pattern into every bit array before the
- * first phase ANDed anything into it, and for a while after that it also
- * zeroed the bit arrays that padded the range to a multiple of
- * RATPOINTS_CHUNK; the first phase's first prime writes the pattern now and
- * nothing is padded, so this is what is left.  So little is left that the
- * two rdtsc reads around it are a good part of what it reports: take the
- * figure as an upper bound on the cost, not as a measurement of it. */
+/* clearing the two boundary words.  There is no pass over the whole array:
+ * the first phase's first modulus writes the 2-adic pattern as it sieves,
+ * and nothing is padded.  So little is done here that the two rdtsc reads
+ * around it are a good part of what it reports: take the figure as an upper
+ * bound on the cost, not as a measurement of it. */
 unsigned long long _rp_fill_cycles = 0, _rp_fill_arrays = 0;
 /* and the whole of sift(), so that what is left of it once the set-up and
  * the two phases are taken out can be seen */
@@ -103,9 +100,7 @@ unsigned long long _rp_bits_in = 0, _rp_bits_1 = 0, _rp_bits_2 = 0;
 unsigned long long _rp_units_surviving = 0;
 /* work actually done in phase 2: AND steps in the sp2-sp1 loop (which
  * stops early once nums is empty) and iterations of the bit-extraction
- * loops.  The latter is now one per set bit: the loops used to run up to the
- * highest set bit, and the gap between ext2 and bits_2 was what said that was
- * worth changing. */
+ * loops, which run once per set bit. */
 unsigned long long _rp_and2 = 0, _rp_ext2 = 0;
 /* and in phase 1, where every prime is applied to every word: the product of
  * the arrays swept and sp1, which is what the phase-1 cost is proportional
@@ -332,9 +327,9 @@ static inline RP_ALWAYS_INLINE int relprime(long m, long n)
   /* Successively subtract the smaller from the larger and replace the
    * difference by its odd part, until both are equal (to their gcd).
    * Without a branch on which one is the smaller, and without a loop over
-   * the trailing zeros: both were data-dependent branches, and at one
-   * survivor in ten thousand numerators they were a tenth of all the
-   * mispredicted branches of make test1. */
+   * the trailing zeros: both would be data-dependent branches, and even at
+   * one survivor in ten thousand numerators such branches are a tenth of
+   * all the mispredicted branches of make test1. */
   while(n != m)
   { long d = m - n;
     long msk = d >> (LONG_LENGTH - 1); /* -1 iff m < n */
@@ -396,7 +391,7 @@ static inline long mod(long a, long b)
  * first numerator that reaches the stage rather than by sift() for every
  * denominator: on a random curve one denominator in seven brings a
  * survivor that far at a height bound of 16383, one in forty at 200000, so
- * most of that filling was for nothing (review item P11).  Nothing in it
+ * filling it for every denominator would mostly be for nothing.  Nothing in it
  * changes while the denominator does not; sift() clears the flag.  Per prime
  * it is the inverse of the denominator modulo the prime, a table look-up
  * (the inverses modulo every prime that can be used are compiled in, see
@@ -404,8 +399,8 @@ static inline long mod(long a, long b)
  * reduction gives, or a division for a denominator beyond 2^32.
  *
  * Out of line on purpose: accepted() is inlined into the five extraction
- * sites of sift0, and a call inside it that gcc might inline was measured
- * to stop that, at a cost of a per cent. */
+ * sites of sift0, and a call inside it that gcc might inline stops that,
+ * at a cost of a per cent. */
 static void RP_NOINLINE
 fill_checks(long b, check_spec *csp, ratpoints_args *args)
 { ratpoints_sieve_entry **sieve_list
@@ -531,10 +526,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 && w_high <= RP_ROW_BIAS - 2*RATPOINTS_MAX_PRIME_EVEN);
 
 #ifdef DEBUG
-  /* There is nothing in the survivors array to print: since 3.0.0 the first
-   * phase's first prime writes it, so on entry it holds either nothing at
-   * all (the first call) or the previous denominator's leavings.  What goes
-   * into it is this pattern, with the two ends cleared after the phase. */
+  /* There is nothing in the survivors array to print: the first phase's
+   * first modulus writes it, so on entry it holds either nothing at all (the
+   * first call) or the previous denominator's leavings.  What goes into it
+   * is this pattern, with the two ends cleared after the phase. */
   { printf("\nsift0(b = %ld) @ start: %ld bit arrays from ",
            b, w_high - w_low);
     PRINT_RBA(bits64);
@@ -543,7 +538,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   }
 #endif
 
-  /* now do the sieving (fast!) */
+  /* do the sieving (fast!) */
 
   args->n_words += (unsigned long)(w_high - w_low)*RBA_PACK;
 
@@ -554,11 +549,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #endif
 #ifdef RP_PHASE_COUNTS
   /* Every bit array starts from the same 2-adic pattern, so this is a
-   * multiplication rather than a pass over the array.  It used to be a
-   * population count on each of them, which was 18% of "make testhigh" and
-   * sat outside every timed region -- so the instrumentation was itself the
-   * larger part of the "quarter of the run in no phase" that prompted this
-   * change.  It is not quite the same quantity: the two boundary words are
+   * multiplication rather than a population count on each of them, which
+   * would be 18% of "make testhigh" and sit outside every timed region.
+   * It is not quite the same quantity: the two boundary words are
    * counted unmasked, so the count is high by whatever those two ends would
    * have lost.  That is negligible over a long numerator interval and is not
    * negligible over a short one, which is the case at a small height bound
@@ -625,13 +618,13 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * then repeat with the next RATPOINTS_CHUNK bit-arrays. */
     for(w_low_new = w_low; w_low_new < w_high_full; surv += RATPOINTS_CHUNK, w_low_new += RATPOINTS_CHUNK)
     { long n;
-      /* The first prime writes the registers instead of reading them back
+      /* The first modulus writes the registers instead of reading them back
        * from memory, ANDing in the 2-adic pattern every bit array starts
-       * from as it goes.  That is what makes the pass that used to fill the
-       * array before any of this unnecessary: one store and one load per bit
-       * array, on 1.7e10 of them in "make testhigh".  The boundary words
-       * are dealt with after the phase instead, which comes to the same
-       * thing because AND is commutative. */
+       * from as it goes.  That makes a pass that fills the array beforehand
+       * unnecessary, which saves one store and one load per bit array, on
+       * 1.7e10 of them in "make testhigh".  The boundary words are dealt
+       * with after the phase instead, which comes to the same thing because
+       * AND is commutative. */
       ratpoints_bit_array *siv0 = sieves[0].start;
 #if (RATPOINTS_CHUNK >= 1)
       ratpoints_bit_array reg0 = bits64 & *siv0++;
@@ -920,10 +913,10 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * where the wider ones stopped, which is the part of the length above
      * its own bit; for the widest leg that is a constant zero, and writing
      * it as one matters: with a variable offset gcc keeps eight index
-     * registers for that leg and spills them.  (Until 3.0.0 the range was
-     * padded up to a whole chunk instead, and the padding sieved with every
-     * prime, walked by the scan below and zeroed: a seventh of all bit
-     * arrays swept at height 16383, four fifths at height 1000.) */
+     * registers for that leg and spills them.  (The alternative, padding
+     * the range up to a whole chunk, means sieving the padding with every
+     * modulus, walking it in the scan below and zeroing it: a seventh of
+     * all bit arrays swept at height 16383, four fifths at height 1000.) */
     { long t = w_high - w_high_full;
 
 #if (RATPOINTS_CHUNK > 16)
@@ -1025,20 +1018,18 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   RP_TOC(_rp_t1, _rp_phase1_cycles);
 
-  /* The two ends of the numerator interval.  This used to be done before
-   * the first phase, on the same pass that wrote the 2-adic pattern into
-   * every bit array; since AND is commutative, clearing the bits afterwards
-   * clears the same bits, and doing it here is two bit arrays per call
-   * rather than all of them. */
+  /* The two ends of the numerator interval.  Since AND is commutative,
+   * clearing these bits after the first phase clears the same bits as
+   * clearing them before it would, and doing it here touches two bit arrays
+   * per call rather than needing a pass over all of them. */
   { RP_TIC(t_fill);
 
     if(mask_low) { MASKL(survivors, mask_low); }
     if(mask_high) { MASKU(&survivors[w_high - w_low - 1], mask_high); }
     RP_TOC(t_fill, _rp_fill_cycles);
 #ifdef RP_PHASE_TIMING
-    /* what this region writes, which since 3.0.0 is at most the two boundary
-     * words -- not the whole range, which is what _rp_arrays_swept already
-     * counts */
+    /* what this region writes, which is at most the two boundary words --
+     * not the whole range, which is what _rp_arrays_swept already counts */
     _rp_fill_arrays += (unsigned long long)((mask_low ? 1 : 0)
                                              + (mask_high ? 1 : 0));
 #endif
@@ -1070,17 +1061,17 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * per cent of the bit-arrays are non-empty here, so nearly all the work
      * is stepping over the empty ones; do that in a tight loop of its own
      * rather than re-entering the body below every time.  (Or-ing several
-     * bit-arrays together and stepping over the whole group at once was
-     * tried, and is slower at this survival rate: a group that contains a
-     * survivor has wasted its whole "or", and that happens often enough to
-     * cost more than the tests it saves.)
+     * bit-arrays together and stepping over the whole group at once is
+     * slower at this survival rate: a group that contains a survivor has
+     * wasted its whole "or", and that happens often enough to cost more
+     * than the tests it saves.)
      * The loop has no bound test either.  It steps until it meets a
      * non-zero bit array, and the one written here, just past the range,
      * is what it meets when nothing survived (find_points_work leaves room
-     * for it).  With the bound test the scan was nine instructions per bit
-     * array, two of them branches; now it is four -- the load, the test,
-     * the branch and the pointer step -- and the position is recovered from
-     * the pointer once per survivor instead. */
+     * for it).  With a bound test the scan is nine instructions per bit
+     * array, two of them branches; this way it is four -- the load, the
+     * test, the branch and the pointer step -- and the position is
+     * recovered from the pointer once per survivor instead. */
     *surv_end = ~zero;
     for(;;)
     { ratpoints_bit_array nums;
@@ -1126,8 +1117,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
        * cent at 128 and 256 bits, and it is instructive that it is: the
        * number of AND steps is the same either way, because the other words
        * of the array were already zero, and a narrow and a wide read of the
-       * same table come from one cache line.  See PHASE-NOTES.md on the
-       * phases-by-register-width branch. */
+       * same table come from one cache line. */
       { long a0, da, d, k;
 
         /* bit t of word number i is the numerator a0 + d t, see
@@ -1180,12 +1170,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       /* Sieve with the next sp2-sp1 primes while some bits are set.  The
        * table row for word number i is the one at index (i + offset) mod p
        * (see sieve_spec in rp-private.h), and the reduction multiplies by
-       * the reciprocal wherever small says that is exact.  Until 3.0.0 the
-       * row was reached from a pointer set up at the head of the call, by
-       * subtracting p until it pointed back into the table: one to three
+       * the reciprocal wherever small says that is exact.  (Reaching the
+       * row from a pointer set up at the head of the call, by subtracting p
+       * until it points back into the table, costs one to three
        * data-dependent branches per AND, most of them mispredicted, and one
-       * reduction per prime and call whether or not a single bit array had
-       * survived. */
+       * reduction per modulus and call whether or not a single bit array
+       * has survived.) */
       { const unsigned long *mg = &magics[sp1];
 
         for(n = sp2-sp1; n && TEST(nums); n--, ssp++, mg++)
