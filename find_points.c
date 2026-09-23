@@ -143,9 +143,11 @@ typedef struct { int p; int val; int slope; } use_squares1_info;
 typedef struct { long p;
                  unsigned long *start;
                  unsigned long *end;
-                 unsigned long *curr; }
+                 unsigned long magic; }
                forbidden_entry;
-  /* a prime p no denominator may be divisible by; tested with a bit array */
+  /* a prime p no denominator may be divisible by; tested with a bit array
+   * of p words, start[w mod p] for the word w of 64 denominators; magic is
+   * the reciprocal RP_MULMOD reduces w with */
 
 typedef struct { long p; unsigned long mask; } forbidden_val;
   /* a prime p and the set of valuations v_p(b) no denominator b may have:
@@ -2567,7 +2569,7 @@ static long sieving_info(ratpoints_args *args,
             forb_ba[fba].p     = p;
             forb_ba[fba].start = &sieves0[pn][0];
             forb_ba[fba].end   = &sieves0[pn][p];
-            forb_ba[fba].curr  = forb_ba[fba].start;
+            forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
             fba++;
           }
           else
@@ -2587,7 +2589,7 @@ static long sieving_info(ratpoints_args *args,
         forb_ba[fba].p     = p;
         forb_ba[fba].start = &sieves0[pn][0];
         forb_ba[fba].end   = &sieves0[pn][p];
-        forb_ba[fba].curr  = forb_ba[fba].start;
+        forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
         fba++;
 
 #ifdef DEBUG
@@ -2654,6 +2656,7 @@ static long sieving_info(ratpoints_args *args,
       if(p*p > args->b_high) break;
       if(mpz_kronecker_si(c[degree], p) == -1)
       { forb_ba[fba].p = p;
+        forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
         if(n < RATPOINTS_NUM_PRIMES)
         { forb_ba[fba].start = &sieves0[n][0];
           forb_ba[fba].end   = &sieves0[n][p];
@@ -2697,7 +2700,6 @@ static long sieving_info(ratpoints_args *args,
           forb_ba[n].end   = row + p;
           row += p;
         }
-        forb_ba[n].curr = forb_ba[n].start;
       }
     }
   }
@@ -3346,6 +3348,7 @@ typedef struct { ratpoints_args *args;
                  const rp_num_class *cls;   /* the numerator classes, by b mod 64 */
                  unsigned long den_bits;    /* bit j: the class of b = j mod 64 has a pattern */
                  forbidden_entry *forb_ba;  /* the forbidden divisors tested with bit arrays... */
+                 long nfb;                  /* ...how many of them... */
                  forbidden_val *forbidden;  /* ...and by valuation; both zero-terminated */
                  use_squares1_info *den_info; /* the valuation test of the divisor shape */
                  long *divisors;            /* the divisors of the divisor shape, zero-terminated */
@@ -3389,6 +3392,7 @@ static void run_setup(rp_run *run, ratpoints_args *args,
 
   run->args = args; run->cls = cls; run->den_bits = den_bits;
   run->forb_ba = forb_ba; run->forbidden = forbidden;
+  for(run->nfb = 0; forb_ba[run->nfb].p; run->nfb++) {}
   run->den_info = den_info; run->divisors = divisors;
   run->use_c_long = use_c_long; run->lcf_long = lcf_long;
   run->fast_jacobi = 0;
@@ -3560,15 +3564,19 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
        * random curve are a third of the denominators.  Bit j of the word
        * for w stands for b = 64*w + j.  Word w of the run reads entry
        * w mod p of the array of the prime p: the pointers are set for the
-       * block's first word and step on from there. */
+       * block's first word, by the multiply-high reduction while the word
+       * number allows it (every height bound below 2^38), and step on from
+       * there. */
       forbidden_entry *fba;
-      long nfb = 0, n, w;
+      long nfb = run->nfb, n, w;
+      int small = (a <= RP_MULMOD_LIMIT);
 
-      for(fba = run->forb_ba; fba->p; fba++) { nfb++; }
       { const unsigned long *cur[nfb > 0 ? nfb : 1];
 
         for(n = 0, fba = run->forb_ba; n < nfb; n++, fba++)
-        { cur[n] = fba->start + mod(a, fba->p); }
+        { cur[n] = fba->start + (small ? RP_MULMOD(a, fba->p, fba->magic)
+                                       : mod(a, fba->p));
+        }
         for(w = a; ; w++)
         { unsigned long b_bits = run->den_bits;
           long base = w << LONG_SHIFT;
