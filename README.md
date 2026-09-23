@@ -74,13 +74,19 @@ Instructions fell to between 0.16 and 0.47 of 2.2.4's and mispredicted branches
 to between 0.03 and 0.40.
 
 On a CPU with AVX512F capability, the program can use **512-bit** AVX registers
-as well; see the documentation for how to enable it.
-I have not been able to test that variant on such a CPU, only in the emulation
-the compiler allows, and whether it is faster depends on the machine:
-the one data point, kindly provided by [Drew Sutherland](https://github.com/andrewvsutherland)
-for a curve with many rational points on a Zen 5 CPU (with version 2.2.3), shows a speedup of 13-14%
-over the 256-bit version. It is advisable to run `make test` and compare
-the timings on your own machine.
+as well; see the documentation for how to enable it. I have no such CPU and can
+test that variant only in the emulation the compiler allows;
+[Drew Sutherland](https://github.com/andrewvsutherland) has kindly run the
+test suite of version 3.0.0 on an AMD Ryzen 9 9950X3D (Zen 5), where every
+test passes, and timed the two variants against each other, both with the
+constants that `make tune` finds for that machine: the 512-bit version is 14%
+faster on a long run (the curve of `make timing`, height bound 400000), but
+8% slower on the point-rich test curves at height 16383, whose sieve tables
+are twice as large to build, and equal on the random ones. Whether it pays
+thus depends on the machine and on the kind of run; run `make test` and
+`make tune` and compare the timings on your own machine. (`make tune` alone
+was worth 6-7% on that machine at either register width: the constants
+compiled in were measured on my laptop.)
 
 ### AI Declaration
 
