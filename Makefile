@@ -159,8 +159,10 @@ CCFLAGS128s = -DUSE_SSE
 CCFLAGS256 = -DUSE_AVX -mavx2
 # To use 512-bit AVX registers, use the following
 # (if your processor has AVX512f capability).
-# This has not been run on an AVX512F machine yet; see the comment at the
-# top of the USE_AVX512 branch in rp-private.h .  Leaving out "-mavx512f"
+# Whether it is faster than the 256-bit build depends on the machine and on
+# the run (on a Zen 5: 14% faster on a long run, 8% slower on point-rich
+# curves at a small height bound; see the manual), so time the two against
+# each other, and run "make tune" after switching.  Leaving out "-mavx512f"
 # makes gcc emulate the 64-byte vectors with narrower ones; that is slower,
 # but it runs anywhere and exercises the same code path.  (gcc then warns
 # "AVX512F vector argument without AVX512F enabled changes the ABI"; this is

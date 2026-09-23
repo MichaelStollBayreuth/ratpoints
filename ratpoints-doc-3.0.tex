@@ -221,18 +221,27 @@ There is also a variant using 512-bit registers, activated by
 \begin{verbatim}
 CCFLAGS1 = ${CCFLAGS512}
 \end{verbatim}
-which requires a CPU with AVX512F capability. Note that this variant has
-so far only been tested indirectly (see the change log entry below), since
-I have no such CPU available; you should therefore run \texttt{make test}
-before relying on it. It is also worth timing the 256-bit and the 512-bit
-version against each other on your machine: the sieving loop is limited by
-how fast it loads bit arrays from the first-level cache and by how much of
-that cache the sieve tables occupy, rather than by arithmetic, so wider
-registers do not automatically pay off, and some Intel server processors reduce their clock
-frequency when 512-bit instructions are used. The one data point available
-so far is encouraging, though: on an AMD Ryzen~9 9950X3D (Zen~5 architecture),
-\textbf{Drew Sutherland} measured a speed-up of 13 to 14\% over the 256-bit
-version, for a curve with many rational points on version~2.2.3.
+which requires a CPU with AVX512F capability. I have no such CPU available
+and can test this variant only in the emulation described below;
+\textbf{Drew Sutherland} has run the complete test suite of version~3.0.0 on
+an AMD Ryzen~9 9950X3D (Zen~5 architecture), where it passes. It is worth
+timing the 256-bit and the 512-bit version against each other on your
+machine: the sieving loop is limited by how fast it loads bit arrays from the
+first-level cache and by how much of that cache the sieve tables occupy,
+rather than by arithmetic, so wider registers do not automatically pay off,
+and some Intel server processors reduce their clock frequency when 512-bit
+instructions are used. On the Zen~5 machine, with the constants of
+\texttt{make tune} (Section~\ref{sec:retune}) in both builds, the 512-bit
+version was 14\% faster than the 256-bit one on a long run (the curve of
+\texttt{make timing}, height bound $4\cdot10^5$), equal on the random test
+curves at~$16383$ and on the sextic of \texttt{make test2} at~$10^6$, and
+8\% slower on the point-rich curves at~$16383$, where building the sieve
+tables, twice as large with 512-bit registers, is a large share of the run.
+Wider registers thus help long runs on curves that need few sieving moduli,
+and not short ones. Run \texttt{make tune} after choosing the width: on that
+machine it gained 6 to 7\% at either width over the constants compiled in,
+which were measured on the author's laptop, and it found the same values at
+both widths.
 
 If you leave out \verb+-mavx512f+ and compile with just
 \verb+-DUSE_AVX512+, then \texttt{gcc} will express the 64-byte vectors
