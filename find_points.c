@@ -36,6 +36,12 @@
 
 #include "find_points.h"
 
+/* the sieve tables are built under a lock when several threads share them;
+ * the lock and the threads live in a pool, below the block iterator */
+static void rp_tables_lock(rp_worker *wk);
+static void rp_tables_unlock(rp_worker *wk);
+static void rp_pool_destroy(ratpoints_args *args);
+
 /* defines
 
    static const int squares[RATPOINTS_NUM_PRIMES+1][RATPOINTS_MAX_PRIME];
@@ -309,6 +315,7 @@ void find_points_init(ratpoints_args *args)
    * primes are built per curve, in a buffer that grows as needed; see
    * sieving_info */
   args->forb_words = NULL; args->forb_words_len = 0;
+  args->pool = NULL; /* the sieving threads, from the first search that wants them */
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -322,6 +329,8 @@ void find_points_clear(ratpoints_args *args)
 #ifdef DEBUG
   printf("\nfind_points: clean up..."); fflush(NULL);
 #endif
+
+  rp_pool_destroy(args); /* the sieving threads, if any */
 
   /* clear mpz_t's in work[] */
   { long i;
@@ -3026,7 +3035,8 @@ static long sieving_info(ratpoints_args *args,
 
 /* The sieving thread wk: its survivors array, its gmp temporaries, its
  * counters and its quit flag; the shared arguments through it. */
-static void worker_init(rp_worker *wk, ratpoints_args *args)
+static void worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
+                        check_spec *checks)
 { wk->args = args;
   /* allocate space for survivors array; make sure of correct alignment.
    * One spare bit array pays for the alignment, and one more for the
@@ -3035,14 +3045,15 @@ static void worker_init(rp_worker *wk, ratpoints_args *args)
   wk->survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
   wk->survivors = (ratpoints_bit_array *)
                     pointer_align(wk->survivors_na, sizeof(ratpoints_bit_array));
-  wk->work = args->work;
-  wk->checks = (check_spec *)args->stage3_list;
+  wk->work = work;
+  wk->checks = checks;
   wk->sp1 = args->sp1; wk->sp2 = args->sp2; wk->sp3 = args->sp3;
   /* the counts that say what the sieve actually did, which the choice of
    * primes is corrected from as the run goes on */
   wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
   wk->n_checks = 0; wk->n_sifts = 0; wk->dec = 0;
   wk->compute_bc = 0; wk->stage3_filled = 0; wk->quit = 0;
+  /* pool, slot and stop are the pool's business, set once when it is made */
 }
 
 static void worker_clear(rp_worker *wk)
@@ -3124,7 +3135,7 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
         { ratpoints_sieve_entry *se = sieve_list[n];
           long p = se->p;
           long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
-          ratpoints_bit_array *sptr = se->sieve[bp];
+          ratpoints_bit_array *sptr = RP_ACQUIRE(&se->sieve[bp]);
 
           ssp[n].p = p;
           /* the shift of the row for the packing of the class, with the
@@ -3137,11 +3148,17 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
                  p, bp, ssp[n].offset - se->bias, se->bias);
           fflush(NULL);
 #endif
-          /* copy if already initialized, else initialize */
+          /* copy if already initialized, else initialize -- under the
+           * tables lock when threads share them, and only if no other
+           * thread has built it meanwhile */
           if(sptr) { ssp[n].ptr = sptr; }
           else
           { RP_INIT_TIC(t_init);
-            ssp[n].ptr = (*(se->init))(se, bp, args);
+            rp_tables_lock(wk);
+            sptr = RP_ACQUIRE(&se->sieve[bp]);
+            if(sptr == NULL) { sptr = (*(se->init))(se, bp, args); }
+            rp_tables_unlock(wk);
+            ssp[n].ptr = sptr;
             RP_INIT_TOC(t_init, p);
           }
           /* the end of the table, which the first stage's wrap-around
@@ -3497,7 +3514,7 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
                                         : a + run->len - 1;
   /* the moduli the block is sieved with: the correction's last decision
    * for it; and the counters start from zero for the block */
-  { long d = run->ndec - 1;
+  { long d = RP_ACQUIRE(&run->ndec) - 1;
 
     while(run->dec_block[d] > i) { d--; }
     wk->dec = d; wk->sp2 = run->dec_sp2[d]; wk->sp3 = run->dec_sp3[d];
@@ -3516,7 +3533,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
         if(EXT0(cl->bits))
         { fill_bp_list(bb, cl->k, bp_list, wk);
           total += sift(bb, wk, cl, &bp_list[0], process, info);
-          if(wk->quit) { return(total); }
+          if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
+          { wk->quit = 1; return(total); }
         }
 #ifdef DEBUG
         else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
@@ -3545,7 +3563,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
           if(flag)
           { fill_bp_list(bb, cl->k, bp_list, wk);
             total += sift(bb, wk, cl, &bp_list[0], process, info);
-            if(wk->quit) { return(total); }
+            if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
+          { wk->quit = 1; return(total); }
           }
         }
 #ifdef DEBUG
@@ -3632,7 +3651,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
                          == 1))
             { fill_bp_list(b, cl->k, bp_list, wk);
               total += sift(b, wk, cl, &bp_list[0], process, info);
-              if(wk->quit) { return(total); }
+              if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
+          { wk->quit = 1; return(total); }
             }
 #ifdef DEBUG
             else
@@ -3656,7 +3676,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
         if(EXT0(cl->bits))
         { fill_bp_list(b, cl->k, bp_list, wk);
           total += sift(b, wk, cl, &bp_list[0], process, info);
-          if(wk->quit) { return(total); }
+          if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
+          { wk->quit = 1; return(total); }
         }
 #ifdef DEBUG
         else { printf("\nb = %ld: excluded mod 64\n", b); fflush(NULL); }
@@ -3668,36 +3689,348 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
   return(total);
 }
 
-/* The next block in the order of the run has been sieved on wk: add its
- * counters to the run's, and see whether the correction is due.  The first
- * block sieved with a new sp2 restarts the counters downstream of the first
- * stage, since what they held was counted under the old one.  A decision
- * made here is for the blocks from RP_ADAPT_LAG past this one on. */
-static void run_fold(rp_run *run, const rp_worker *wk)
+/* What one block's sieving reports back: its counters, and the decision
+ * (with its sp2 and sp3) it was sieved with. */
+typedef struct { unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 long dec; long sp2; long sp3; }
+        rp_blockstat;
+
+static void worker_stat(const rp_worker *wk, rp_blockstat *st)
+{ st->n_words = wk->n_words; st->n_arrays = wk->n_arrays;
+  st->n_bits = wk->n_bits; st->n_coprime = wk->n_coprime;
+  st->n_checks = wk->n_checks; st->n_sifts = wk->n_sifts;
+  st->dec = wk->dec; st->sp2 = wk->sp2; st->sp3 = wk->sp3;
+}
+
+/* The next block in the order of the run has been sieved, with the report
+ * st: add its counters to the run's, and see whether the correction is due.
+ * The first block sieved with a new sp2 restarts the counters downstream of
+ * the first stage, since what they held was counted under the old one.  A
+ * decision made here is for the blocks from RP_ADAPT_LAG past this one on;
+ * it is published after its entry is complete, so that a thread that sees
+ * the count sees the entry. */
+static void run_fold(rp_run *run, const rp_blockstat *st)
 { ratpoints_args *args = run->args;
   rp_counts *c = &run->cnt;
   long j = run->nfolded++;
 
-  if(run->dec_sp2[wk->dec] != c->sp2)
+  if(run->dec_sp2[st->dec] != c->sp2)
   { c->n_bits = 0; c->n_coprime = 0; c->n_checks = 0; c->n_sifts = 0;
-    c->n_words_2 = c->n_words; c->sp2 = run->dec_sp2[wk->dec];
+    c->n_words_2 = c->n_words; c->sp2 = run->dec_sp2[st->dec];
   }
-  c->n_words += wk->n_words; c->n_arrays += wk->n_arrays;
-  c->n_bits += wk->n_bits; c->n_coprime += wk->n_coprime;
-  c->n_checks += wk->n_checks; c->n_sifts += wk->n_sifts;
-  run->last_sp2 = wk->sp2; run->last_sp3 = wk->sp3;
+  c->n_words += st->n_words; c->n_arrays += st->n_arrays;
+  c->n_bits += st->n_bits; c->n_coprime += st->n_coprime;
+  c->n_checks += st->n_checks; c->n_sifts += st->n_sifts;
+  run->last_sp2 = st->sp2; run->last_sp3 = st->sp3;
   if(c->n_words >= args->adapt_at)
   { long sp2 = args->sp2, sp3 = args->sp3;
 
     adapt_primes(args, c);
     if(args->sp2 != sp2 || args->sp3 != sp3)
-    { long n = run->ndec++;
+    { long n = run->ndec;
 
       run->dec_block[n] = j + RP_ADAPT_LAG + 1;
       run->dec_sp2[n] = args->sp2; run->dec_sp3[n] = args->sp3;
+      RP_PUBLISH(&run->ndec, n + 1);
     }
   }
 }
+
+/**************************************************************************
+ * Threads: a pool of sieving threads per ratpoints_args                  *
+ **************************************************************************/
+
+/* What num_threads asks for.  The pool lives in args->pool from the first
+ * search that wants it to find_points_clear(); the calling thread hands the
+ * blocks out and delivers the points, the threads of the pool sieve.  The
+ * development instrumentation counts in static variables, so those builds
+ * sieve on the calling thread whatever is asked. */
+#if defined(RATPOINTS_NO_THREADS) || defined(RP_PHASE_TIMING) \
+    || defined(RP_PRIME_STATS) || defined(RP_STOP_AFTER) || defined(DEBUG)
+# define RP_THREADS 0
+#else
+# define RP_THREADS 1
+#endif
+
+#if RP_THREADS
+#include <pthread.h>
+#include <unistd.h>
+
+/* A point as the sieve handed it to the collector: the arguments of the
+ * process() call the calling thread makes for it later. */
+typedef struct { long x; long z; mpz_t y; } rp_point;
+
+/* A slot holds what one block produced until the calling thread has
+ * delivered it: the points in the order they were found, and the block's
+ * report for run_fold().  done is set by the thread that sieved the block
+ * and cleared by the calling thread, both under the pool's lock. */
+typedef struct { long block;
+                 rp_point *pts; long npts; long cap;
+                 rp_blockstat st;
+                 int done; }
+        rp_slot;
+
+/* Blocks in flight at most.  Block i takes slot i mod this, whose previous
+ * block i - RP_ADAPT_LAG - 2 has been delivered by the time block i may
+ * start (the lag rule waits for block i - RP_ADAPT_LAG - 1). */
+#define RP_POOL_SLOTS (RP_ADAPT_LAG + 2)
+
+typedef struct
+{ long nthreads;              /* threads running */
+  long nalloc;                /* per-thread arrays allocated */
+  rp_worker *workers;         /* one per thread */
+  mpz_t **works;              /* each thread's gmp temporaries... */
+  check_spec **checks;        /* ...and third-stage array */
+  pthread_t *threads;
+  rp_slot slots[RP_POOL_SLOTS];
+  pthread_mutex_t lock;       /* guards the job fields below and the slots' done flags */
+  pthread_mutex_t tables;     /* the sieve tables are built under this one */
+  pthread_cond_t cv_work;     /* the threads wait here: for a job, for the lag, for stop */
+  pthread_cond_t cv_emit;     /* the calling thread waits here: for a block, for the threads to leave */
+  int exiting;                /* the pool is being torn down */
+  long job;                   /* counts the searches; a thread joins one when it sees a new number */
+  rp_run *run;                /* the search's run */
+  long next_block;            /* the next block to hand out */
+  long nfolded;               /* blocks delivered and folded, in order */
+  long joined; long active;   /* threads that have joined this search, and are still in it */
+  int stop;                   /* leave the search: it is over, or process() stopped it (atomic) */
+  int failed;                 /* a thread could not keep its points: the search fails (atomic) */
+} rp_pool;
+
+static void rp_tables_lock(rp_worker *wk)
+{ if(wk->pool) { pthread_mutex_lock(&((rp_pool *)wk->pool)->tables); } }
+
+static void rp_tables_unlock(rp_worker *wk)
+{ if(wk->pool) { pthread_mutex_unlock(&((rp_pool *)wk->pool)->tables); } }
+
+/* The collector: what a sieving thread's sieve calls in place of process().
+ * It keeps the point in the thread's slot, and it reports the stop flag
+ * back through quit, which makes the sieve unwind as it does for process(). */
+static int collect(long x, long z, const mpz_t y, void *info, int *quit)
+{ rp_worker *wk = (rp_worker *)info;
+  rp_slot *slot = (rp_slot *)wk->slot;
+  long n = slot->npts;
+
+  if(n == slot->cap)
+  { long c = (slot->cap > 0) ? 2*slot->cap : 16, k;
+    rp_point *pts = realloc(slot->pts, c*sizeof(rp_point));
+
+    if(pts == NULL) /* out of memory: the block cannot be finished, so the
+                     * search must fail rather than deliver less than it found */
+    { RP_PUBLISH(&((rp_pool *)wk->pool)->failed, 1); *quit = 1; return(0); }
+    for(k = slot->cap; k < c; k++) { mpz_init(pts[k].y); }
+    slot->pts = pts; slot->cap = c;
+  }
+  slot->pts[n].x = x; slot->pts[n].z = z;
+  mpz_set(slot->pts[n].y, y);
+  slot->npts = n + 1;
+  *quit = RP_RELAXED(wk->stop);
+  return(0);
+}
+
+/* A thread of the pool: join each search as it comes, take blocks until
+ * none is left or the search is stopped, leave. */
+static void *rp_worker_main(void *arg)
+{ rp_worker *wk = (rp_worker *)arg;
+  rp_pool *pool = (rp_pool *)wk->pool;
+  long myjob = 0;
+
+  for(;;)
+  { rp_run *run;
+
+    pthread_mutex_lock(&pool->lock);
+    while(!pool->exiting && pool->job == myjob)
+    { pthread_cond_wait(&pool->cv_work, &pool->lock); }
+    if(pool->exiting) { pthread_mutex_unlock(&pool->lock); return(NULL); }
+    myjob = pool->job; run = pool->run;
+    pool->joined++; pool->active++;
+    pthread_mutex_unlock(&pool->lock);
+    for(;;)
+    { long i;
+      rp_slot *slot;
+
+      pthread_mutex_lock(&pool->lock);
+      i = pool->next_block;
+      if(RP_RELAXED(&pool->stop) || i >= run->nblocks)
+      { pthread_mutex_unlock(&pool->lock); break; }
+      pool->next_block = i + 1;
+      /* the lag: the decisions block i is sieved with are made from the
+       * blocks up to i - RP_ADAPT_LAG - 1, so those must have been folded
+       * (which also frees the slot) */
+      while(!RP_RELAXED(&pool->stop) && pool->nfolded < i - RP_ADAPT_LAG)
+      { pthread_cond_wait(&pool->cv_work, &pool->lock); }
+      if(RP_RELAXED(&pool->stop)) { pthread_mutex_unlock(&pool->lock); break; }
+      pthread_mutex_unlock(&pool->lock);
+      slot = &pool->slots[i % RP_POOL_SLOTS];
+      slot->block = i; slot->npts = 0;
+      wk->slot = slot; wk->quit = 0;
+      run_block(run, wk, i, collect, wk);
+      worker_stat(wk, &slot->st);
+      pthread_mutex_lock(&pool->lock);
+      slot->done = 1;
+      pthread_cond_broadcast(&pool->cv_emit);
+      pthread_mutex_unlock(&pool->lock);
+    }
+    pthread_mutex_lock(&pool->lock);
+    pool->active--;
+    pthread_cond_broadcast(&pool->cv_emit);
+    pthread_mutex_unlock(&pool->lock);
+  }
+}
+
+static void rp_pool_destroy(ratpoints_args *args)
+{ rp_pool *pool = (rp_pool *)args->pool;
+  long t, k;
+
+  if(pool == NULL) { return; }
+  pthread_mutex_lock(&pool->lock);
+  pool->exiting = 1;
+  pthread_cond_broadcast(&pool->cv_work);
+  pthread_mutex_unlock(&pool->lock);
+  for(t = 0; t < pool->nthreads; t++) { pthread_join(pool->threads[t], NULL); }
+  pthread_mutex_destroy(&pool->lock); pthread_mutex_destroy(&pool->tables);
+  pthread_cond_destroy(&pool->cv_work); pthread_cond_destroy(&pool->cv_emit);
+  for(t = 0; t < pool->nalloc; t++)
+  { if(pool->works[t])
+    { for(k = 0; k < args->work_length; k++) { mpz_clear(pool->works[t][k]); }
+      free(pool->works[t]);
+    }
+    free(pool->checks[t]);
+  }
+  for(k = 0; k < RP_POOL_SLOTS; k++)
+  { long j;
+
+    for(j = 0; j < pool->slots[k].cap; j++) { mpz_clear(pool->slots[k].pts[j].y); }
+    free(pool->slots[k].pts);
+  }
+  free(pool->works); free(pool->checks); free(pool->workers); free(pool->threads);
+  free(pool);
+  args->pool = NULL;
+}
+
+/* A pool of n threads, or NULL when it cannot be had. */
+static rp_pool *rp_pool_create(ratpoints_args *args, long n)
+{ rp_pool *pool = calloc(1, sizeof(rp_pool));
+  long t, k;
+
+  if(pool == NULL) { return(NULL); }
+  pool->workers = calloc(n, sizeof(rp_worker));
+  pool->works = calloc(n, sizeof(mpz_t *));
+  pool->checks = calloc(n, sizeof(check_spec *));
+  pool->threads = calloc(n, sizeof(pthread_t));
+  if(pool->workers == NULL || pool->works == NULL || pool->checks == NULL
+       || pool->threads == NULL)
+  { free(pool->workers); free(pool->works); free(pool->checks);
+    free(pool->threads); free(pool);
+    return(NULL);
+  }
+  pthread_mutex_init(&pool->lock, NULL); pthread_mutex_init(&pool->tables, NULL);
+  pthread_cond_init(&pool->cv_work, NULL); pthread_cond_init(&pool->cv_emit, NULL);
+  pool->exiting = 0; pool->job = 0; pool->run = NULL; pool->stop = 1;
+  pool->nthreads = 0; pool->nalloc = n;
+  args->pool = pool;
+  for(t = 0; t < n; t++)
+  { pool->works[t] = malloc(args->work_length*sizeof(mpz_t));
+    pool->checks[t] = malloc(RATPOINTS_NUM_PRIMES*sizeof(check_spec));
+    if(pool->works[t] == NULL || pool->checks[t] == NULL)
+    { free(pool->works[t]); pool->works[t] = NULL; rp_pool_destroy(args); return(NULL); }
+    for(k = 0; k < args->work_length; k++) { mpz_init(pool->works[t][k]); }
+    pool->workers[t].pool = pool; pool->workers[t].stop = &pool->stop;
+    pool->workers[t].slot = NULL;
+  }
+  for(t = 0; t < n; t++)
+  { if(pthread_create(&pool->threads[t], NULL, rp_worker_main, &pool->workers[t]) != 0)
+    { rp_pool_destroy(args); return(NULL); }
+    pool->nthreads = t + 1;
+  }
+  return(pool);
+}
+
+/* The pool this search sieves on, or NULL: the calling thread then. */
+static rp_pool *rp_pool_for(ratpoints_args *args)
+{ long n = args->num_threads;
+  rp_pool *pool = (rp_pool *)args->pool;
+
+  if(n < 0) { n = sysconf(_SC_NPROCESSORS_ONLN); }
+  if(n < 2) { return(NULL); } /* an idle pool from an earlier call stays */
+  if(pool != NULL && pool->nthreads == n) { return(pool); }
+  rp_pool_destroy(args);
+  return(rp_pool_create(args, n));
+}
+
+/* The search on the pool.  The calling thread starts the job, then takes
+ * the blocks in order as they complete, delivers each block's points to
+ * process() -- from this thread only, and in the order a single thread
+ * would have found them -- and folds its report; when process() stops the
+ * search, the threads are told to abandon their blocks and nothing more is
+ * delivered.  At the end it waits until every thread has left the job, so
+ * that nothing of the run is used after this returns. */
+static long run_threaded(rp_run *run, rp_pool *pool,
+                         int process(long, long, const mpz_t, void*, int*),
+                         void *info, int *quit)
+{ ratpoints_args *args = run->args;
+  long total = 0, i, t;
+
+  for(t = 0; t < pool->nthreads; t++)
+  { worker_init(&pool->workers[t], args, pool->works[t], pool->checks[t]); }
+  pthread_mutex_lock(&pool->lock);
+  pool->run = run; pool->next_block = 0; pool->nfolded = 0;
+  pool->joined = 0; pool->active = 0;
+  RP_PUBLISH(&pool->stop, 0); RP_PUBLISH(&pool->failed, 0);
+  for(i = 0; i < RP_POOL_SLOTS; i++)
+  { pool->slots[i].done = 0; pool->slots[i].block = -1; }
+  pool->job++;
+  pthread_cond_broadcast(&pool->cv_work);
+  pthread_mutex_unlock(&pool->lock);
+
+  for(i = 0; i < run->nblocks; i++)
+  { rp_slot *slot = &pool->slots[i % RP_POOL_SLOTS];
+    long k;
+
+    pthread_mutex_lock(&pool->lock);
+    while(!slot->done) { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
+    pthread_mutex_unlock(&pool->lock);
+    if(RP_RELAXED(&pool->failed)) { break; }
+    for(k = 0; k < slot->npts && !*quit; k++)
+    { total += process(slot->pts[k].x, slot->pts[k].z, slot->pts[k].y,
+                       info, quit);
+    }
+    if(*quit) { break; }
+    run_fold(run, &slot->st);
+    pthread_mutex_lock(&pool->lock);
+    slot->done = 0;
+    pool->nfolded = i + 1;
+    pthread_cond_broadcast(&pool->cv_work);
+    pthread_mutex_unlock(&pool->lock);
+  }
+  pthread_mutex_lock(&pool->lock);
+  RP_PUBLISH(&pool->stop, 1);
+  pthread_cond_broadcast(&pool->cv_work);
+  while(pool->joined < pool->nthreads || pool->active > 0)
+  { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
+  pool->run = NULL;
+  pthread_mutex_unlock(&pool->lock);
+  for(t = 0; t < pool->nthreads; t++) { worker_clear(&pool->workers[t]); }
+  return(RP_RELAXED(&pool->failed) ? RATPOINTS_NO_MEMORY : total);
+}
+
+#else /* !RP_THREADS: the calling thread sieves, whatever num_threads says */
+
+typedef struct { long nthreads; } rp_pool;
+
+static void rp_tables_lock(rp_worker *wk) { (void)wk; }
+static void rp_tables_unlock(rp_worker *wk) { (void)wk; }
+static void rp_pool_destroy(ratpoints_args *args) { args->pool = NULL; }
+static rp_pool *rp_pool_for(ratpoints_args *args) { (void)args; return(NULL); }
+static long run_threaded(rp_run *run, rp_pool *pool,
+                         int process(long, long, const mpz_t, void*, int*),
+                         void *info, int *quit)
+{ (void)run; (void)pool; (void)process; (void)info; (void)quit; return(0); }
+
+#endif /* RP_THREADS */
+
 
 
 static long find_points_work_1(ratpoints_args *args,
@@ -4266,7 +4599,8 @@ static long find_points_work_1(ratpoints_args *args,
     fflush(NULL);
 #endif
 
-    worker_init(&wk, args);
+    worker_init(&wk, args, args->work, (check_spec *)args->stage3_list);
+    wk.pool = NULL; wk.slot = NULL; wk.stop = NULL; /* this thread sieves */
     /* the row shifts of the numerator classes, now that the primes are
      * known */
     class_offsets(&cls[0], sieve_list, args->sp3_max, &offsets[0]);
@@ -4276,10 +4610,24 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
     run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
               divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
-    for(i = 0; i < run.nblocks; i++)
-    { total += run_block(&run, &wk, i, process, info);
-      run_fold(&run, &wk);
-      if(wk.quit) { break; }
+    { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for */
+
+      if(pool != NULL)
+      { long found = run_threaded(&run, pool, process, info, &quit);
+
+        if(found < 0) { run_clear(&run); worker_clear(&wk); return(found); }
+        total += found;
+      }
+      else
+      { for(i = 0; i < run.nblocks; i++)
+        { rp_blockstat st;
+
+          total += run_block(&run, &wk, i, process, info);
+          worker_stat(&wk, &st);
+          run_fold(&run, &st);
+          if(wk.quit) { break; }
+        }
+      }
     }
     /* what the last block was sieved with is what the search used */
     args->sp2 = run.last_sp2; args->sp3 = run.last_sp3;

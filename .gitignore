@@ -21,6 +21,8 @@
 /tuning.mk
 /build-coverage/
 /build-test4-*/
+/build-tsan/
+/build-nothreads/
 # output of the tests
 *.out
 # by-products of pdflatex (the PDF of the manual is tracked)

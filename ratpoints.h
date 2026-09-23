@@ -367,6 +367,13 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
+                 long num_threads;
+                   /* how many threads sieve: 1 (or less), the calling one;
+                      n > 1: n threads besides the calling one, which hands
+                      out the work and delivers the points, in the order a
+                      single thread would find them; negative: as many as
+                      there are online processors.  A library built without
+                      threads (RATPOINTS_NO_THREADS) ignores it. */
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used;
                    /* output: the number of sieving moduli (primes and
@@ -388,6 +395,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  double run_words; double run_denoms;
                  unsigned long adapt_at; long sp3_max;
                  double check_rel;
+                 void *pool;
                }
         ratpoints_args;
 
@@ -419,6 +427,8 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_NON_SQUAREFREE (-1)
 #define RATPOINTS_BAD_ARGS (-2)
 #define RATPOINTS_WORK_LENGTH_TOO_SMALL (-3)
+#define RATPOINTS_NO_MEMORY (-4)  /* a sieving thread ran out of memory for
+                                     the points of a block */
 
 /* Function prototypes */
 long find_points(ratpoints_args*,

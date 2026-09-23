@@ -91,7 +91,17 @@ INSTALL_DIR = /usr/local
 #  find_points.c -- and gains nothing in cycles: a wash on the two suites at
 #  height 16383 and 0 to 2% slower on the two at 200000, measured at three
 #  code alignments.  Instruction counts predict a gain; cycles are what count.
-CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
+# Threads: the library sieves on several threads when asked to (the field
+# num_threads of ratpoints_args, the option -t), with POSIX threads.
+# "make THREADS=0" builds without them, for a system that has none; the
+# field and the option are then ignored.
+ifeq (${THREADS},0)
+THREADFLAGS = -DRATPOINTS_NO_THREADS
+else
+THREADFLAGS = -pthread
+endif
+
+CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE} ${THREADFLAGS}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first stage one
 #  64-bit word at a time instead of a whole bit-array at a time. The first

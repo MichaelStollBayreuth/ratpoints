@@ -73,6 +73,7 @@ static void curve(ratpoints_args *args, long degree, const long *cof,
   args->sp3_per_denom = -1.0; args->check_cost = -1.0;
   args->array_size = 0; args->sturm = RATPOINTS_DEFAULT_STURM;
   args->num_primes = -1; args->max_forbidden = -1;
+  args->num_threads = 1;
   args->flags = 0;
 }
 

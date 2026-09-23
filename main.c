@@ -71,7 +71,7 @@ char *usage_str =
     "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
     "                 [-C table_cost] [-A adapt]\n"
     "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
-    "                 [-F max_forbidden] [-s] [-S [iter]]\n"
+    "                 [-F max_forbidden] [-t threads] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
 
@@ -263,6 +263,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
   args->max_forbidden = -1; /* gives default value */
+  args->num_threads   = 1;  /* sieve on this thread; see -t */
   args->flags         = 0;  /* do the check by default */
                             /* list y-coordinates by default */
                             /* allow reversal of polynomial */
@@ -336,6 +337,13 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->max_forbidden)) != 1) { error(6); }
+          i++;
+          break;
+        case 't': /* sieving threads; 0: as many as there are processors */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->num_threads)) != 1) { error(6); }
+          if(args->num_threads == 0) { args->num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */

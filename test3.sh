@@ -27,7 +27,7 @@
 # 21    the -v report of the numerator packing, on a curve whose
 #       odd denominators take one numerator in eight and whose even ones
 #       one in four or none
-RP=./ratpoints
+RP=${RP:-./ratpoints}
 # no program to run: exit 2 (the comparison with the reference is make's,
 # whose target fails with 1 when they differ)
 [ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
