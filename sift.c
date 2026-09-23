@@ -201,7 +201,7 @@ static void _rp_phase_report(void)
 # define RP_CHECK_POINT(a, b) (_rp_sink += 1 + (unsigned long)(a), 0L)
 #else
 # define RP_CHECK_POINT(a, b) \
-    RP_CHECK(_ratpoints_check_point((a), (b), args, quit, process, info))
+    RP_CHECK(_ratpoints_check_point((a), (b), wk, process, info))
 #endif
 
 #if RP_STOP_AFTER
@@ -403,11 +403,12 @@ static inline long mod(long a, long b)
  * sites of sift0, and a call inside it that gcc might inline stops that,
  * at a cost of a per cent. */
 static void RP_NOINLINE
-fill_checks(long b, check_spec *csp, ratpoints_args *args)
-{ ratpoints_sieve_entry **sieve_list
+fill_checks(long b, check_spec *csp, rp_worker *wk)
+{ const ratpoints_args *args = wk->args;
+  ratpoints_sieve_entry **sieve_list
     = (ratpoints_sieve_entry **)args->sieve_list;
   const unsigned long *magics = (const unsigned long *)args->magics;
-  long sp2 = args->sp2, sp3 = args->sp3, height = args->height, n;
+  long sp2 = wk->sp2, sp3 = wk->sp3, height = args->height, n;
 
   for(n = sp2; n < sp3; n++)
   { ratpoints_sieve_entry *se = sieve_list[n];
@@ -426,7 +427,7 @@ fill_checks(long b, check_spec *csp, ratpoints_args *args)
     cs->bias = ((double)p*2.0*(double)height < RP_STAGE3_LIMIT)
                  ? p*height : 0;
   }
-  args->stage3_filled = 1;
+  wk->stage3_filled = 1;
 }
 
 /* What happens to one surviving numerator: the test for common factors,
@@ -435,12 +436,12 @@ fill_checks(long b, check_spec *csp, ratpoints_args *args)
  * instead of predicted before it; they cost one increment each on paths
  * taken a few times in a million. */
 static inline RP_ALWAYS_INLINE
-int accepted(long a, long b, check_spec *csp, long n, ratpoints_args *args)
+int accepted(long a, long b, check_spec *csp, long n, rp_worker *wk)
 { if(!relprime(a, b)) { return(0); }
-  args->n_coprime++;
-  if(n && !args->stage3_filled) { fill_checks(b, csp, args); }
+  wk->n_coprime++;
+  if(n && !wk->stage3_filled) { fill_checks(b, csp, wk); }
   if(!stage3(a, csp, n)) { return(0); }
-  args->n_checks++;
+  wk->n_checks++;
   return(1);
 }
 
@@ -498,24 +499,27 @@ static inline RP_ALWAYS_INLINE void tail_leg(long w, long off,
  * the bit-arrays to be dealt with are indexed w_low..w_high-1,
  * where index 0 is the array whose zeroth bit corresponds to the numerator
  * cls->a0 (bit t of it to a0 + 2^k t, see rp_num_class in rp-private.h).
- * survivors points to space to be used for the sieving.
+ * wk is the sieving thread: its survivors array is the space to be used
+ * for the sieving, and its quit flag is set when the search is stopped
+ * (because a point was found).
  * sieves points to the sieving information.
- * quit will be set when the search is stopped (because a point was found).
  * process is the function used to deal with a point that was found;
  * it is passed the pointer info, which can be used for data that
  * should persist between calls. */
 long _ratpoints_sift0(long b, long w_low, long w_high,
-           ratpoints_args *args, const rp_num_class *cls,
-           ratpoints_bit_array *survivors,
+           rp_worker *wk, const rp_num_class *cls,
            long mask_low, long mask_high, sieve_spec *sieves,
-           check_spec *checks, int *quit,
+           check_spec *checks,
            int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
+  const ratpoints_args *args = wk->args;
+  ratpoints_bit_array *survivors = wk->survivors;
+  int *quit = &wk->quit;
   ratpoints_bit_array bits64 = cls->bits; /* the 2-adic pattern, packed */
-  long sp1 = args->sp1; /* number of primes in first stage */
-  long sp2 = args->sp2; /* number of primes in first and second stage combined */
-  long nchecks = args->sp3 - sp2; /* further primes, for the third stage */
+  long sp1 = wk->sp1; /* number of primes in first stage */
+  long sp2 = wk->sp2; /* number of primes in first and second stage combined */
+  long nchecks = wk->sp3 - sp2; /* further primes, for the third stage */
   const unsigned long *magics = (const unsigned long *)args->magics;
   /* Whether the reductions modulo the primes below can multiply by the
    * reciprocal, which is exact for values below 2^32.  What is reduced is
@@ -541,12 +545,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 
   /* do the sieving (fast!) */
 
-  args->n_words += (unsigned long)(w_high - w_low)*RBA_PACK;
+  wk->n_words += (unsigned long)(w_high - w_low)*RBA_PACK;
 
 #ifdef RP_PHASE_TIMING
   _rp_sift0_calls++;
   _rp_arrays_swept += w_high - w_low;
-  _rp_sp1 = sp1; _rp_sp2 = sp2; _rp_sp3 = args->sp3;
+  _rp_sp1 = sp1; _rp_sp2 = sp2; _rp_sp3 = wk->sp3;
 #endif
 #ifdef RP_PHASE_COUNTS
   /* Every bit array starts from the same 2-adic pattern, so this is a
@@ -1085,7 +1089,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       if(surv0 >= surv_end) { break; }
       i = w_low + (surv0 - survivors);
       nums = *surv0++;
-      args->n_arrays++;
+      wk->n_arrays++;
 
 #if RP_STOP_AFTER == 2
       if(TEST(nums)) { _rp_sink += EXT0(nums); }
@@ -1159,8 +1163,8 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_COUNTS
             _rp_ext2++;
 #endif
-            args->n_bits++;
-            if(accepted(a, b, checks, nchecks, args))
+            wk->n_bits++;
+            if(accepted(a, b, checks, nchecks, wk))
             { total += RP_CHECK_POINT(a, b);
               if(*quit) return(total);
             }
@@ -1226,11 +1230,11 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_COUNTS
             _rp_ext2++;
 #endif
-            args->n_bits++;
+            wk->n_bits++;
 
 #ifdef DEBUG
             printf("\nsurviving bit no. %ld --> a = %ld. ", t, a);
-            if(accepted(a, b, checks, nchecks, args))
+            if(accepted(a, b, checks, nchecks, wk))
             { printf("Check point...\n");
               fflush(NULL);
               total += RP_CHECK_POINT(a, b);
@@ -1240,7 +1244,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
             { printf("Not in lowest terms, or rejected by the third stage"
                      " --> skip.\n"); fflush(NULL); }
 #else
-            if(accepted(a, b, checks, nchecks, args))
+            if(accepted(a, b, checks, nchecks, wk))
             /* the fraction a/b is in lowest terms and survives the third
              * stage: check if we really get a point, and if so, process it. */
             { total += RP_CHECK_POINT(a, b);
@@ -1264,12 +1268,12 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
 #ifdef RP_PHASE_COUNTS
                 _rp_ext2++;
 #endif
-                args->n_bits++;
+                wk->n_bits++;
 
 #ifdef DEBUG
                 printf("\nsurviving bit no. %ld --> a = %ld. ",
                        LONG_LENGTH*k + t, a);
-                if(accepted(a, b, checks, nchecks, args))
+                if(accepted(a, b, checks, nchecks, wk))
                 { printf("Check point...\n");
                   fflush(NULL);
                   total += RP_CHECK_POINT(a, b);
@@ -1279,7 +1283,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
                 { printf("Not in lowest terms, or rejected by the third stage"
                          " --> skip.\n"); fflush(NULL); }
 #else
-                if(accepted(a, b, checks, nchecks, args))
+                if(accepted(a, b, checks, nchecks, wk))
                 { total += RP_CHECK_POINT(a, b);
                   if(*quit) return(total);
                 }

@@ -386,11 +386,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *ba_buffer_na; long ba_buffer_primes;
                  long ba_buffer_arrays; void *pw_buffer;
                  double run_words; double run_denoms;
-                 unsigned long n_words; unsigned long n_arrays;
-                 unsigned long n_bits; unsigned long n_coprime;
-                 unsigned long n_checks; unsigned long n_sifts;
-                 unsigned long n_words_2;
-                 unsigned long adapt_at; long sp3_max; int stage3_filled;
+                 unsigned long adapt_at; long sp3_max;
                  double check_rel;
                }
         ratpoints_args;
@@ -414,7 +410,6 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_USE_JACOBI      (unsigned int)0x1000
   /* the Jacobi symbol test on the denominators applies: even degree, the
      leading coefficient is not a square, and RATPOINTS_NO_JACOBI is not set */
-#define RATPOINTS_COMPUTE_BC      (unsigned int)0x2000
 #define RATPOINTS_NO_REVERSE_AUTO (unsigned int)0x4000
   /* the program itself decided not to reverse (intervals given, or bounds
      on the denominator); kept apart from RATPOINTS_NO_REVERSE so that the

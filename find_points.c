@@ -1282,7 +1282,7 @@ static double check_cost(const ratpoints_args *args)
  * so using more or fewer of them for later denominators changes the running
  * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
  * makes this correction first and then computes every entry the current
- * number of primes asks for.
+ * number of primes asks for.  The counters are the sieving thread's (rp_worker).
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -1291,23 +1291,23 @@ static double check_cost(const ratpoints_args *args)
 #define RP_ADAPT_ARRAYS 1000UL   /* ...and this many non-empty bit arrays */
 #define RP_ADAPT_BITS 200UL      /* ...and this many survivors of stage 2 */
 
-static void adapt_primes(ratpoints_args *args)
+static void adapt_primes(ratpoints_args *args, rp_worker *wk)
 { ratpoints_sieve_entry **sieve_list
     = (ratpoints_sieve_entry **)args->sieve_list;
   double u = args->run_words, d = args->run_denoms;
   double cost_table = (args->cost_table >= 0.0) ? args->cost_table
                                                 : RATPOINTS_COST_TABLE;
-  double words = (double)args->n_words;
+  double words = (double)wk->n_words;
   double s1, s2, r1, r2, chance, level, s, rate;
   long n, sp1 = args->sp1, sp2 = args->sp2, max = args->sp3_max;
   /* 1 (the default) corrects the third stage only; 2 also corrects sp2 */
   long mode = (args->adapt < 0) ? 1 : args->adapt;
 
   /* next time, when twice as much has been seen */
-  args->adapt_at = args->n_words + args->n_words;
+  args->adapt_at = wk->n_words + wk->n_words;
 
   if(words <= 0.0 || sp2 <= sp1 || sp1 <= 0) { return; }
-  if(args->n_arrays < RP_ADAPT_ARRAYS || args->n_bits < RP_ADAPT_BITS)
+  if(wk->n_arrays < RP_ADAPT_ARRAYS || wk->n_bits < RP_ADAPT_BITS)
   { return; }
 
   /* The two rates the run has shown, per numerator word.  The first is
@@ -1315,11 +1315,11 @@ static void adapt_primes(ratpoints_args *args)
    * thing -- but the second is not: everything downstream of the first stage
    * was counted under whatever sp2 was in force, so those counters are reset
    * whenever sp2 changes and only the words since then divide into them. */
-  { double words_2 = (double)(args->n_words - args->n_words_2);
+  { double words_2 = (double)(wk->n_words - wk->n_words_2);
 
     if(words_2 <= 0.0) { return; }
-    s1 = (double)args->n_arrays/words;
-    s2 = (double)args->n_bits/words_2;
+    s1 = (double)wk->n_arrays/words;
+    s2 = (double)wk->n_bits/words_2;
   }
 
   r1 = 1.0;
@@ -1350,7 +1350,7 @@ static void adapt_primes(ratpoints_args *args)
      * and the only one the degree moves; how many survivors reach the check
      * is measured rather than assumed, since the counters are here anyway. */
     double cost_surv = RATPOINTS_COST_SURVIVOR
-                        + ((double)args->n_checks/(double)args->n_bits)
+                        + ((double)wk->n_checks/(double)wk->n_bits)
                            *RATPOINTS_COST_CHECK*(args->check_rel - 1.0);
 
     rate = r2;
@@ -1382,8 +1382,8 @@ static void adapt_primes(ratpoints_args *args)
     }
     if(want != sp2)
     { /* what was counted downstream belongs to the old sp2 */
-      args->n_bits = 0; args->n_coprime = 0; args->n_checks = 0;
-      args->n_sifts = 0; args->n_words_2 = args->n_words;
+      wk->n_bits = 0; wk->n_coprime = 0; wk->n_checks = 0;
+      wk->n_sifts = 0; wk->n_words_2 = wk->n_words;
     }
     args->sp2 = want;
   }
@@ -1394,14 +1394,14 @@ static void adapt_primes(ratpoints_args *args)
    * for common factors, which is the one thing no prime can help with -- so
    * it replaces both the predicted rate and the fitted fraction that stood
    * for the coprimality test. */
-  if(args->sp3_extra < 0 && args->n_sifts > 0)
+  if(args->sp3_extra < 0 && wk->n_sifts > 0)
   { /* both fractions are of one exact check, which is dearer at a high
      * degree or with large coefficients: see check_cost() */
     double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
                                                      : RATPOINTS_SP3_PER_DENOM)
                          /args->check_rel;
     double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
-    double S = (double)args->n_coprime/(double)args->n_sifts;
+    double S = (double)wk->n_coprime/(double)wk->n_sifts;
     double sp2_old = level + chance*r2;
     long sp3;
 
@@ -1420,7 +1420,7 @@ static void adapt_primes(ratpoints_args *args)
 
 #ifdef RP_PRIME_STATS
   fprintf(stderr, "[adapt] words=%lu s1=%.3g s2=%.3g floor=%.3g"
-          " sp1=%ld sp2=%ld sp3=%ld\n", args->n_words, s1, s2, level,
+          " sp1=%ld sp2=%ld sp3=%ld\n", wk->n_words, s1, s2, level,
           args->sp1, args->sp2, args->sp3);
 #endif
 }
@@ -3000,32 +3000,58 @@ static long sieving_info(ratpoints_args *args,
  * The sieving procedure itself                                           *
  **************************************************************************/
 
+/* The sieving thread wk: its survivors array, its gmp temporaries, its
+ * counters and its quit flag; the shared arguments through it. */
+static void worker_init(rp_worker *wk, ratpoints_args *args)
+{ wk->args = args;
+  /* allocate space for survivors array; make sure of correct alignment.
+   * One spare bit array pays for the alignment, and one more for the
+   * sentinel that the scan in _ratpoints_sift0 runs into: it sits just
+   * past the range, and the range can be all of array_size. */
+  wk->survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
+  wk->survivors = (ratpoints_bit_array *)
+                    pointer_align(wk->survivors_na, sizeof(ratpoints_bit_array));
+  wk->work = args->work;
+  wk->checks = (check_spec *)args->stage3_list;
+  wk->sp1 = args->sp1; wk->sp2 = args->sp2; wk->sp3 = args->sp3;
+  /* the counts that say what the sieve actually did, which the choice of
+   * primes is corrected from as the run goes on */
+  wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
+  wk->n_checks = 0; wk->n_sifts = 0; wk->n_words_2 = 0;
+  wk->compute_bc = 0; wk->stage3_filled = 0; wk->quit = 0;
+}
+
+static void worker_clear(rp_worker *wk)
+{ free(wk->survivors_na); wk->survivors_na = NULL; wk->survivors = NULL; }
+
 static
-long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
-          const rp_num_class *cls,
-          ratpoints_sieve_entry **sieve_list, long *bp_list, int *quit,
+long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
+  ratpoints_args *args = wk->args;
+  ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
+  int *quit = &wk->quit;
   /* typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                      ratpoints_bit_array *start; ratpoints_bit_array *end; }
              sieve_spec; */
-  sieve_spec ssp[args->sp2 > 0 ? args->sp2 : 1]; /* length 0 is undefined */
+  sieve_spec ssp[wk->sp2 > 0 ? wk->sp2 : 1]; /* length 0 is undefined */
   /* what the third stage needs per denominator; see find_points_init on why
    * it is not an array here */
-  check_spec *csp = (check_spec *)args->stage3_list;
+  check_spec *csp = wk->checks;
   int do_setup = 1;
   RP_SIFT_TIC(t_sift);
 
-  args->n_sifts++;
+  wk->n_sifts++;
 
 #ifdef DEBUG
   printf("\nsift(b = %ld): start...\n", b); fflush(NULL);
 #endif
 
   /* Note that b is new */
-  args->flags |= RATPOINTS_COMPUTE_BC;
-  args->stage3_filled = 0; /* see fill_checks() in sift.c */
+  wk->compute_bc = 1;
+  wk->stage3_filled = 0; /* see fill_checks() in sift.c */
 
   { long k;
     long height = args->height;
@@ -3070,7 +3096,7 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        for(n = 0; n < args->sp2; n++)
+        for(n = 0; n < wk->sp2; n++)
         { ratpoints_sieve_entry *se = sieve_list[n];
           long p = se->p;
           long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
@@ -3173,9 +3199,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
              * those above the last bit, high mod RBA_LENGTH */
             { mask_high = RBA_LENGTH - 1 - (high & (RBA_LENGTH - 1)); }
 
-            total += _ratpoints_sift0(b, w_low0, w_high0, args, cls,
-                                      survivors, mask_low, mask_high,
-                                      &ssp[0], &csp[0], quit, process, info);
+            total += _ratpoints_sift0(b, w_low0, w_high0, wk, cls,
+                                      mask_low, mask_high,
+                                      &ssp[0], &csp[0], process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
   } }
@@ -3204,14 +3230,16 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * swept as many words as adapt_at says.  The primes of the third stage are
  * not in the list: what that stage needs is looked up when a numerator
  * reaches it, see fill_checks() in sift.c. */
-static inline void fill_bp_list(long b, long k, long *bp_list,
-                                ratpoints_args *args,
-                                ratpoints_sieve_entry **sieve_list)
+static inline void fill_bp_list(long b, long k, long *bp_list, rp_worker *wk)
 { long n, sp2;
+  ratpoints_args *args = wk->args;
+  ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
   const unsigned long *magics = (const unsigned long *)args->magics;
 
-  if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-  sp2 = args->sp2;
+  if(wk->n_words >= args->adapt_at) { adapt_primes(args, wk); }
+  wk->sp2 = args->sp2; wk->sp3 = args->sp3;
+  sp2 = wk->sp2;
   RP_BP_TIC(t_bp);
   /* The reduction is exact below 2^32.  b times 2^-k mod p stays below that
    * for a denominator below 2^32 divided by the largest prime that can be
@@ -3314,7 +3342,8 @@ static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;       /* total counts the points */
-  int quit = 0;
+  int quit = 0;         /* for the points at infinity; the sieve has wk.quit */
+  rp_worker wk;         /* the sieving thread */
   /* Whether the caller left the number of primes to us.  If it did,
    * sieving_info may look past RATPOINTS_DEFAULT_NUM_PRIMES for the curves
    * that need it; an explicit num_primes is a hard limit. */
@@ -3348,12 +3377,6 @@ static long find_points_work_1(ratpoints_args *args,
 
   args->flags &= RATPOINTS_FLAGS_INPUT_MASK;
   args->flags |= RATPOINTS_CHECK_DENOM;
-
-  /* the counts that say what the sieve actually did, which the choice of
-   * primes is corrected from as the run goes on */
-  args->n_words = 0; args->n_arrays = 0; args->n_bits = 0;
-  args->n_coprime = 0; args->n_checks = 0; args->n_sifts = 0;
-  args->n_words_2 = 0;
 
   /* initialize memory management */
   args->se_next = args->se_buffer;
@@ -3828,9 +3851,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
   /* now do the sieving */
-  { ratpoints_bit_array *survivors;
-    void *survivors_na;
-    /* the row shifts of the numerator classes: one row per distinct
+  { /* the row shifts of the numerator classes: one row per distinct
      * packing (a dozen or so; at most 64), over every prime that may come to
      * be sieved with */
     long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
@@ -3840,13 +3861,7 @@ static long find_points_work_1(ratpoints_args *args,
     fflush(NULL);
 #endif
 
-    /* allocate space for survivors array; make sure of correct alignment.
-     * One spare bit array pays for the alignment, and one more for the
-     * sentinel that the scan in _ratpoints_sift0 runs into: it sits just
-     * past the range, and the range can be all of array_size. */
-    survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
-    survivors = (ratpoints_bit_array *)
-                pointer_align(survivors_na, sizeof(ratpoints_bit_array));
+    worker_init(&wk, args);
     /* the row shifts of the numerator classes, now that the primes are
      * known */
     class_offsets(&cls[0], sieve_list, args->sp3_max, &offsets[0]);
@@ -3876,11 +3891,9 @@ static long find_points_work_1(ratpoints_args *args,
           bb = b*b;
           cl = &cls[bb & 0x3f];
           if(EXT0(cl->bits))
-          { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-            total += sift(bb, survivors, args, cl,
-                          sieve_list, &bp_list[0],
-                          &quit, process, info);
-            if(quit) { break; }
+          { fill_bp_list(bb, cl->k, bp_list, &wk);
+            total += sift(bb, &wk, cl, &bp_list[0], process, info);
+            if(wk.quit) { break; }
           }
 
 #ifdef DEBUG
@@ -3930,11 +3943,9 @@ static long find_points_work_1(ratpoints_args *args,
                 { flag = 0; break; }
               }
               if(flag)
-              { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-                total += sift(bb, survivors, args, cl,
-                              sieve_list, &bp_list[0],
-                              &quit, process, info);
-                if(quit) { break; }
+              { fill_bp_list(bb, cl->k, bp_list, &wk);
+                total += sift(bb, &wk, cl, &bp_list[0], process, info);
+                if(wk.quit) { break; }
               }
             }
 
@@ -3945,7 +3956,7 @@ static long find_points_work_1(ratpoints_args *args,
             }
 #endif
           }
-        if(quit) { break; }
+        if(wk.quit) { break; }
         }
     } }
     else
@@ -4056,11 +4067,9 @@ static long find_points_work_1(ratpoints_args *args,
                       || (use_c_long
                            ? jacobi1(b, c_long[degree])
                            : jacobi(b, work[0], c[degree])) == 1))
-            { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
-              total += sift(b, survivors, args, cl,
-                            sieve_list, &bp_list[0],
-                            &quit, process, info);
-              if(quit) { break; }
+            { fill_bp_list(b, cl->k, bp_list, &wk);
+              total += sift(b, &wk, cl, &bp_list[0], process, info);
+              if(wk.quit) { break; }
             }
 
 #ifdef DEBUG
@@ -4072,7 +4081,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
           }
-          if(quit) { break; }
+          if(wk.quit) { break; }
         }
       } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
       else
@@ -4085,11 +4094,9 @@ static long find_points_work_1(ratpoints_args *args,
         { const rp_num_class *cl = &cls[b & 0x3f];
 
           if(EXT0(cl->bits))
-          { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
-            total += sift(b, survivors, args, cl,
-                          sieve_list, &bp_list[0],
-                          &quit, process, info);
-            if(quit) { break; }
+          { fill_bp_list(b, cl->k, bp_list, &wk);
+            total += sift(b, &wk, cl, &bp_list[0], process, info);
+            if(wk.quit) { break; }
           }
 
 #ifdef DEBUG
@@ -4103,7 +4110,7 @@ static long find_points_work_1(ratpoints_args *args,
       } }
     }
     /* de-allocate memory */
-    free(survivors_na);
+    worker_clear(&wk);
   }
 
 #if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
@@ -4125,8 +4132,8 @@ static long find_points_work_1(ratpoints_args *args,
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
-            args->n_words, args->n_arrays, args->n_bits,
-            args->n_coprime, args->n_checks,
+            wk.n_words, wk.n_arrays, wk.n_bits,
+            wk.n_coprime, wk.n_checks,
             EXT0(cls[1].bits) ? cls[1].k : -1L,
             args->sp1, args->sp2, _rp_sift0_calls - last_calls,
             _rp_phase1_cycles - last_cyc1, _rp_phase2_cycles - last_cyc2,
@@ -4187,22 +4194,24 @@ long find_points(ratpoints_args *args,
  * This function is called by _ratpoints_sift0(), see sift.c .            *
  **************************************************************************/
 
-long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
+long _ratpoints_check_point(long a, long b, rp_worker *wk,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
+  const ratpoints_args *args = wk->args;
   mpz_t *c = args->cof;
   long degree = args->degree;
   int reverse = args->flags & RATPOINTS_REVERSED;
   long total = 0;
-  mpz_t *work = args->work;
+  mpz_t *work = wk->work;
   mpz_t *bc = &work[3];
+  int *quit = &wk->quit;
 
   if(!(args->flags & RATPOINTS_NO_CHECK))
   { long k;
 
     /* Compute F(a, b), where F is the homogenized version of f
        of smallest possible even degree  */
-    if(args->flags & RATPOINTS_COMPUTE_BC)
+    if(wk->compute_bc)
     { /* compute entries bc[k] = c[k] * b^(degree-k), k < degree */
       RP_BC_TIC(t_bc);
 
@@ -4217,7 +4226,7 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
         mpz_mul(bc[k], c[k], work[0]);
       }
       /* note that bc[] has been computed for the current b */
-      args->flags &= ~RATPOINTS_COMPUTE_BC;
+      wk->compute_bc = 0;
       RP_BC_TOC(t_bc);
     }
 
