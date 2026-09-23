@@ -3059,6 +3059,40 @@ static void worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
 static void worker_clear(rp_worker *wk)
 { free(wk->survivors_na); wk->survivors_na = NULL; wk->survivors = NULL; }
 
+/* The sieve_spec of every modulus of the first two stages for the current
+ * denominator: the row of its residue bp -- the pointer read with acquire
+ * semantics when shared says threads share the tables, plainly otherwise
+ * -- and the shift of the row for the packing of the class, with the
+ * multiple of p that keeps the row index non-negative built in (see
+ * rp_num_class and sieve_spec in rp-private.h); end is the end of the
+ * table, which the first stage's wrap-around compares against (the start
+ * field is set by sift0 at the head of every call, for the first-stage
+ * moduli, and nothing reads it before that).  Returns whether a row is
+ * missing, i.e. not built yet.  Inlined at its two calls with shared a
+ * constant, so that neither loop carries the other's load. */
+static inline RP_ALWAYS_INLINE
+int set_rows(sieve_spec *ssp, ratpoints_sieve_entry **sieve_list,
+             const long *bp_list, const rp_num_class *cls, long sp2,
+             int shared)
+{ int missing = 0;
+  long n;
+
+  for(n = 0; n < sp2; n++)
+  { ratpoints_sieve_entry *se = sieve_list[n];
+    long p = se->p;
+    long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
+    ratpoints_bit_array *sptr = shared ? RP_ACQUIRE(&se->sieve[bp])
+                                       : se->sieve[bp];
+
+    ssp[n].p = p;
+    ssp[n].offset = cls->offset[n];
+    ssp[n].ptr = sptr;
+    ssp[n].end = sptr + p;
+    if(sptr == NULL) { missing = 1; }
+  }
+  return(missing);
+}
+
 static
 long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
           int process(long, long, const mpz_t, void*, int*), void *info)
@@ -3131,58 +3165,60 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
         fflush(NULL);
 #endif
 
-        for(n = 0; n < wk->sp2; n++)
-        { ratpoints_sieve_entry *se = sieve_list[n];
-          long p = se->p;
-          long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
-          ratpoints_bit_array *sptr = RP_ACQUIRE(&se->sieve[bp]);
-
-          ssp[n].p = p;
-          /* the shift of the row for the packing of the class, with the
-           * multiple of p that keeps the row index non-negative built in
-           * (see rp_num_class and sieve_spec in rp-private.h) */
-          ssp[n].offset = cls->offset[n];
-
-#ifdef DEBUG
-          printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
-                 p, bp, ssp[n].offset - se->bias, se->bias);
-          fflush(NULL);
-#endif
-          /* copy if already initialized, else initialize -- under the
-           * tables lock when threads share them, and only if no other
-           * thread has built it meanwhile */
-          if(sptr) { ssp[n].ptr = sptr; }
-          else
-          { RP_INIT_TIC(t_init);
-            rp_tables_lock(wk);
-            sptr = RP_ACQUIRE(&se->sieve[bp]);
-            if(sptr == NULL) { sptr = (*(se->init))(se, bp, args); }
-            rp_tables_unlock(wk);
-            ssp[n].ptr = sptr;
-            RP_INIT_TOC(t_init, p);
-          }
-          /* the end of the table, which the first stage's wrap-around
-           * compares against; the start field is set by sift0 at the head
-           * of every call, for the first-stage moduli, and nothing reads
-           * it before that */
-          ssp[n].end = ssp[n].ptr + p;
+        /* One pass over the moduli, without a call in it, so that the
+         * compiler keeps the loop's values in registers: a row that is not
+         * built yet is noted and built afterwards, which happens once per
+         * row and curve.  The pointers are read with acquire semantics
+         * when threads share the tables, so that a row another thread
+         * built is seen complete, and plainly on the calling thread: the
+         * two calls of set_rows() are compiled into one loop each. */
+        { int missing = (wk->pool != NULL)
+                          ? set_rows(&ssp[0], sieve_list, bp_list, cls, wk->sp2, 1)
+                          : set_rows(&ssp[0], sieve_list, bp_list, cls, wk->sp2, 0);
 
 #ifdef DEBUG
-          if(!sptr)
-          { long a, c = 0;
+          for(n = 0; n < wk->sp2; n++)
+          { ratpoints_sieve_entry *se = sieve_list[n];
 
-            printf("\nsieve(%ld, %ld) [high numerators to the left]:", p, bp);
-            for(a = p-1; a >= 0; a--, c++)
-            { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
-              PRINT_RBA(ssp[n].ptr[a]);
-            }
-            printf("\n");
+            printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
+                   se->p, bp_list[n], ssp[n].offset - se->bias, se->bias);
             fflush(NULL);
           }
 #endif
+          if(missing)
+          { /* build what is missing -- under the tables lock when threads
+             * share them, and only if no other thread has built it
+             * meanwhile */
+            for(n = 0; n < wk->sp2; n++)
+            { if(ssp[n].ptr == NULL)
+              { ratpoints_sieve_entry *se = sieve_list[n];
+                long bp = bp_list[n];
+                ratpoints_bit_array *sptr;
 
+                RP_INIT_TIC(t_init);
+                rp_tables_lock(wk);
+                sptr = RP_ACQUIRE(&se->sieve[bp]);
+                if(sptr == NULL) { sptr = (*(se->init))(se, bp, args); }
+                rp_tables_unlock(wk);
+                ssp[n].ptr = sptr;
+                ssp[n].end = sptr + se->p;
+                RP_INIT_TOC(t_init, se->p);
+#ifdef DEBUG
+                { long a, c = 0;
+                  printf("\nsieve(%ld, %ld) [high numerators to the left]:",
+                         se->p, bp);
+                  for(a = se->p-1; a >= 0; a--, c++)
+                  { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
+                    PRINT_RBA(sptr[a]);
+                  }
+                  printf("\n");
+                  fflush(NULL);
+                }
+#endif
+              }
+            }
+          }
         }
-
         /* the primes of the third stage need no table, only the inverse of
          * b modulo each of them, and fill_checks() in sift.c looks that up
          * on the first numerator that reaches the stage: most denominators
@@ -3495,7 +3531,10 @@ static void run_clear(rp_run *run)
 }
 
 /* Sieve block i: its denominators in order, on the worker wk.  Returns the
- * number of points; wk->quit says whether process() stopped the search. */
+ * number of points; wk->quit says whether process() stopped the search (a
+ * thread of the pool learns of a stop through its collector, at the next
+ * point: a block without one runs to its end, which is the bound on the
+ * work done after a stop). */
 static long run_block(rp_run *run, rp_worker *wk, long i,
                       int process(long, long, const mpz_t, void*, int*),
                       void *info)
@@ -3533,8 +3572,7 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
         if(EXT0(cl->bits))
         { fill_bp_list(bb, cl->k, bp_list, wk);
           total += sift(bb, wk, cl, &bp_list[0], process, info);
-          if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
-          { wk->quit = 1; return(total); }
+          if(wk->quit) { return(total); }
         }
 #ifdef DEBUG
         else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
@@ -3563,8 +3601,7 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
           if(flag)
           { fill_bp_list(bb, cl->k, bp_list, wk);
             total += sift(bb, wk, cl, &bp_list[0], process, info);
-            if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
-          { wk->quit = 1; return(total); }
+            if(wk->quit) { return(total); }
           }
         }
 #ifdef DEBUG
@@ -3651,8 +3688,7 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
                          == 1))
             { fill_bp_list(b, cl->k, bp_list, wk);
               total += sift(b, wk, cl, &bp_list[0], process, info);
-              if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
-          { wk->quit = 1; return(total); }
+              if(wk->quit) { return(total); }
             }
 #ifdef DEBUG
             else
@@ -3676,8 +3712,7 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
         if(EXT0(cl->bits))
         { fill_bp_list(b, cl->k, bp_list, wk);
           total += sift(b, wk, cl, &bp_list[0], process, info);
-          if(wk->quit || (wk->stop && RP_RELAXED(wk->stop)))
-          { wk->quit = 1; return(total); }
+          if(wk->quit) { return(total); }
         }
 #ifdef DEBUG
         else { printf("\nb = %ld: excluded mod 64\n", b); fflush(NULL); }

@@ -65,7 +65,9 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
  * correction's decisions, the flag that stops a search.  RP_PUBLISH writes
  * such a word after everything it points to is complete, RP_ACQUIRE reads
  * it so that what it points to is seen complete, and RP_RELAXED reads a
- * flag.  With -DRATPOINTS_NO_THREADS they are the plain operations, and the
+ * flag.  (Not a fence after a loop of relaxed loads: ThreadSanitizer does
+ * not see through fences, and the acquire loads cost nothing measurable.)
+ * With -DRATPOINTS_NO_THREADS they are the plain operations, and the
  * library sieves on the calling thread whatever num_threads says. */
 #ifndef RATPOINTS_NO_THREADS
 # define RP_ACQUIRE(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
