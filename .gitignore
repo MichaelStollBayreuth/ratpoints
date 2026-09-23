@@ -34,4 +34,5 @@
 # local material that is not part of the distribution
 /examples/
 /DEVELOPMENT-NOTES.md
+/THREADS-PLAN.md
 /review-*/
