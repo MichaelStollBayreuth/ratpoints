@@ -1282,7 +1282,9 @@ static double check_cost(const ratpoints_args *args)
  * so using more or fewer of them for later denominators changes the running
  * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
  * makes this correction first and then computes every entry the current
- * number of primes asks for.  The counters are the sieving thread's (rp_worker).
+ * number of primes asks for.  The counters are the run's (rp_counts), added
+ * up block by block in run_fold(), which calls this; the decision is for
+ * the blocks RP_ADAPT_LAG past the one just added.
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -1291,23 +1293,45 @@ static double check_cost(const ratpoints_args *args)
 #define RP_ADAPT_ARRAYS 1000UL   /* ...and this many non-empty bit arrays */
 #define RP_ADAPT_BITS 200UL      /* ...and this many survivors of stage 2 */
 
-static void adapt_primes(ratpoints_args *args, rp_worker *wk)
+/* The counters the correction reads: what the sieve did over the blocks of
+ * the run so far, added up in the order of the blocks (run_fold below), and
+ * the sp2 the counters downstream of the first stage were counted under --
+ * they restart when a block sieved with another sp2 is added, since what
+ * they held then belongs to the old one. */
+typedef struct { unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 unsigned long n_words_2; long sp2; }
+        rp_counts;
+
+/* A correction is decided when a block has been added and takes effect this
+ * many blocks later: block i is sieved with the last decision made from the
+ * blocks 0 .. i-RP_ADAPT_LAG-1.  That is what lets several threads sieve
+ * blocks ahead of the one being added -- up to this many plus one without
+ * waiting -- and the same lag applies at one thread, so that what the sieve
+ * does never depends on the number of threads.  The cost is a correction
+ * delayed by a few per cent of the run. */
+#define RP_ADAPT_LAG 32
+
+static void adapt_primes(ratpoints_args *args, const rp_counts *c)
 { ratpoints_sieve_entry **sieve_list
     = (ratpoints_sieve_entry **)args->sieve_list;
   double u = args->run_words, d = args->run_denoms;
   double cost_table = (args->cost_table >= 0.0) ? args->cost_table
                                                 : RATPOINTS_COST_TABLE;
-  double words = (double)wk->n_words;
+  double words = (double)c->n_words;
   double s1, s2, r1, r2, chance, level, s, rate;
-  long n, sp1 = args->sp1, sp2 = args->sp2, max = args->sp3_max;
+  /* sp2 is the one the counters were measured under; args->sp2 holds the
+   * latest decision, which may not have taken effect yet */
+  long n, sp1 = args->sp1, sp2 = c->sp2, max = args->sp3_max;
   /* 1 (the default) corrects the third stage only; 2 also corrects sp2 */
   long mode = (args->adapt < 0) ? 1 : args->adapt;
 
   /* next time, when twice as much has been seen */
-  args->adapt_at = wk->n_words + wk->n_words;
+  args->adapt_at = c->n_words + c->n_words;
 
   if(words <= 0.0 || sp2 <= sp1 || sp1 <= 0) { return; }
-  if(wk->n_arrays < RP_ADAPT_ARRAYS || wk->n_bits < RP_ADAPT_BITS)
+  if(c->n_arrays < RP_ADAPT_ARRAYS || c->n_bits < RP_ADAPT_BITS)
   { return; }
 
   /* The two rates the run has shown, per numerator word.  The first is
@@ -1315,11 +1339,11 @@ static void adapt_primes(ratpoints_args *args, rp_worker *wk)
    * thing -- but the second is not: everything downstream of the first stage
    * was counted under whatever sp2 was in force, so those counters are reset
    * whenever sp2 changes and only the words since then divide into them. */
-  { double words_2 = (double)(wk->n_words - wk->n_words_2);
+  { double words_2 = (double)(c->n_words - c->n_words_2);
 
     if(words_2 <= 0.0) { return; }
-    s1 = (double)wk->n_arrays/words;
-    s2 = (double)wk->n_bits/words_2;
+    s1 = (double)c->n_arrays/words;
+    s2 = (double)c->n_bits/words_2;
   }
 
   r1 = 1.0;
@@ -1350,7 +1374,7 @@ static void adapt_primes(ratpoints_args *args, rp_worker *wk)
      * and the only one the degree moves; how many survivors reach the check
      * is measured rather than assumed, since the counters are here anyway. */
     double cost_surv = RATPOINTS_COST_SURVIVOR
-                        + ((double)wk->n_checks/(double)wk->n_bits)
+                        + ((double)c->n_checks/(double)c->n_bits)
                            *RATPOINTS_COST_CHECK*(args->check_rel - 1.0);
 
     rate = r2;
@@ -1380,11 +1404,9 @@ static void adapt_primes(ratpoints_args *args, rp_worker *wk)
         rate /= r; s = prev; want--;
       }
     }
-    if(want != sp2)
-    { /* what was counted downstream belongs to the old sp2 */
-      wk->n_bits = 0; wk->n_coprime = 0; wk->n_checks = 0;
-      wk->n_sifts = 0; wk->n_words_2 = wk->n_words;
-    }
+    /* (what was counted downstream belongs to the old sp2: run_fold
+     * restarts those counters with the first block sieved under the new
+     * one) */
     args->sp2 = want;
   }
   else { s = level + chance*r2; }  /* sp2 stands; the rate is what it was */
@@ -1394,14 +1416,14 @@ static void adapt_primes(ratpoints_args *args, rp_worker *wk)
    * for common factors, which is the one thing no prime can help with -- so
    * it replaces both the predicted rate and the fitted fraction that stood
    * for the coprimality test. */
-  if(args->sp3_extra < 0 && wk->n_sifts > 0)
+  if(args->sp3_extra < 0 && c->n_sifts > 0)
   { /* both fractions are of one exact check, which is dearer at a high
      * degree or with large coefficients: see check_cost() */
     double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
                                                      : RATPOINTS_SP3_PER_DENOM)
                          /args->check_rel;
     double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
-    double S = (double)wk->n_coprime/(double)wk->n_sifts;
+    double S = (double)c->n_coprime/(double)c->n_sifts;
     double sp2_old = level + chance*r2;
     long sp3;
 
@@ -1420,7 +1442,7 @@ static void adapt_primes(ratpoints_args *args, rp_worker *wk)
 
 #ifdef RP_PRIME_STATS
   fprintf(stderr, "[adapt] words=%lu s1=%.3g s2=%.3g floor=%.3g"
-          " sp1=%ld sp2=%ld sp3=%ld\n", wk->n_words, s1, s2, level,
+          " sp1=%ld sp2=%ld sp3=%ld\n", c->n_words, s1, s2, level,
           args->sp1, args->sp2, args->sp3);
 #endif
 }
@@ -3017,7 +3039,7 @@ static void worker_init(rp_worker *wk, ratpoints_args *args)
   /* the counts that say what the sieve actually did, which the choice of
    * primes is corrected from as the run goes on */
   wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
-  wk->n_checks = 0; wk->n_sifts = 0; wk->n_words_2 = 0;
+  wk->n_checks = 0; wk->n_sifts = 0; wk->dec = 0;
   wk->compute_bc = 0; wk->stage3_filled = 0; wk->quit = 0;
 }
 
@@ -3237,8 +3259,6 @@ static inline void fill_bp_list(long b, long k, long *bp_list, rp_worker *wk)
     = (ratpoints_sieve_entry **)args->sieve_list;
   const unsigned long *magics = (const unsigned long *)args->magics;
 
-  if(wk->n_words >= args->adapt_at) { adapt_primes(args, wk); }
-  wk->sp2 = args->sp2; wk->sp3 = args->sp3;
   sp2 = wk->sp2;
   RP_BP_TIC(t_bp);
   /* The reduction is exact below 2^32.  b times 2^-k mod p stays below that
@@ -3338,7 +3358,15 @@ typedef struct { ratpoints_args *args;
                  long nseg;                 /* segments: one, or one per divisor */
                  long *seg_lo; long *seg_hi; /* the steps of each segment, both ends included */
                  long *seg_block;           /* the first block of each segment; [nseg] = nblocks */
-                 long nblocks; }
+                 long nblocks;
+                 /* the run-time correction: the counters in block order,
+                  * how many blocks they cover, the decisions (block i is
+                  * sieved with the last one whose first block is <= i; the
+                  * first is what sieving_info chose, for block 0), and
+                  * what the last block added was sieved with */
+                 rp_counts cnt; long nfolded;
+                 long ndec; long *dec_block; long *dec_sp2; long *dec_sp3;
+                 long last_sp2; long last_sp3; }
         rp_run;
 
 /* the largest k with k^2 <= n (0 for n < 1) */
@@ -3421,6 +3449,18 @@ static void run_setup(rp_run *run, ratpoints_args *args,
   }
   run->seg_block[nseg] = n;
   run->nblocks = n;
+  /* the correction: nothing counted yet, one decision -- at most one more
+   * per block added */
+  run->cnt.n_words = 0; run->cnt.n_arrays = 0; run->cnt.n_bits = 0;
+  run->cnt.n_coprime = 0; run->cnt.n_checks = 0; run->cnt.n_sifts = 0;
+  run->cnt.n_words_2 = 0; run->cnt.sp2 = args->sp2;
+  run->nfolded = 0;
+  run->dec_block = malloc(3*(n + 2)*sizeof(long));
+  run->dec_sp2 = run->dec_block + (n + 2);
+  run->dec_sp3 = run->dec_sp2 + (n + 2);
+  run->dec_block[0] = 0; run->dec_sp2[0] = args->sp2; run->dec_sp3[0] = args->sp3;
+  run->ndec = 1;
+  run->last_sp2 = args->sp2; run->last_sp3 = args->sp3;
 #ifdef DEBUG
   printf("\n  denominator loop: shape %d, %ld segment(s), %ld block(s) of %ld"
          " step(s)\n", run->shape, nseg, n, run->len);
@@ -3429,7 +3469,9 @@ static void run_setup(rp_run *run, ratpoints_args *args,
 }
 
 static void run_clear(rp_run *run)
-{ free(run->seg_lo); run->seg_lo = NULL; }
+{ free(run->seg_lo); run->seg_lo = NULL;
+  free(run->dec_block); run->dec_block = NULL;
+}
 
 /* Sieve block i: its denominators in order, on the worker wk.  Returns the
  * number of points; wk->quit says whether process() stopped the search. */
@@ -3449,6 +3491,15 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
   a = run->seg_lo[seg] + (i - run->seg_block[seg])*run->len;
   e = (run->seg_hi[seg] - a < run->len) ? run->seg_hi[seg]
                                         : a + run->len - 1;
+  /* the moduli the block is sieved with: the correction's last decision
+   * for it; and the counters start from zero for the block */
+  { long d = run->ndec - 1;
+
+    while(run->dec_block[d] > i) { d--; }
+    wk->dec = d; wk->sp2 = run->dec_sp2[d]; wk->sp3 = run->dec_sp3[d];
+  }
+  wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
+  wk->n_checks = 0; wk->n_sifts = 0;
 
   switch(run->shape)
   { case RP_SHAPE_SQUARES:
@@ -3609,6 +3660,37 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
   return(total);
 }
 
+/* The next block in the order of the run has been sieved on wk: add its
+ * counters to the run's, and see whether the correction is due.  The first
+ * block sieved with a new sp2 restarts the counters downstream of the first
+ * stage, since what they held was counted under the old one.  A decision
+ * made here is for the blocks from RP_ADAPT_LAG past this one on. */
+static void run_fold(rp_run *run, const rp_worker *wk)
+{ ratpoints_args *args = run->args;
+  rp_counts *c = &run->cnt;
+  long j = run->nfolded++;
+
+  if(run->dec_sp2[wk->dec] != c->sp2)
+  { c->n_bits = 0; c->n_coprime = 0; c->n_checks = 0; c->n_sifts = 0;
+    c->n_words_2 = c->n_words; c->sp2 = run->dec_sp2[wk->dec];
+  }
+  c->n_words += wk->n_words; c->n_arrays += wk->n_arrays;
+  c->n_bits += wk->n_bits; c->n_coprime += wk->n_coprime;
+  c->n_checks += wk->n_checks; c->n_sifts += wk->n_sifts;
+  run->last_sp2 = wk->sp2; run->last_sp3 = wk->sp3;
+  if(c->n_words >= args->adapt_at)
+  { long sp2 = args->sp2, sp3 = args->sp3;
+
+    adapt_primes(args, c);
+    if(args->sp2 != sp2 || args->sp3 != sp3)
+    { long n = run->ndec++;
+
+      run->dec_block[n] = j + RP_ADAPT_LAG + 1;
+      run->dec_sp2[n] = args->sp2; run->dec_sp3[n] = args->sp3;
+    }
+  }
+}
+
 
 static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info);
@@ -3657,6 +3739,7 @@ static long find_points_work_1(ratpoints_args *args,
   long total = 0;       /* total counts the points */
   int quit = 0;         /* for the points at infinity; the sieve has wk.quit */
   rp_worker wk;         /* the sieving thread */
+  rp_run run;           /* the loop over the denominators, in blocks */
   /* Whether the caller left the number of primes to us.  If it did,
    * sieving_info may look past RATPOINTS_DEFAULT_NUM_PRIMES for the curves
    * that need it; an explicit num_primes is a hard limit. */
@@ -4168,7 +4251,6 @@ static long find_points_work_1(ratpoints_args *args,
      * packing (a dozen or so; at most 64), over every prime that may come to
      * be sieved with */
     long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
-    rp_run run;   /* the loop over the denominators, in blocks */
     long i;
 
 #ifdef DEBUG
@@ -4188,8 +4270,11 @@ static long find_points_work_1(ratpoints_args *args,
               divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
     for(i = 0; i < run.nblocks; i++)
     { total += run_block(&run, &wk, i, process, info);
+      run_fold(&run, &wk);
       if(wk.quit) { break; }
     }
+    /* what the last block was sieved with is what the search used */
+    args->sp2 = run.last_sp2; args->sp3 = run.last_sp3;
     run_clear(&run);
     /* de-allocate memory */
     worker_clear(&wk);
@@ -4214,8 +4299,8 @@ static long find_points_work_1(ratpoints_args *args,
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
-            wk.n_words, wk.n_arrays, wk.n_bits,
-            wk.n_coprime, wk.n_checks,
+            run.cnt.n_words, run.cnt.n_arrays, run.cnt.n_bits,
+            run.cnt.n_coprime, run.cnt.n_checks,
             EXT0(cls[1].bits) ? cls[1].k : -1L,
             args->sp1, args->sp2, _rp_sift0_calls - last_calls,
             _rp_phase1_cycles - last_cyc1, _rp_phase2_cycles - last_cyc2,

@@ -531,9 +531,11 @@ typedef struct ratpoints_sieve_entry_s
  * sentinel the scan of the second stage runs into), the gmp temporaries
  * (work[0..2], and from work[3] on the coefficients times the powers of the
  * current denominator), the third stage's check_spec array, the numbers of
- * moduli in force, the counters the run-time correction reads, the two
- * flags that say what has been computed for the current denominator, and
- * the flag process() sets to stop the search. */
+ * moduli in force, the counters of the block being sieved (which the run
+ * folds into its own in block order, for the run-time correction; dec is
+ * the correction's decision the block is sieved with), the two flags that
+ * say what has been computed for the current denominator, and the flag
+ * process() sets to stop the search. */
 typedef struct { ratpoints_args *args;
                  ratpoints_bit_array *survivors; void *survivors_na;
                  mpz_t *work;
@@ -542,7 +544,7 @@ typedef struct { ratpoints_args *args;
                  unsigned long n_words; unsigned long n_arrays;
                  unsigned long n_bits; unsigned long n_coprime;
                  unsigned long n_checks; unsigned long n_sifts;
-                 unsigned long n_words_2;
+                 long dec;
                  int compute_bc; int stage3_filled; int quit; }
         rp_worker;
 
