@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -1321,8 +1321,13 @@ typedef struct { unsigned long n_words; unsigned long n_arrays;
  * blocks ahead of the one being added -- up to this many plus one without
  * waiting -- and the same lag applies at one thread, so that what the sieve
  * does never depends on the number of threads.  The cost is a correction
- * delayed by a few per cent of the run. */
-#define RP_ADAPT_LAG 32
+ * delayed by a few per cent of the run.  Since no more than RP_ADAPT_LAG + 1
+ * blocks can be in progress at once, that is also the most threads a pool
+ * gets; a machine with more cores wants a larger lag (-DRP_ADAPT_LAG=n),
+ * which is a property of the build, like the block length. */
+#ifndef RP_ADAPT_LAG
+# define RP_ADAPT_LAG 32
+#endif
 
 static void adapt_primes(ratpoints_args *args, const rp_counts *c)
 { ratpoints_sieve_entry **sieve_list
@@ -3997,6 +4002,7 @@ static rp_pool *rp_pool_for(ratpoints_args *args)
 
   if(n < 0) { n = sysconf(_SC_NPROCESSORS_ONLN); }
   if(n < 2) { return(NULL); } /* an idle pool from an earlier call stays */
+  if(n > RP_ADAPT_LAG + 1) { n = RP_ADAPT_LAG + 1; } /* more would wait for a block */
   if(pool != NULL && pool->nthreads == n) { return(pool); }
   rp_pool_destroy(args);
   return(rp_pool_create(args, n));

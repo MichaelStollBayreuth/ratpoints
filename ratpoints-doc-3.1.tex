@@ -38,7 +38,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{3.0.0} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{3.1.0} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -57,7 +57,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{September 21, 2026}
+\date{XXXX XX, 2026}
 
 \maketitle
 
@@ -90,15 +90,15 @@ for a first implementation of the use of 256-bit (and possibly 512-bit) register
 
 From September~2026, I have been using \textbf{Claude Code} (in various
 incarnations: Opus~5, Fable~5, Fable~5.1) to optimize the code and find and fix
-bugs. This has resulted in the current version~3.0.0, which includes
+bugs. This has resulted in version~3.0.0, which includes
 a whole array of optimizations compared to the 2.2.x~versions, making
 the program run 2 to~10 times faster (depending on the kind
 of curve and the height bound). Because of this substantial overall
 improvement and the change in the development workflow, I decided to
 increase the major version number from 2 to~3, even though many of
 the optimizations are incremental and there are few really new ideas involved.
-The next version, v3.1.0, will include support for multi-threading.
-Stay tuned!
+The current version~3.1.0 adds the option to run the sieve on several
+threads (Sections~\ref{sec:threads} and~\ref{sec:library}).
 
 Note that version~2.2.4 is the last one that supports 32-bit architectures;
 versions 3.0.0 and up need a word size of 64~bit.
@@ -136,7 +136,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-3.0.0.tar.gz
+> tar xzf ratpoints-3.1.0.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -144,12 +144,12 @@ files that belong to the installation. Alternatively, clone the github
 repository mentioned above into a directory of your choice (and replace
 \texttt{ratpoints-\rpversion} by the name of that directory in the instructions below).
 
-\subsection{Build the program and library}
+\subsection{Build the program and library}\label{sec:build}
 
 Do
 
 \begin{verbatim}
-> cd ratpoints-3.0.0
+> cd ratpoints-3.1.0
 > make all
 \end{verbatim}
 
@@ -161,6 +161,30 @@ on the curve. Reasonable values are compiled in, but \texttt{make tune} will
 measure better ones for your machine if you want it to; see
 Section~\ref{sec:retune}. It is a separate step because it takes several
 minutes.
+
+The sieve can run on several threads (option~\verb+-t+,
+Section~\ref{sec:threads}; field \texttt{num\_threads},
+Section~\ref{sec:library}), for which the library uses POSIX threads and
+is compiled with \verb+-pthread+. On a system without them,
+\begin{verbatim}
+> make THREADS=0
+\end{verbatim}
+builds the library without threads (\verb+-DRATPOINTS_NO_THREADS+); the
+option and the field are then accepted and ignored, and the sieve runs on
+the calling thread. At most $33$ threads sieve at once,
+whatever is asked for: the correction of the sieving parameters during a
+run (Section~\ref{sec:adapt}) takes effect $32$ blocks of the loop over
+the denominators after it is decided, which is what lets that many blocks
+be in progress at the same time, and the library creates no threads
+beyond that. On a machine with more cores, build with a larger lag, as in
+\begin{verbatim}
+> make all CCFLAGS=-DRP_ADAPT_LAG=64
+\end{verbatim}
+for up to $65$ threads (the \texttt{Makefile} notices the changed flags
+and rebuilds what depends on them). The correction then comes later in the run, by a
+few per cent of it; the points found are the same, but the reports of
+\verb+-v+ on a long run may differ from those of a build with the
+default lag, as they may between any two builds.
 
 By default, the program has the $53$ odd primes below~$256$ available and
 considers the smallest~$30$ of them; for a curve that needs more, it will
@@ -394,18 +418,44 @@ and~\texttt{timing}, which add nothing but minutes) and prints,
 for each source file, the lines executed
 and the branches taken at least once (\texttt{coverage.sh}); the
 annotated sources are left in that directory.
-When this was written the tests executed $99.9\%$ of the lines
+When this was written the tests executed $99.5\%$ of the lines
 of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c}
 and~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is guards
-against states no caller can produce, arms that other compile-time settings
+against states no caller can produce, the paths that a failure to create a
+thread or to get memory would take, arms that other compile-time settings
 reach (\texttt{test4configs} runs those builds, but this measures one), and
 a few conditions the arithmetic makes impossible.
+
+\begin{verbatim}
+> make testthreads
+\end{verbatim}
+runs \texttt{rptest}, \texttt{rptest-many} and \texttt{rptest-degrees} with
+two to five sieving threads and \texttt{test3} and \texttt{test4} with
+three and seven, against the same references as before, since what the
+program prints must not depend on the number of threads; then
+\texttt{test4-threads.sh} builds the library three more times with the
+blocks into which the loop over the denominators is cut
+(Section~\ref{sec:threads}) fixed at 1, 3 and 17 steps, and runs
+\texttt{test4} and \texttt{rptest} on each with three and six threads,
+since the output must not depend on where the blocks end either.
+About a minute.
+
+\begin{verbatim}
+> make tsan
+\end{verbatim}
+builds the library and the test programs in \texttt{build-tsan/} with
+\texttt{gcc}'s ThreadSanitizer and runs the threaded tests on them
+(\texttt{tsan.sh}, which has the compiler flags): every output must match
+its reference, and the sanitizer must not report a data race. A few minutes.
 
 \begin{verbatim}
 > make timing
 \end{verbatim}
 times \texttt{ratpoints} on some curve with height bound $400\,000$.
-This may be useful for comparisons.
+This may be useful for comparisons. To time it with four threads, say
+\begin{verbatim}
+> make timing RPOPTS='-t 4'
+\end{verbatim}
 
 Finally,
 \begin{verbatim}
@@ -417,7 +467,9 @@ runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 and fails at the end if any of them failed, so that a script can
 tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
-change to the sieve rather than for checking that the build works.
+change to the sieve rather than for checking that the build works. Neither
+are \texttt{testthreads} and \texttt{tsan}, which take longer than the rest
+together.
 
 \subsection{Install}
 
@@ -475,7 +527,9 @@ Unix-like system (but not under the Windows ABI, where \texttt{long} has
 accommodates a 32-bit \texttt{long}.
 
 In addition to the standard libraries, the program also requires the
-\texttt{gmp} (GNU multi-precision) library~\cite{gmp}.
+\texttt{gmp} (GNU multi-precision) library~\cite{gmp}. Sieving on several
+threads needs POSIX threads, which every Unix-like system has;
+\texttt{make THREADS=0} builds without them (Section~\ref{sec:build}).
 
 \subsection{List of files}
 
@@ -504,16 +558,18 @@ The archive contains the following files.
         \texttt{testbase4} (needs Python~3)
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
-        executable, as have the next three
+        executable, as have the next five
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
         \texttt{make test4configs} and \texttt{make coverage} run
+  \item \texttt{test4-threads.sh}, \texttt{tsan.sh} --- the second half of
+        \texttt{make testthreads}, and what \texttt{make tsan} runs
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
         two parts that are timed on their own: building the sieving tables,
         and the exact test.  Neither is part of the library; the second is
         how to remeasure the constants of Section~\ref{sec:sp3choice}
-  \item \texttt{ratpoints-doc-3.0.tex} --- the source of this documentation
+  \item \texttt{ratpoints-doc-3.1.tex} --- the source of this documentation
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
   \item \texttt{README.md} --- a short description and an overview of what
         is new in this version
@@ -630,6 +686,36 @@ The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
 to~$+\infty$. The number $k$ of intervals is bounded by
 \texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+
+\subsection{Using several threads}\label{sec:threads}
+
+\strut\quad\verb+-t+ $n$ \\
+runs the sieve on $n$ threads; \verb+-t 0+ uses as many as the machine has
+processors. By default the program uses one thread, its own. With
+\verb+-t+~$n$ for $n \ge 2$, $n$ further threads do the sieving and the exact
+tests, while the program's own thread hands out the work and prints the
+points. The loop over the denominators is cut into blocks of consecutive
+denominators, whose length depends only on the search and not on the
+number of threads; the threads take the blocks in order, and the points
+of a block are printed only when every earlier block has been printed.
+So the output is the same, line for line, however many threads are used,
+including the reports of~\verb+-v+ and what \verb+-1+ finds: the sieving
+parameters are chosen and revised from the same counts on the same
+schedule, and the first point is the first point of the sequential
+program, not the first one found in time. At most $33$ threads sieve at
+once, so \verb+-t 0+ on a machine with more processors uses~$33$; a
+build for more cores is described in Section~\ref{sec:build}.
+
+Threads pay for long runs. On the author's laptop, a search with a height
+bound of $4\cdot10^5$ takes $1.9$~seconds on one thread and $1.0$, $0.7$
+and $0.4$ on 2, 4 and~10; the sieve's work is divided without loss
+(measured in processor cycles, two threads spend what one does), so what
+the elapsed time shows beyond that is the machine -- a laptop's power
+budget lowers the clock as more cores work. At a small height bound the
+set-up of a search, which runs on one thread, is a large share of the run
+and there is little to gain; many curves at a small height bound are
+better searched by independent searches running in parallel
+(Section~\ref{sec:library}).
 
 \subsection{Setting the parameters for the sieve} \label{fd}
 
@@ -824,6 +910,7 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
+                 long num_threads;
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used; ...}
         ratpoints_args;
@@ -937,6 +1024,21 @@ set to a default value. The various default values are defined at the
 beginning of the header file~\texttt{ratpoints.h}, where also the maximal
 degree of the polynomial is set.
 
+\texttt{num\_threads} says how many threads sieve (option~\verb+-t+,
+Section~\ref{sec:threads}): $1$ or~$0$, the calling thread alone; $n \ge 2$,
+$n$ threads besides the calling one, which hands out the work and delivers
+the points; negative, as many threads as there are online processors. The
+threads are created at the first call that asks for them and kept, with
+their working memory, until \texttt{find\_points\_clear}; so a program
+that searches many curves should use the \texttt{find\_points\_init},
+\texttt{find\_points\_work}, \texttt{find\_points\_clear} sequence
+described below rather than \texttt{find\_points}, which creates and ends
+them on every call. A call with another value of \texttt{num\_threads}
+replaces them. If the threads cannot be created, the calling thread sieves
+alone. No more than $33$ threads are created, whatever the field says,
+unless the library is built for more (Section~\ref{sec:build}). A library
+built without threads (\texttt{make THREADS=0}) ignores the field.
+
 The \texttt{flags} field holds a number of bit flags.
 \begin{itemize}
   \item \texttt{RATPOINTS\_NO\_CHECK} --- when set, do not check whether
@@ -976,6 +1078,17 @@ that \texttt{find\_points} should abort the point search and return immediately;
 otherwise the search continues. This is how the \verb+-1+~option works.
 The return value is taken as a weight
 for counting the points; usually it will be~1.
+
+Whatever \texttt{num\_threads} says, \texttt{proc} is called from the
+thread that called \texttt{find\_points}, never from a sieving thread, and
+for the same points in the same order as a single thread finds them; the
+return value of \texttt{find\_points} and the point at which \texttt{*quit}
+takes effect are the same as well. So \texttt{proc} and \texttt{info} need
+no protection against concurrent calls. A sieving thread keeps the points
+it finds until every earlier block of the search has been delivered; if it
+cannot get the memory for that, the search fails with the return value
+\texttt{RATPOINTS\_NO\_MEMORY} rather than deliver fewer points than it
+found.
 
 The usual framework for using \texttt{find\_points} is as follows.
 
@@ -1022,6 +1135,7 @@ int main(int argc, char *argv[])
   long sieve_primes2 = -1; /* negative: chosen from the curve */
   long num_primes    = -1; /* negative: the default, more if needed */
   long max_forbidden = -1; /* negative: the compiled-in default */
+  long num_threads   = 1;  /* sieve on this thread; see -t */
   long b_low         = 1;
   long b_high        = height;
   long sturm_iter    = RATPOINTS_DEFAULT_STURM;
@@ -1066,6 +1180,7 @@ int main(int argc, char *argv[])
     args.sturm         = sturm_iter;
     args.num_primes    = num_primes;
     args.max_forbidden = max_forbidden;
+    args.num_threads   = num_threads;
     args.flags         = flags;
 
     info->... = ...;
@@ -1110,6 +1225,15 @@ else changes from curve to curve) need to be set; the other input fields
 keep their values across calls. \texttt{rptest.c} with
 the \verb+-O+~option does exactly this, and \texttt{make test1once} checks
 that the points found are the same as with the fields set once per curve.
+
+Searches on different \texttt{ratpoints\_args} structures are independent
+of each other: the library keeps no state outside the structure (its
+tables of primes and residues are constant), so a program may run several
+searches at the same time on threads of its own, each with its own
+structure, callback and \texttt{info}, and each with a
+\texttt{num\_threads} of its own. For many searches at a small height
+bound this is the better way to use a machine's cores
+(Section~\ref{sec:threads}).
 
 For practical examples, see \texttt{main.c} (the code that wraps
 \texttt{find\_points} for the command line program~\texttt{ratpoints}) or
@@ -1773,6 +1897,39 @@ details, and Appendix~\ref{app:notes} the measurements behind them.
         and the library interface (\texttt{testapi}), and it fails when a
         test fails; \texttt{testhigh}, \texttt{testhighmany},
         \texttt{test4configs} and \texttt{coverage} are run separately
+        (Section~\ref{sec:tests}).
+\end{itemize}
+
+\textbf{Version 3.1.0} was released XXXX XX, 2026. The sieve can run on
+several threads.
+\begin{itemize}
+  \item \emph{Threads.} The option \verb+-t+~$n$ and the field
+        \texttt{num\_threads} of \texttt{ratpoints\_args} run the sieve
+        and the exact tests on $n$ threads besides the calling one, which
+        hands out the work and delivers the points
+        (Sections~\ref{sec:threads} and~\ref{sec:library}). The loop over
+        the denominators is cut into blocks whose length depends on the
+        search alone, the threads take the blocks in order, and the points
+        of a block are delivered when every earlier block has been: what
+        the program prints, what the callback receives and in which order,
+        and where \texttt{*quit} takes effect do not depend on the number
+        of threads, and neither do the sieving parameters chosen and their
+        revision during the run, which follow the same schedule of blocks.
+        The sieving tables are built once and shared. POSIX threads;
+        \texttt{make THREADS=0} builds without them, and at most $33$
+        threads sieve unless the library is built for more
+        (Section~\ref{sec:build}). A search that cannot
+        keep the points of a block fails with \texttt{RATPOINTS\_NO\_MEMORY}
+        rather than deliver fewer points than it found. On the author's
+        laptop a search at height bound $4\cdot10^5$ takes $1.9$~s on one
+        thread and $0.4$~s on ten, and on the long test suites two threads
+        spend the processor cycles of one. Programs using the library must
+        be recompiled, since \texttt{ratpoints\_args} has gained fields.
+  \item \emph{The 512-bit build} has been run on AVX-512 hardware, where the
+        test suite passes; Section~\ref{sec:build} says what it is worth.
+  \item \emph{Tests.} \texttt{make testthreads} runs the suites with several
+        threads and with the blocks of the denominator loop fixed at other
+        lengths, and \texttt{make tsan} runs them under ThreadSanitizer
         (Section~\ref{sec:tests}).
 \end{itemize}
 

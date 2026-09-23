@@ -1,4 +1,4 @@
-#   ratpoints-3.0.0
+#   ratpoints-3.1.0
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
@@ -72,7 +72,7 @@
 # with very many rational points; on those it is worth up to a factor of two.
 # Having the larger table costs nothing when it is not used.
 PRIME_SIZE = 8
-VERSION = 3.0.0
+VERSION = 3.1.0
 
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
@@ -214,7 +214,7 @@ CCFLAGS =
 DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
-            main.c rptest.c testdata.h testbase ratpoints-doc-3.0.tex \
+            main.c rptest.c testdata.h testbase ratpoints-doc-3.1.tex \
             README.md gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
@@ -239,7 +239,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               rptest-degrees rpapi ratpoints-debug \
-              bench_init bench_check ratpoints-doc-3.0.pdf
+              bench_init bench_check ratpoints-doc-3.1.pdf
 
 FAILED = "Test failed!"
 # what a test does when its output differs from the reference: print the
@@ -248,7 +248,7 @@ FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
-doc: ratpoints-doc-3.0.pdf
+doc: ratpoints-doc-3.1.pdf
 
 # The suites "make test" runs, each a target below.  A test whose output
 # differs from its reference prints "Test failed!" and fails its target
@@ -463,7 +463,7 @@ test2: ratpoints testbase2
 # Time a call to ratpoints with a largish height parameter.
 # This can be helpful to assess modifications to the sieving process.
 timing: ratpoints
-	time ./ratpoints '1 0 126 0 441' 400000 -q > /dev/null
+	time ./ratpoints '1 0 126 0 441' 400000 -q ${RPOPTS} > /dev/null
 
 install-bin: ratpoints
 	${INSTALL} ratpoints ${INSTALL_DIR}/bin/
@@ -479,9 +479,9 @@ install: install-bin install-lib
 
 # To generate the documentation, run pdflatex twice
 # to get the cross-references right.
-ratpoints-doc-3.0.pdf: ratpoints-doc-3.0.tex
-	pdflatex ratpoints-doc-3.0.tex
-	pdflatex ratpoints-doc-3.0.tex
+ratpoints-doc-3.1.pdf: ratpoints-doc-3.1.tex
+	pdflatex ratpoints-doc-3.1.tex
+	pdflatex ratpoints-doc-3.1.tex
 
 dist: ${DISTFILES}
 	mkdir -p ratpoints-${VERSION}

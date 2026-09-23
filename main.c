@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -37,7 +37,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.1.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \

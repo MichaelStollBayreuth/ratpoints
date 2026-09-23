@@ -74,8 +74,10 @@ m() { t "$@" | grep -v '^This is ratpoints-\|used for\|further primes\|primes us
 # depends on the width of a bit array), and what the exact check is put at
 # (the compiled-in constants).  Two of the reports say what the primes
 # beyond 127 say, and differ in a build with PRIME_SIZE 7, whose table ends
-# there; test4-configs.sh compares that build without this part
+# there; test4-configs.sh compares that build without this part.  The
+# first line of the report names the version and goes too
 v() { t "$@" | awk '
+  /^This is ratpoints-/ { next }
   /bits set per word/ { skip = 1; next }
   /^  use [0-9]+ (moduli|primes) for (first|second|third) stage:/ { skip = 1; next }
   /one exact check is put at/ { skip = 1; next }
