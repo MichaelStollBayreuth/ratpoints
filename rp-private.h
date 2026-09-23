@@ -113,7 +113,8 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
  * vectors to pairs of 256-bit operations, so that the whole code path
  * (RBA_PACK == 8, the mask macros, the second stage) is exercised.  What
  * such a run cannot check is the genuine 512-bit instructions, i.e., the
- * TEST macro below. */
+ * TEST macro below; with those, the test suite passes on AVX-512 hardware
+ * (Zen 5). */
 
 #include <immintrin.h>
 
