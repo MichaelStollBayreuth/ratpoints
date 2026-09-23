@@ -3385,16 +3385,22 @@ typedef struct {mpz_t *cof; long degree; long height;
  * into blocks of consecutive steps, numbered in the order of the loop, and
  * a block is sieved as a whole, its denominators in order.  The block length
  * is a function of the run alone: about RP_BLOCKS_WANTED blocks, but at
- * least one step, so that it is the same however many threads share the
- * blocks and the points come out in the same order.  The divisor shape has
- * one segment of steps per divisor, in the order of the divisors; the
- * others one segment. */
+ * least RP_BLOCK_MIN steps each, so that it is the same however many
+ * threads share the blocks and the points come out in the same order.  The
+ * minimum is for the small height bounds, where a word of 64 denominators
+ * sieves in a few microseconds: the calling thread is woken once per block
+ * to deliver its points, and with blocks of one word it would set the pace
+ * for the pool's threads.  The divisor shape has one segment of steps per
+ * divisor, in the order of the divisors; the others one segment. */
 #define RP_SHAPE_SQUARES  0
 #define RP_SHAPE_SQUARES1 1
 #define RP_SHAPE_WORDS    2
 #define RP_SHAPE_ALL      3
 #ifndef RP_BLOCKS_WANTED
 # define RP_BLOCKS_WANTED 1024
+#endif
+#ifndef RP_BLOCK_MIN
+# define RP_BLOCK_MIN 16
 #endif
 
 typedef struct { ratpoints_args *args;
@@ -3495,6 +3501,7 @@ static void run_setup(rp_run *run, ratpoints_args *args,
     if(hi >= lo) { steps += (hi - lo) + 1; }
   }
   run->len = steps/RP_BLOCKS_WANTED + 1;
+  if(run->len < RP_BLOCK_MIN) { run->len = RP_BLOCK_MIN; }
 #ifdef RP_BLOCK_LEN
   run->len = RP_BLOCK_LEN;  /* a fixed block length, to test the block boundaries */
 #endif
