@@ -3297,6 +3297,319 @@ typedef struct {mpz_t *cof; long degree; long height;
    will hold the coefficents of the polynomial,
    multiplied by powers of the denominator b */
 
+/**************************************************************************
+ * The loop over the denominators, in blocks                              *
+ **************************************************************************/
+
+/* The denominators are visited in one of four shapes: the squares b = k^2
+ * (an odd degree and a leading coefficient +-1), the multiples b = d k^2 of
+ * the divisors d of the leading coefficient (an odd degree otherwise), every
+ * b that passes the denominator tests, taken a word of 64 at a time (an
+ * even degree; see the word loop below), or every b with no test but the
+ * one mod 64.  The steps of a shape -- the k, the words, or the b -- are cut
+ * into blocks of consecutive steps, numbered in the order of the loop, and
+ * a block is sieved as a whole, its denominators in order.  The block length
+ * is a function of the run alone: about RP_BLOCKS_WANTED blocks, but at
+ * least one step, so that it is the same however many threads share the
+ * blocks and the points come out in the same order.  The divisor shape has
+ * one segment of steps per divisor, in the order of the divisors; the
+ * others one segment. */
+#define RP_SHAPE_SQUARES  0
+#define RP_SHAPE_SQUARES1 1
+#define RP_SHAPE_WORDS    2
+#define RP_SHAPE_ALL      3
+#ifndef RP_BLOCKS_WANTED
+# define RP_BLOCKS_WANTED 1024
+#endif
+
+typedef struct { ratpoints_args *args;
+                 const rp_num_class *cls;   /* the numerator classes, by b mod 64 */
+                 unsigned long den_bits;    /* bit j: the class of b = j mod 64 has a pattern */
+                 forbidden_entry *forb_ba;  /* the forbidden divisors tested with bit arrays... */
+                 forbidden_val *forbidden;  /* ...and by valuation; both zero-terminated */
+                 use_squares1_info *den_info; /* the valuation test of the divisor shape */
+                 long *divisors;            /* the divisors of the divisor shape, zero-terminated */
+                 jacobi_info ji;            /* the Jacobi symbol test by Legendre symbols... */
+                 unsigned char jtab[RP_JACOBI_TABLE];
+                 int fast_jacobi;           /* ...when the leading coefficient allows it */
+                 int use_c_long; long lcf_long; /* the leading coefficient, when it fits a long */
+                 int shape;
+                 long len;                  /* steps per block */
+                 long nseg;                 /* segments: one, or one per divisor */
+                 long *seg_lo; long *seg_hi; /* the steps of each segment, both ends included */
+                 long *seg_block;           /* the first block of each segment; [nseg] = nblocks */
+                 long nblocks; }
+        rp_run;
+
+/* the largest k with k^2 <= n (0 for n < 1) */
+static long floor_sqrt(long n)
+{ long k;
+
+  if(n < 1) { return(0); }
+  k = (long)sqrt((double)n);
+  while(k > 1 && k > n/k) { k--; }       /* k^2 > n */
+  while(k + 1 <= n/(k + 1)) { k++; }     /* (k+1)^2 <= n */
+  return(k);
+}
+
+static void run_setup(rp_run *run, ratpoints_args *args,
+                      const rp_num_class *cls, unsigned long den_bits,
+                      forbidden_entry *forb_ba, forbidden_val *forbidden,
+                      use_squares1_info *den_info, long *divisors,
+                      int use_c_long, long lcf_long, mpz_t tmp)
+{ long nseg = 1, s, n, steps = 0;
+
+  run->args = args; run->cls = cls; run->den_bits = den_bits;
+  run->forb_ba = forb_ba; run->forbidden = forbidden;
+  run->den_info = den_info; run->divisors = divisors;
+  run->use_c_long = use_c_long; run->lcf_long = lcf_long;
+  run->fast_jacobi = 0;
+  if(args->flags & RATPOINTS_USE_SQUARES) { run->shape = RP_SHAPE_SQUARES; }
+  else if(args->flags & RATPOINTS_USE_SQUARES1)
+  { run->shape = RP_SHAPE_SQUARES1;
+    for(nseg = 0; divisors[nseg]; nseg++) {}
+  }
+  else if(args->flags & RATPOINTS_CHECK_DENOM)
+  { run->shape = RP_SHAPE_WORDS;
+    /* the Jacobi symbol test as a product of Legendre symbols, when the
+     * leading coefficient allows it; see jacobi_setup */
+    run->fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
+                         && jacobi_setup(&run->ji, run->jtab, RP_JACOBI_TABLE,
+                                         args->cof[args->degree], tmp,
+                                         args->b_high);
+  }
+  else { run->shape = RP_SHAPE_ALL; }
+  run->nseg = nseg;
+  run->seg_lo = malloc(3*(nseg + 1)*sizeof(long));
+  run->seg_hi = run->seg_lo + (nseg + 1);
+  run->seg_block = run->seg_hi + (nseg + 1);
+  for(s = 0; s < nseg; s++)
+  { long lo, hi;
+
+    switch(run->shape)
+    { case RP_SHAPE_SQUARES: /* the k with b_low <= k^2 <= b_high */
+        lo = ceil_sqrt(args->b_low); hi = floor_sqrt(args->b_high);
+        break;
+      case RP_SHAPE_SQUARES1: /* the k with b_low <= d k^2 <= b_high (the
+                               * divisors are at most b_high, see setup_us1) */
+      { long d = divisors[s];
+
+        lo = ceil_sqrt((args->b_low - 1)/d + 1); hi = floor_sqrt(args->b_high/d);
+        break;
+      }
+      case RP_SHAPE_WORDS: /* the words of 64 denominators */
+        lo = args->b_low >> LONG_SHIFT; hi = args->b_high >> LONG_SHIFT;
+        break;
+      default: /* RP_SHAPE_ALL */
+        lo = args->b_low; hi = args->b_high;
+        break;
+    }
+    run->seg_lo[s] = lo; run->seg_hi[s] = hi;
+    /* the divisor shape's segments are short; the others are one segment,
+     * whose length fits a long since lo >= 1 */
+    if(hi >= lo) { steps += (hi - lo) + 1; }
+  }
+  run->len = steps/RP_BLOCKS_WANTED + 1;
+#ifdef RP_BLOCK_LEN
+  run->len = RP_BLOCK_LEN;  /* a fixed block length, to test the block boundaries */
+#endif
+  n = 0;
+  for(s = 0; s < nseg; s++)
+  { run->seg_block[s] = n;
+    if(run->seg_hi[s] >= run->seg_lo[s])
+    { n += (run->seg_hi[s] - run->seg_lo[s])/run->len + 1; }
+  }
+  run->seg_block[nseg] = n;
+  run->nblocks = n;
+#ifdef DEBUG
+  printf("\n  denominator loop: shape %d, %ld segment(s), %ld block(s) of %ld"
+         " step(s)\n", run->shape, nseg, n, run->len);
+  fflush(NULL);
+#endif
+}
+
+static void run_clear(rp_run *run)
+{ free(run->seg_lo); run->seg_lo = NULL; }
+
+/* Sieve block i: its denominators in order, on the worker wk.  Returns the
+ * number of points; wk->quit says whether process() stopped the search. */
+static long run_block(rp_run *run, rp_worker *wk, long i,
+                      int process(long, long, const mpz_t, void*, int*),
+                      void *info)
+{ ratpoints_args *args = run->args;
+  const rp_num_class *cls = run->cls;
+  long total = 0;
+  long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
+    /* sp3_max, not sp3: adapt_primes may reach for a
+     * further prime as the run goes on */
+  long seg = 0, a, e;
+
+  /* the segment the block lies in, and its steps [a, e] */
+  while(run->seg_block[seg + 1] <= i) { seg++; }
+  a = run->seg_lo[seg] + (i - run->seg_block[seg])*run->len;
+  e = (run->seg_hi[seg] - a < run->len) ? run->seg_hi[seg]
+                                        : a + run->len - 1;
+
+  switch(run->shape)
+  { case RP_SHAPE_SQUARES:
+    { long k;
+
+      for(k = a; k <= e; k++)
+      { long bb = k*k;
+        const rp_num_class *cl = &cls[bb & 0x3f];
+
+        if(EXT0(cl->bits))
+        { fill_bp_list(bb, cl->k, bp_list, wk);
+          total += sift(bb, wk, cl, &bp_list[0], process, info);
+          if(wk->quit) { return(total); }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
+#endif
+      }
+      break;
+    }
+    case RP_SHAPE_SQUARES1:
+    { long d = run->divisors[seg], k;
+
+      for(k = a; k <= e; k++)
+      { long bb = d*k*k;
+        const rp_num_class *cl = &cls[bb & 0x3f];
+
+        if(EXT0(cl->bits))
+        { use_squares1_info *den_info = run->den_info;
+          int flag = 1;
+          long j;
+
+          for(j = 0; den_info[j].p; j++)
+          { int v = valuation1(bb, den_info[j].p);
+
+            if((v >= den_info[j].slope) && ((v + (den_info[j].val)) & 1))
+            { flag = 0; break; }
+          }
+          if(flag)
+          { fill_bp_list(bb, cl->k, bp_list, wk);
+            total += sift(bb, wk, cl, &bp_list[0], process, info);
+            if(wk->quit) { return(total); }
+          }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
+#endif
+      }
+      break;
+    }
+    case RP_SHAPE_WORDS:
+    { /* The 2-adic test on a denominator depends on b mod 64 alone -- bit
+       * b mod 64 of den_bits says whether its class has a numerator
+       * pattern -- and the forbidden-divisor arrays are words indexed by b
+       * mod 64 as well.  So the denominators are taken a word of 64 at a
+       * time: the word of those that pass both tests is one AND per array,
+       * and the loop below visits only the bits that are set, which on a
+       * random curve are a third of the denominators.  Bit j of the word
+       * for w stands for b = 64*w + j.  Word w of the run reads entry
+       * w mod p of the array of the prime p: the pointers are set for the
+       * block's first word and step on from there. */
+      forbidden_entry *fba;
+      long nfb = 0, n, w;
+
+      for(fba = run->forb_ba; fba->p; fba++) { nfb++; }
+      { const unsigned long *cur[nfb > 0 ? nfb : 1];
+
+        for(n = 0, fba = run->forb_ba; n < nfb; n++, fba++)
+        { cur[n] = fba->start + mod(a, fba->p); }
+        for(w = a; ; w++)
+        { unsigned long b_bits = run->den_bits;
+          long base = w << LONG_SHIFT;
+
+          for(n = 0, fba = run->forb_ba; n < nfb; n++, fba++)
+          { b_bits &= *cur[n];
+            cur[n]++;
+            if(cur[n] == fba->end) { cur[n] = fba->start; }
+          }
+          /* the first and the last word may be entered part way */
+          if(w == run->seg_lo[0])
+          { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
+          if(w == run->seg_hi[0])
+          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
+#ifdef DEBUG
+          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
+          fflush(NULL);
+#endif
+          while(b_bits)
+          { long b = base + RP_CTZL(b_bits);
+            const rp_num_class *cl = &cls[b & 0x3f];
+            forbidden_val *forb;
+
+            b_bits &= b_bits - 1UL;
+            /* the Jacobi symbol test comes first when it is the cheap one:
+             * a few multiplications against the divisions of the valuation
+             * test, and it rejects half of what gets here */
+            if(run->fast_jacobi && !jacobi_test(b, &run->ji))
+            {
+#ifdef DEBUG
+              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+              fflush(NULL);
+#endif
+              continue;
+            }
+            /* check if denominator is excluded: is v_p(b) one of the
+             * valuations the entry for p forbids? */
+            for(forb = run->forbidden;
+                forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
+                forb++) {};
+#ifdef DEBUG
+            if(forb->p)
+            { printf("\nb = %ld: excluded, v_%ld(b) = %ld\n",
+                     b, forb->p, valuation1(b, forb->p));
+              fflush(NULL);
+            }
+#endif
+            if(forb->p == 0
+                && (run->fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
+                      || (run->use_c_long
+                           ? jacobi1(b, run->lcf_long)
+                           : jacobi(b, wk->work[0], args->cof[args->degree]))
+                         == 1))
+            { fill_bp_list(b, cl->k, bp_list, wk);
+              total += sift(b, wk, cl, &bp_list[0], process, info);
+              if(wk->quit) { return(total); }
+            }
+#ifdef DEBUG
+            else
+            { if(forb->p == 0)
+              { printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+                fflush(NULL);
+            } }
+#endif
+          }
+          if(w == e) { break; }
+        }
+      }
+      break;
+    }
+    default: /* RP_SHAPE_ALL */
+    { long b;
+
+      for(b = a; ; b++)
+      { const rp_num_class *cl = &cls[b & 0x3f];
+
+        if(EXT0(cl->bits))
+        { fill_bp_list(b, cl->k, bp_list, wk);
+          total += sift(b, wk, cl, &bp_list[0], process, info);
+          if(wk->quit) { return(total); }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", b); fflush(NULL); }
+#endif
+        if(b == e) { break; } /* b++ could overflow */
+      }
+    }
+  }
+  return(total);
+}
+
+
 static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info);
 
@@ -3855,6 +4168,8 @@ static long find_points_work_1(ratpoints_args *args,
      * packing (a dozen or so; at most 64), over every prime that may come to
      * be sieved with */
     long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
+    rp_run run;   /* the loop over the denominators, in blocks */
+    long i;
 
 #ifdef DEBUG
     printf("\nfind_points_work: allocating space for survivors...");
@@ -3869,246 +4184,13 @@ static long find_points_work_1(ratpoints_args *args,
     printf(" done\n");
     fflush(NULL);
 #endif
-
-    if(args->flags & (RATPOINTS_USE_SQUARES | RATPOINTS_USE_SQUARES1))
-    { if(args->flags & RATPOINTS_USE_SQUARES)
-      /* need only take squares as denoms */
-      { long b, bb;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-
-#ifdef DEBUG
-        printf("\n  using squares\n");
-        fflush(NULL);
-#endif
-
-        /* from the first square in the range; b*b <= b_high, written so
-         * that the square cannot overflow */
-        for(b = ceil_sqrt(args->b_low); b <= args->b_high/b; b++)
-        { const rp_num_class *cl;
-
-          bb = b*b;
-          cl = &cls[bb & 0x3f];
-          if(EXT0(cl->bits))
-          { fill_bp_list(bb, cl->k, bp_list, &wk);
-            total += sift(bb, &wk, cl, &bp_list[0], process, info);
-            if(wk.quit) { break; }
-          }
-
-#ifdef DEBUG
-          else
-          { printf("\nb = %ld: excluded mod 64\n", bb);
-            fflush(NULL);
-          }
-#endif
-        }
-      }
-      else /* args->flags & RATPOINTS_USE_SQUARES1 */
-      { long *div = &divisors[0];
-        long b, bb;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-
-#ifdef DEBUG
-        printf("\n  using squares times divisors of leading coefficient\n");
-        fflush(NULL);
-#endif
-
-        for( ; *div; div++)
-        {
-#ifdef DEBUG
-          printf("\n  divisor = %ld\n", *div);
-          fflush(NULL);
-#endif
-
-          /* from the first multiple of the divisor by a square in the
-           * range; d*b*b <= b_high, written so that the product cannot
-           * overflow (the divisors are at most b_high, see setup_us1) */
-          for(b = ceil_sqrt((args->b_low - 1)/(*div) + 1);
-              b <= (args->b_high/(*div))/b; b++)
-          { int flag = 1;
-            const rp_num_class *cl;
-
-            bb = (*div)*b*b;
-            cl = &cls[bb & 0x3f];
-            if(EXT0(cl->bits))
-            { long i;
-
-              for(i = 0; den_info[i].p; i++)
-              { int v = valuation1(bb, den_info[i].p);
-                if((v >= den_info[i].slope)
-                     && ((v + (den_info[i].val)) & 1))
-                { flag = 0; break; }
-              }
-              if(flag)
-              { fill_bp_list(bb, cl->k, bp_list, &wk);
-                total += sift(bb, &wk, cl, &bp_list[0], process, info);
-                if(wk.quit) { break; }
-              }
-            }
-
-#ifdef DEBUG
-            else
-            { printf("\nb = %ld: excluded mod 64\n", bb);
-              fflush(NULL);
-            }
-#endif
-          }
-        if(wk.quit) { break; }
-        }
-    } }
-    else
-    { if(args->flags & RATPOINTS_CHECK_DENOM)
-      { forbidden_val *forb;
-        long b;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-        long w, w_low = args->b_low >> LONG_SHIFT;
-        long w_high = args->b_high >> LONG_SHIFT;
-        /* the Jacobi symbol test as a product of Legendre symbols, when the
-         * leading coefficient allows it; see jacobi_setup */
-        jacobi_info ji;
-        unsigned char jtab[RP_JACOBI_TABLE];
-        int fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
-                            && jacobi_setup(&ji, jtab, RP_JACOBI_TABLE,
-                                            c[degree], work[0], args->b_high);
-
-#ifdef DEBUG
-        printf("\n  taking account of forbidden divisors of the denominator\n");
-        if(args->flags & RATPOINTS_USE_JACOBI)
-        { printf("  Jacobi symbol test %s\n",
-                 fast_jacobi ? "by Legendre symbols" : "by jacobi1/jacobi");
-        }
-        fflush(NULL);
-#endif
-
-        /* The 2-adic test on a denominator depends on b mod 64 alone -- bit
-         * b mod 64 of den_bits says whether its class has a numerator
-         * pattern -- and the forbidden-divisor arrays are words indexed by b
-         * mod 64 as well.  So the denominators are taken a word of 64 at a
-         * time: the word of those that pass both tests is one AND per array,
-         * and the loop below visits only the bits that are set, which on a
-         * random curve are a third of the denominators.  Bit j of the word
-         * for w stands for b = 64*w + j. */
-        { forbidden_entry *fba = &forb_ba[0];
-
-          while(fba->p)
-          { fba->curr = fba->start + mod(w_low, fba->p);
-            fba++;
-          }
-        }
-
-#ifdef DEBUG
-        printf("\n  den_bits = %*.*lx\n", WIDTH, WIDTH, den_bits);
-        fflush(NULL);
-#endif
-
-        for(w = w_low; w <= w_high; w++)
-        { unsigned long b_bits = den_bits;
-          long base = w << LONG_SHIFT;
-
-          { forbidden_entry *fba = &forb_ba[0];
-
-            while(fba->p)
-            { b_bits &= *(fba->curr);
-              fba->curr++;
-              if(fba->curr == fba->end) { fba->curr = fba->start; }
-              fba++;
-            }
-          }
-          /* the first and the last word may be entered part way */
-          if(w == w_low) { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
-          if(w == w_high)
-          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
-
-#ifdef DEBUG
-          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
-          fflush(NULL);
-#endif
-
-          while(b_bits)
-          { const rp_num_class *cl;
-
-            b = base + RP_CTZL(b_bits);
-            b_bits &= b_bits - 1UL;
-            cl = &cls[b & 0x3f];
-
-            /* the Jacobi symbol test comes first when it is the cheap one:
-             * a few multiplications against the divisions of the valuation
-             * test, and it rejects half of what gets here */
-            if(fast_jacobi && !jacobi_test(b, &ji))
-            {
-#ifdef DEBUG
-              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
-              fflush(NULL);
-#endif
-              continue;
-            }
-
-            /* check if denominator is excluded: is v_p(b) one of the
-             * valuations the entry for p forbids? */
-            for(forb = &forbidden[0];
-                forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
-                forb++) {};
-
-#ifdef DEBUG
-            if(forb->p)
-            { printf("\nb = %ld: excluded, v_%ld(b) = %ld\n",
-                     b, forb->p, valuation1(b, forb->p));
-              fflush(NULL);
-            }
-#endif
-
-            if(forb->p == 0
-                && (fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
-                      || (use_c_long
-                           ? jacobi1(b, c_long[degree])
-                           : jacobi(b, work[0], c[degree])) == 1))
-            { fill_bp_list(b, cl->k, bp_list, &wk);
-              total += sift(b, &wk, cl, &bp_list[0], process, info);
-              if(wk.quit) { break; }
-            }
-
-#ifdef DEBUG
-            else
-            { if(forb->p == 0)
-              { printf("\nb = %ld: excluded by Jacobi symbol\n", b);
-                fflush(NULL);
-            } }
-#endif
-
-          }
-          if(wk.quit) { break; }
-        }
-      } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
-      else
-      { long b;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-
-        for(b = args->b_low; b <= args->b_high; b++)
-        { const rp_num_class *cl = &cls[b & 0x3f];
-
-          if(EXT0(cl->bits))
-          { fill_bp_list(b, cl->k, bp_list, &wk);
-            total += sift(b, &wk, cl, &bp_list[0], process, info);
-            if(wk.quit) { break; }
-          }
-
-#ifdef DEBUG
-          else
-          { printf("\nb = %ld: excluded mod 64\n", b);
-            fflush(NULL);
-          }
-#endif
-
-          if(b == LONG_MAX) { break; } /* b++ would overflow */
-      } }
+    run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
+              divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
+    for(i = 0; i < run.nblocks; i++)
+    { total += run_block(&run, &wk, i, process, info);
+      if(wk.quit) { break; }
     }
+    run_clear(&run);
     /* de-allocate memory */
     worker_clear(&wk);
   }
