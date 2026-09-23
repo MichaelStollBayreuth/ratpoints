@@ -217,7 +217,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
-            test4.sh testbase4 verify-test4.py test4-configs.sh \
+            test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
             rpapi.c testbase-api coverage.sh \
             bench_init.c bench_check.c tune.sh
 
@@ -230,7 +230,9 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
             test3.out rptest-once.out rptest-once2.out rptest-once3.out \
-            test4.out testapi.out test4-*.out
+            test4.out testapi.out test4-*.out \
+            rptest-t2.out rptest-t5.out rptest-many-t3.out \
+            rptest-degrees-t4.out test3-t3.out rptest-threads-*.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
@@ -405,6 +407,39 @@ testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
 	cmp -s testbase-api testapi.out || ${FAIL}
 
+# The suites with the sieve on several threads (the option -t): the same
+# references, since what the program prints must not depend on the number
+# of threads; then test4 and test1 on builds with fixed block lengths, so
+# that the blocks of the loop over the denominators end elsewhere
+# (test4-threads.sh; a couple of minutes).
+.PHONY: testthreads
+testthreads: rptest rptest-many rptest-degrees ratpoints testbase \
+             testbase-many testbase-degrees testbase3 testbase4 \
+             test3.sh test4.sh test4-threads.sh
+	./rptest -t 2 > rptest-t2.out
+	cmp -s testbase rptest-t2.out || ${FAIL}
+	./rptest -t 5 > rptest-t5.out
+	cmp -s testbase rptest-t5.out || ${FAIL}
+	./rptest-many -t 3 > rptest-many-t3.out
+	cmp -s testbase-many rptest-many-t3.out || ${FAIL}
+	./rptest-degrees -t 4 > rptest-degrees-t4.out
+	cmp -s testbase-degrees rptest-degrees-t4.out || ${FAIL}
+	RPOPTS='-t 3' ./test3.sh > test3-t3.out 2>&1
+	cmp -s testbase3 test3-t3.out || ${FAIL}
+	RPOPTS='-t 3' ./test4.sh > test4-t3.out 2>&1
+	cmp -s testbase4 test4-t3.out || ${FAIL}
+	RPOPTS='-t 7' ./test4.sh > test4-t7.out 2>&1
+	cmp -s testbase4 test4-t7.out || ${FAIL}
+	./test4-threads.sh
+
+# The threaded runs under ThreadSanitizer (tsan.sh: a build with
+# -fsanitize=thread in build-tsan/, the drivers with threads, rpapi, and
+# test4 with -t 3; every output must match its reference and the sanitizer
+# must report nothing; a few minutes).
+.PHONY: tsan
+tsan: testbase testbase-many testbase-degrees testbase-api testbase4 tsan.sh
+	./tsan.sh
+
 # test4 on the library built with the other compile-time switches, each in
 # a build directory of its own (see test4-configs.sh; the script exits with
 # 1 when an output differs from the reference, with 2 when a build failed).
@@ -455,7 +490,7 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
-	${RM} -r build-coverage build-test4-*
+	${RM} -r build-coverage build-test4-* build-threads-* build-tsan
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk

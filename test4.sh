@@ -40,14 +40,18 @@ RP=${RP:-./ratpoints}
 # whose target fails with 1 when they differ)
 [ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
 
+# options added to every invocation of t and f (not to the tests of the
+# argument checks, e): "make testthreads" passes -t, since the output must
+# not depend on the number of threads
+RPOPTS=${RPOPTS:-}
 # run ratpoints, the arguments announced first
-t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@"; }
+t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@" $RPOPTS; }
 # the same, with the output run through a filter (the first argument, a
 # shell command reading its standard input), which is announced with the
 # arguments: for the runs that look at one line of a report, or count them
 f() { filt=$1; shift
       printf '#'; for a; do printf ' <%s>' "$a"; done; echo " | $filt"
-      "$RP" "$@" | eval "$filt"
+      "$RP" "$@" $RPOPTS | eval "$filt"
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists

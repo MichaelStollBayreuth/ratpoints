@@ -57,6 +57,45 @@ static int show(long a, long b, const mpz_t y, void *info, int *quit)
   return(1);
 }
 
+/* keep the points of a run, to compare two runs point by point: what the
+ * library delivers must not depend on the number of threads */
+#define KEPT_MAX 8192
+typedef struct { long a; long b; mpz_t y; } kept_point;
+static kept_point kept[2][KEPT_MAX];
+static long nkept[2] = {0, 0};
+static int keep_to = 0;
+
+static int keep(long a, long b, const mpz_t y, void *info, int *quit)
+{ long n = nkept[keep_to];
+
+  if(n < KEPT_MAX)
+  { kept[keep_to][n].a = a; kept[keep_to][n].b = b;
+    mpz_init_set(kept[keep_to][n].y, y);
+    nkept[keep_to] = n + 1;
+  }
+  seen++;
+  return(1);
+}
+
+/* the same, stopping at the first point */
+static int keep_one(long a, long b, const mpz_t y, void *info, int *quit)
+{ keep(a, b, y, info, quit); *quit = 1; return(1); }
+
+/* whether the two kept runs agree, point by point and in order */
+static void same_points(void)
+{ long n, same = (nkept[0] == nkept[1]);
+
+  for(n = 0; same && n < nkept[0]; n++)
+  { same = (kept[0][n].a == kept[1][n].a && kept[0][n].b == kept[1][n].b
+              && mpz_cmp(kept[0][n].y, kept[1][n].y) == 0);
+  }
+  printf("  the two runs: %ld and %ld points, %s\n", nkept[0], nkept[1],
+         same ? "the same in the same order" : "DIFFERENT");
+  for(n = 0; n < nkept[0]; n++) { mpz_clear(kept[0][n].y); }
+  for(n = 0; n < nkept[1]; n++) { mpz_clear(kept[1][n].y); }
+  nkept[0] = 0; nkept[1] = 0; keep_to = 0;
+}
+
 /* set the coefficients from a list of longs and the input fields to what
  * main.c starts from */
 static void curve(ratpoints_args *args, long degree, const long *cof,
@@ -194,6 +233,51 @@ int main(void)
   curve(&args, 6, sextic, 30); args.num_inter = 1;
   domain[0].low = -0.5; domain[0].up = 0.5;
   report("the same on [-0.5, 0.5]", find_points(&args, show, NULL));
+
+  /* Threads.  Each search is run on one thread and on three, and the
+   * points of the two runs are compared one by one: the library must
+   * deliver the same points in the same order whatever the number of
+   * threads, the same total, and under a callback that stops the search
+   * the same first point.  (A library built without threads sieves on one
+   * thread whatever num_threads says, and passes the same way.) */
+  curve(&args, 2, pyth, 2000); args.degree = 6;
+  find_points_init(&args);
+  args.degree = 2;
+  keep_to = 0; report("y^2 = x^2 + 1, height 2000, one thread",
+                      find_points_work(&args, keep, NULL));
+  curve(&args, 2, pyth, 2000); args.num_threads = 3;
+  keep_to = 1; report("the same on three threads", find_points_work(&args, keep, NULL));
+  printf("  num_threads after the search: %ld\n", args.num_threads);
+  same_points();
+  curve(&args, 6, sextic, 3000);
+  keep_to = 0; report("(x^2 + 1)(x^4 + 1), height 3000, one thread",
+                      find_points_work(&args, keep, NULL));
+  curve(&args, 6, sextic, 3000); args.num_threads = 3;
+  keep_to = 1; report("the same on three threads", find_points_work(&args, keep, NULL));
+  same_points();
+  curve(&args, 5, quintic, 500);
+  keep_to = 0; report("x^5 + 1, height 500, stop at the first point, one thread",
+                      find_points_work(&args, keep_one, NULL));
+  curve(&args, 5, quintic, 500); args.num_threads = 3;
+  keep_to = 1; report("the same on three threads", find_points_work(&args, keep_one, NULL));
+  same_points();
+  curve(&args, 2, pyth, 300); args.flags = RATPOINTS_NO_CHECK;
+  keep_to = 0; report("the survivors (RATPOINTS_NO_CHECK), height 300, one thread",
+                      find_points_work(&args, keep, NULL));
+  curve(&args, 2, pyth, 300); args.flags = RATPOINTS_NO_CHECK; args.num_threads = 3;
+  keep_to = 1; report("the same on three threads", find_points_work(&args, keep, NULL));
+  same_points();
+  curve(&args, 2, pyth, 2000); args.num_threads = -1;
+  report("as many threads as there are processors", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 2000); args.num_threads = 2;
+  keep_to = 0; report("two threads after the pool of three", find_points_work(&args, keep, NULL));
+  curve(&args, 2, pyth, 2000); args.num_threads = 1;
+  keep_to = 1; report("and one thread after that", find_points_work(&args, keep, NULL));
+  same_points();
+  find_points_clear(&args);
+  curve(&args, 6, sextic, 3000); args.num_threads = 4;
+  report("find_points on four threads (the pool made and freed inside)",
+         find_points(&args, count, NULL));
 
   for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
   return(0);

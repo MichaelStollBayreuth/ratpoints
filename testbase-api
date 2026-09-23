@@ -43,3 +43,21 @@ find_points: y^2 = (x^2 + 1)(x^4 + 1), height 30            8  (8 seen)
     (0 : 1 : 1)
     (0 : -1 : 1)
 the same on [-0.5, 0.5]                                     4  (4 seen)
+y^2 = x^2 + 1, height 2000, one thread                   2852  (2852 seen)
+the same on three threads                                2852  (2852 seen)
+  num_threads after the search: 3
+  the two runs: 2852 and 2852 points, the same in the same order
+(x^2 + 1)(x^4 + 1), height 3000, one thread                 8  (8 seen)
+the same on three threads                                   8  (8 seen)
+  the two runs: 8 and 8 points, the same in the same order
+x^5 + 1, height 500, stop at the first point, one thread    1  (1 seen)
+the same on three threads                                   1  (1 seen)
+  the two runs: 1 and 1 points, the same in the same order
+the survivors (RATPOINTS_NO_CHECK), height 300, one thread  218  (218 seen)
+the same on three threads                                 218  (218 seen)
+  the two runs: 218 and 218 points, the same in the same order
+as many threads as there are processors                  2852  (2852 seen)
+two threads after the pool of three                      2852  (2852 seen)
+and one thread after that                                2852  (2852 seen)
+  the two runs: 2852 and 2852 points, the same in the same order
+find_points on four threads (the pool made and freed inside)    8  (8 seen)

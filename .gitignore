@@ -23,6 +23,7 @@
 /build-test4-*/
 /build-tsan/
 /build-nothreads/
+/build-threads-*/
 # output of the tests
 *.out
 # by-products of pdflatex (the PDF of the manual is tracked)
