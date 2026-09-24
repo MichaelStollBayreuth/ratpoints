@@ -1,4 +1,4 @@
-#   ratpoints-3.0.0
+#   ratpoints-3.1.0
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
@@ -72,7 +72,7 @@
 # with very many rational points; on those it is worth up to a factor of two.
 # Having the larger table costs nothing when it is not used.
 PRIME_SIZE = 8
-VERSION = 3.0.0
+VERSION = 3.1.0
 
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
@@ -91,7 +91,17 @@ INSTALL_DIR = /usr/local
 #  find_points.c -- and gains nothing in cycles: a wash on the two suites at
 #  height 16383 and 0 to 2% slower on the two at 200000, measured at three
 #  code alignments.  Instruction counts predict a gain; cycles are what count.
-CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE}
+# Threads: the library sieves on several threads when asked to (the field
+# num_threads of ratpoints_args, the option -t), with POSIX threads.
+# "make THREADS=0" builds without them, for a system that has none; the
+# field and the option are then ignored.
+ifeq (${THREADS},0)
+THREADFLAGS = -DRATPOINTS_NO_THREADS
+else
+THREADFLAGS = -pthread
+endif
+
+CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_SIZE} ${THREADFLAGS}
 # For gcc on Apple, may have to add '-fnested-functions' to CCFLAGS0.
 # Add "-DUSE_LONG_IN_PHASE_2" to sieve the survivors of the first stage one
 #  64-bit word at a time instead of a whole bit-array at a time. The first
@@ -204,12 +214,12 @@ CCFLAGS =
 DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
-            main.c rptest.c testdata.h testbase ratpoints-doc-3.0.tex \
+            main.c rptest.c testdata.h testbase ratpoints-doc-3.1.tex \
             README.md gpl-2.0.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
-            test4.sh testbase4 verify-test4.py test4-configs.sh \
+            test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
             rpapi.c testbase-api coverage.sh \
             bench_init.c bench_check.c tune.sh
 
@@ -222,12 +232,14 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
             test3.out rptest-once.out rptest-once2.out rptest-once3.out \
-            test4.out testapi.out test4-*.out
+            test4.out testapi.out test4-*.out \
+            rptest-t2.out rptest-t5.out rptest-many-t3.out \
+            rptest-degrees-t4.out test3-t3.out rptest-threads-*.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               rptest-degrees rpapi ratpoints-debug \
-              bench_init bench_check ratpoints-doc-3.0.pdf
+              bench_init bench_check ratpoints-doc-3.1.pdf
 
 FAILED = "Test failed!"
 # what a test does when its output differs from the reference: print the
@@ -236,7 +248,7 @@ FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
-doc: ratpoints-doc-3.0.pdf
+doc: ratpoints-doc-3.1.pdf
 
 # The suites "make test" runs, each a target below.  A test whose output
 # differs from its reference prints "Test failed!" and fails its target
@@ -397,6 +409,39 @@ testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
 	cmp -s testbase-api testapi.out || ${FAIL}
 
+# The suites with the sieve on several threads (the option -t): the same
+# references, since what the program prints must not depend on the number
+# of threads; then test4 and test1 on builds with fixed block lengths, so
+# that the blocks of the loop over the denominators end elsewhere
+# (test4-threads.sh; a couple of minutes).
+.PHONY: testthreads
+testthreads: rptest rptest-many rptest-degrees ratpoints testbase \
+             testbase-many testbase-degrees testbase3 testbase4 \
+             test3.sh test4.sh test4-threads.sh
+	./rptest -t 2 > rptest-t2.out
+	cmp -s testbase rptest-t2.out || ${FAIL}
+	./rptest -t 5 > rptest-t5.out
+	cmp -s testbase rptest-t5.out || ${FAIL}
+	./rptest-many -t 3 > rptest-many-t3.out
+	cmp -s testbase-many rptest-many-t3.out || ${FAIL}
+	./rptest-degrees -t 4 > rptest-degrees-t4.out
+	cmp -s testbase-degrees rptest-degrees-t4.out || ${FAIL}
+	RPOPTS='-t 3' ./test3.sh > test3-t3.out 2>&1
+	cmp -s testbase3 test3-t3.out || ${FAIL}
+	RPOPTS='-t 3' ./test4.sh > test4-t3.out 2>&1
+	cmp -s testbase4 test4-t3.out || ${FAIL}
+	RPOPTS='-t 7' ./test4.sh > test4-t7.out 2>&1
+	cmp -s testbase4 test4-t7.out || ${FAIL}
+	./test4-threads.sh
+
+# The threaded runs under ThreadSanitizer (tsan.sh: a build with
+# -fsanitize=thread in build-tsan/, the drivers with threads, rpapi, and
+# test4 with -t 3; every output must match its reference and the sanitizer
+# must report nothing; a few minutes).
+.PHONY: tsan
+tsan: testbase testbase-many testbase-degrees testbase-api testbase4 tsan.sh
+	./tsan.sh
+
 # test4 on the library built with the other compile-time switches, each in
 # a build directory of its own (see test4-configs.sh; the script exits with
 # 1 when an output differs from the reference, with 2 when a build failed).
@@ -418,7 +463,7 @@ test2: ratpoints testbase2
 # Time a call to ratpoints with a largish height parameter.
 # This can be helpful to assess modifications to the sieving process.
 timing: ratpoints
-	time ./ratpoints '1 0 126 0 441' 400000 -q > /dev/null
+	time ./ratpoints '1 0 126 0 441' 400000 -q ${RPOPTS} > /dev/null
 
 install-bin: ratpoints
 	${INSTALL} ratpoints ${INSTALL_DIR}/bin/
@@ -434,9 +479,9 @@ install: install-bin install-lib
 
 # To generate the documentation, run pdflatex twice
 # to get the cross-references right.
-ratpoints-doc-3.0.pdf: ratpoints-doc-3.0.tex
-	pdflatex ratpoints-doc-3.0.tex
-	pdflatex ratpoints-doc-3.0.tex
+ratpoints-doc-3.1.pdf: ratpoints-doc-3.1.tex
+	pdflatex ratpoints-doc-3.1.tex
+	pdflatex ratpoints-doc-3.1.tex
 
 dist: ${DISTFILES}
 	mkdir -p ratpoints-${VERSION}
@@ -447,7 +492,7 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
-	${RM} -r build-coverage build-test4-*
+	${RM} -r build-coverage build-test4-* build-threads-* build-tsan
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk

@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -35,6 +35,12 @@
    long prime[PRIMES1000]; */
 
 #include "find_points.h"
+
+/* the sieve tables are built under a lock when several threads share them;
+ * the lock and the threads live in a pool, below the block iterator */
+static void rp_tables_lock(rp_worker *wk);
+static void rp_tables_unlock(rp_worker *wk);
+static void rp_pool_destroy(ratpoints_args *args);
 
 /* defines
 
@@ -143,9 +149,11 @@ typedef struct { int p; int val; int slope; } use_squares1_info;
 typedef struct { long p;
                  unsigned long *start;
                  unsigned long *end;
-                 unsigned long *curr; }
+                 unsigned long magic; }
                forbidden_entry;
-  /* a prime p no denominator may be divisible by; tested with a bit array */
+  /* a prime p no denominator may be divisible by; tested with a bit array
+   * of p words, start[w mod p] for the word w of 64 denominators; magic is
+   * the reciprocal RP_MULMOD reduces w with */
 
 typedef struct { long p; unsigned long mask; } forbidden_val;
   /* a prime p and the set of valuations v_p(b) no denominator b may have:
@@ -307,6 +315,7 @@ void find_points_init(ratpoints_args *args)
    * primes are built per curve, in a buffer that grows as needed; see
    * sieving_info */
   args->forb_words = NULL; args->forb_words_len = 0;
+  args->pool = NULL; /* the sieving threads, from the first search that wants them */
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -320,6 +329,8 @@ void find_points_clear(ratpoints_args *args)
 #ifdef DEBUG
   printf("\nfind_points: clean up..."); fflush(NULL);
 #endif
+
+  rp_pool_destroy(args); /* the sieving threads, if any */
 
   /* clear mpz_t's in work[] */
   { long i;
@@ -1282,7 +1293,9 @@ static double check_cost(const ratpoints_args *args)
  * so using more or fewer of them for later denominators changes the running
  * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
  * makes this correction first and then computes every entry the current
- * number of primes asks for.
+ * number of primes asks for.  The counters are the run's (rp_counts), added
+ * up block by block in run_fold(), which calls this; the decision is for
+ * the blocks RP_ADAPT_LAG past the one just added.
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -1291,23 +1304,50 @@ static double check_cost(const ratpoints_args *args)
 #define RP_ADAPT_ARRAYS 1000UL   /* ...and this many non-empty bit arrays */
 #define RP_ADAPT_BITS 200UL      /* ...and this many survivors of stage 2 */
 
-static void adapt_primes(ratpoints_args *args)
+/* The counters the correction reads: what the sieve did over the blocks of
+ * the run so far, added up in the order of the blocks (run_fold below), and
+ * the sp2 the counters downstream of the first stage were counted under --
+ * they restart when a block sieved with another sp2 is added, since what
+ * they held then belongs to the old one. */
+typedef struct { unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 unsigned long n_words_2; long sp2; }
+        rp_counts;
+
+/* A correction is decided when a block has been added and takes effect this
+ * many blocks later: block i is sieved with the last decision made from the
+ * blocks 0 .. i-RP_ADAPT_LAG-1.  That is what lets several threads sieve
+ * blocks ahead of the one being added -- up to this many plus one without
+ * waiting -- and the same lag applies at one thread, so that what the sieve
+ * does never depends on the number of threads.  The cost is a correction
+ * delayed by a few per cent of the run.  Since no more than RP_ADAPT_LAG + 1
+ * blocks can be in progress at once, that is also the most threads a pool
+ * gets; a machine with more cores wants a larger lag (-DRP_ADAPT_LAG=n),
+ * which is a property of the build, like the block length. */
+#ifndef RP_ADAPT_LAG
+# define RP_ADAPT_LAG 32
+#endif
+
+static void adapt_primes(ratpoints_args *args, const rp_counts *c)
 { ratpoints_sieve_entry **sieve_list
     = (ratpoints_sieve_entry **)args->sieve_list;
   double u = args->run_words, d = args->run_denoms;
   double cost_table = (args->cost_table >= 0.0) ? args->cost_table
                                                 : RATPOINTS_COST_TABLE;
-  double words = (double)args->n_words;
+  double words = (double)c->n_words;
   double s1, s2, r1, r2, chance, level, s, rate;
-  long n, sp1 = args->sp1, sp2 = args->sp2, max = args->sp3_max;
+  /* sp2 is the one the counters were measured under; args->sp2 holds the
+   * latest decision, which may not have taken effect yet */
+  long n, sp1 = args->sp1, sp2 = c->sp2, max = args->sp3_max;
   /* 1 (the default) corrects the third stage only; 2 also corrects sp2 */
   long mode = (args->adapt < 0) ? 1 : args->adapt;
 
   /* next time, when twice as much has been seen */
-  args->adapt_at = args->n_words + args->n_words;
+  args->adapt_at = c->n_words + c->n_words;
 
   if(words <= 0.0 || sp2 <= sp1 || sp1 <= 0) { return; }
-  if(args->n_arrays < RP_ADAPT_ARRAYS || args->n_bits < RP_ADAPT_BITS)
+  if(c->n_arrays < RP_ADAPT_ARRAYS || c->n_bits < RP_ADAPT_BITS)
   { return; }
 
   /* The two rates the run has shown, per numerator word.  The first is
@@ -1315,11 +1355,11 @@ static void adapt_primes(ratpoints_args *args)
    * thing -- but the second is not: everything downstream of the first stage
    * was counted under whatever sp2 was in force, so those counters are reset
    * whenever sp2 changes and only the words since then divide into them. */
-  { double words_2 = (double)(args->n_words - args->n_words_2);
+  { double words_2 = (double)(c->n_words - c->n_words_2);
 
     if(words_2 <= 0.0) { return; }
-    s1 = (double)args->n_arrays/words;
-    s2 = (double)args->n_bits/words_2;
+    s1 = (double)c->n_arrays/words;
+    s2 = (double)c->n_bits/words_2;
   }
 
   r1 = 1.0;
@@ -1350,7 +1390,7 @@ static void adapt_primes(ratpoints_args *args)
      * and the only one the degree moves; how many survivors reach the check
      * is measured rather than assumed, since the counters are here anyway. */
     double cost_surv = RATPOINTS_COST_SURVIVOR
-                        + ((double)args->n_checks/(double)args->n_bits)
+                        + ((double)c->n_checks/(double)c->n_bits)
                            *RATPOINTS_COST_CHECK*(args->check_rel - 1.0);
 
     rate = r2;
@@ -1380,11 +1420,9 @@ static void adapt_primes(ratpoints_args *args)
         rate /= r; s = prev; want--;
       }
     }
-    if(want != sp2)
-    { /* what was counted downstream belongs to the old sp2 */
-      args->n_bits = 0; args->n_coprime = 0; args->n_checks = 0;
-      args->n_sifts = 0; args->n_words_2 = args->n_words;
-    }
+    /* (what was counted downstream belongs to the old sp2: run_fold
+     * restarts those counters with the first block sieved under the new
+     * one) */
     args->sp2 = want;
   }
   else { s = level + chance*r2; }  /* sp2 stands; the rate is what it was */
@@ -1394,14 +1432,14 @@ static void adapt_primes(ratpoints_args *args)
    * for common factors, which is the one thing no prime can help with -- so
    * it replaces both the predicted rate and the fitted fraction that stood
    * for the coprimality test. */
-  if(args->sp3_extra < 0 && args->n_sifts > 0)
+  if(args->sp3_extra < 0 && c->n_sifts > 0)
   { /* both fractions are of one exact check, which is dearer at a high
      * degree or with large coefficients: see check_cost() */
     double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
                                                      : RATPOINTS_SP3_PER_DENOM)
                          /args->check_rel;
     double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
-    double S = (double)args->n_coprime/(double)args->n_sifts;
+    double S = (double)c->n_coprime/(double)c->n_sifts;
     double sp2_old = level + chance*r2;
     long sp3;
 
@@ -1420,7 +1458,7 @@ static void adapt_primes(ratpoints_args *args)
 
 #ifdef RP_PRIME_STATS
   fprintf(stderr, "[adapt] words=%lu s1=%.3g s2=%.3g floor=%.3g"
-          " sp1=%ld sp2=%ld sp3=%ld\n", args->n_words, s1, s2, level,
+          " sp1=%ld sp2=%ld sp3=%ld\n", c->n_words, s1, s2, level,
           args->sp1, args->sp2, args->sp3);
 #endif
 }
@@ -2545,7 +2583,7 @@ static long sieving_info(ratpoints_args *args,
             forb_ba[fba].p     = p;
             forb_ba[fba].start = &sieves0[pn][0];
             forb_ba[fba].end   = &sieves0[pn][p];
-            forb_ba[fba].curr  = forb_ba[fba].start;
+            forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
             fba++;
           }
           else
@@ -2565,7 +2603,7 @@ static long sieving_info(ratpoints_args *args,
         forb_ba[fba].p     = p;
         forb_ba[fba].start = &sieves0[pn][0];
         forb_ba[fba].end   = &sieves0[pn][p];
-        forb_ba[fba].curr  = forb_ba[fba].start;
+        forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
         fba++;
 
 #ifdef DEBUG
@@ -2632,6 +2670,7 @@ static long sieving_info(ratpoints_args *args,
       if(p*p > args->b_high) break;
       if(mpz_kronecker_si(c[degree], p) == -1)
       { forb_ba[fba].p = p;
+        forb_ba[fba].magic = ULONG_MAX/(unsigned long)p + 1;
         if(n < RATPOINTS_NUM_PRIMES)
         { forb_ba[fba].start = &sieves0[n][0];
           forb_ba[fba].end   = &sieves0[n][p];
@@ -2675,7 +2714,6 @@ static long sieving_info(ratpoints_args *args,
           forb_ba[n].end   = row + p;
           row += p;
         }
-        forb_ba[n].curr = forb_ba[n].start;
       }
     }
   }
@@ -3000,32 +3038,94 @@ static long sieving_info(ratpoints_args *args,
  * The sieving procedure itself                                           *
  **************************************************************************/
 
+/* The sieving thread wk: its survivors array, its gmp temporaries, its
+ * counters and its quit flag; the shared arguments through it. */
+static void worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
+                        check_spec *checks)
+{ wk->args = args;
+  /* allocate space for survivors array; make sure of correct alignment.
+   * One spare bit array pays for the alignment, and one more for the
+   * sentinel that the scan in _ratpoints_sift0 runs into: it sits just
+   * past the range, and the range can be all of array_size. */
+  wk->survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
+  wk->survivors = (ratpoints_bit_array *)
+                    pointer_align(wk->survivors_na, sizeof(ratpoints_bit_array));
+  wk->work = work;
+  wk->checks = checks;
+  wk->sp1 = args->sp1; wk->sp2 = args->sp2; wk->sp3 = args->sp3;
+  /* the counts that say what the sieve actually did, which the choice of
+   * primes is corrected from as the run goes on */
+  wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
+  wk->n_checks = 0; wk->n_sifts = 0; wk->dec = 0;
+  wk->compute_bc = 0; wk->stage3_filled = 0; wk->quit = 0;
+  /* pool, slot and stop are the pool's business, set once when it is made */
+}
+
+static void worker_clear(rp_worker *wk)
+{ free(wk->survivors_na); wk->survivors_na = NULL; wk->survivors = NULL; }
+
+/* The sieve_spec of every modulus of the first two stages for the current
+ * denominator: the row of its residue bp -- the pointer read with acquire
+ * semantics when shared says threads share the tables, plainly otherwise
+ * -- and the shift of the row for the packing of the class, with the
+ * multiple of p that keeps the row index non-negative built in (see
+ * rp_num_class and sieve_spec in rp-private.h); end is the end of the
+ * table, which the first stage's wrap-around compares against (the start
+ * field is set by sift0 at the head of every call, for the first-stage
+ * moduli, and nothing reads it before that).  Returns whether a row is
+ * missing, i.e. not built yet.  Inlined at its two calls with shared a
+ * constant, so that neither loop carries the other's load. */
+static inline RP_ALWAYS_INLINE
+int set_rows(sieve_spec *ssp, ratpoints_sieve_entry **sieve_list,
+             const long *bp_list, const rp_num_class *cls, long sp2,
+             int shared)
+{ int missing = 0;
+  long n;
+
+  for(n = 0; n < sp2; n++)
+  { ratpoints_sieve_entry *se = sieve_list[n];
+    long p = se->p;
+    long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
+    ratpoints_bit_array *sptr = shared ? RP_ACQUIRE(&se->sieve[bp])
+                                       : se->sieve[bp];
+
+    ssp[n].p = p;
+    ssp[n].offset = cls->offset[n];
+    ssp[n].ptr = sptr;
+    ssp[n].end = sptr + p;
+    if(sptr == NULL) { missing = 1; }
+  }
+  return(missing);
+}
+
 static
-long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
-          const rp_num_class *cls,
-          ratpoints_sieve_entry **sieve_list, long *bp_list, int *quit,
+long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
+  ratpoints_args *args = wk->args;
+  ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
+  int *quit = &wk->quit;
   /* typedef struct { long p; long offset; ratpoints_bit_array *ptr;
                      ratpoints_bit_array *start; ratpoints_bit_array *end; }
              sieve_spec; */
-  sieve_spec ssp[args->sp2 > 0 ? args->sp2 : 1]; /* length 0 is undefined */
+  sieve_spec ssp[wk->sp2 > 0 ? wk->sp2 : 1]; /* length 0 is undefined */
   /* what the third stage needs per denominator; see find_points_init on why
    * it is not an array here */
-  check_spec *csp = (check_spec *)args->stage3_list;
+  check_spec *csp = wk->checks;
   int do_setup = 1;
   RP_SIFT_TIC(t_sift);
 
-  args->n_sifts++;
+  wk->n_sifts++;
 
 #ifdef DEBUG
   printf("\nsift(b = %ld): start...\n", b); fflush(NULL);
 #endif
 
   /* Note that b is new */
-  args->flags |= RATPOINTS_COMPUTE_BC;
-  args->stage3_filled = 0; /* see fill_checks() in sift.c */
+  wk->compute_bc = 1;
+  wk->stage3_filled = 0; /* see fill_checks() in sift.c */
 
   { long k;
     long height = args->height;
@@ -3070,52 +3170,60 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
         fflush(NULL);
 #endif
 
-        for(n = 0; n < args->sp2; n++)
-        { ratpoints_sieve_entry *se = sieve_list[n];
-          long p = se->p;
-          long bp = bp_list[n]; /* b 2^-k mod p, see fill_bp_list */
-          ratpoints_bit_array *sptr = se->sieve[bp];
-
-          ssp[n].p = p;
-          /* the shift of the row for the packing of the class, with the
-           * multiple of p that keeps the row index non-negative built in
-           * (see rp_num_class and sieve_spec in rp-private.h) */
-          ssp[n].offset = cls->offset[n];
-
-#ifdef DEBUG
-          printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
-                 p, bp, ssp[n].offset - se->bias, se->bias);
-          fflush(NULL);
-#endif
-          /* copy if already initialized, else initialize */
-          if(sptr) { ssp[n].ptr = sptr; }
-          else
-          { RP_INIT_TIC(t_init);
-            ssp[n].ptr = (*(se->init))(se, bp, args);
-            RP_INIT_TOC(t_init, p);
-          }
-          /* the end of the table, which the first stage's wrap-around
-           * compares against; the start field is set by sift0 at the head
-           * of every call, for the first-stage moduli, and nothing reads
-           * it before that */
-          ssp[n].end = ssp[n].ptr + p;
+        /* One pass over the moduli, without a call in it, so that the
+         * compiler keeps the loop's values in registers: a row that is not
+         * built yet is noted and built afterwards, which happens once per
+         * row and curve.  The pointers are read with acquire semantics
+         * when threads share the tables, so that a row another thread
+         * built is seen complete, and plainly on the calling thread: the
+         * two calls of set_rows() are compiled into one loop each. */
+        { int missing = (wk->pool != NULL)
+                          ? set_rows(&ssp[0], sieve_list, bp_list, cls, wk->sp2, 1)
+                          : set_rows(&ssp[0], sieve_list, bp_list, cls, wk->sp2, 0);
 
 #ifdef DEBUG
-          if(!sptr)
-          { long a, c = 0;
+          for(n = 0; n < wk->sp2; n++)
+          { ratpoints_sieve_entry *se = sieve_list[n];
 
-            printf("\nsieve(%ld, %ld) [high numerators to the left]:", p, bp);
-            for(a = p-1; a >= 0; a--, c++)
-            { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
-              PRINT_RBA(ssp[n].ptr[a]);
-            }
-            printf("\n");
+            printf("\np = %ld, bp = %ld, offset = %ld (+ bias %ld)\n",
+                   se->p, bp_list[n], ssp[n].offset - se->bias, se->bias);
             fflush(NULL);
           }
 #endif
+          if(missing)
+          { /* build what is missing -- under the tables lock when threads
+             * share them, and only if no other thread has built it
+             * meanwhile */
+            for(n = 0; n < wk->sp2; n++)
+            { if(ssp[n].ptr == NULL)
+              { ratpoints_sieve_entry *se = sieve_list[n];
+                long bp = bp_list[n];
+                ratpoints_bit_array *sptr;
 
+                RP_INIT_TIC(t_init);
+                rp_tables_lock(wk);
+                sptr = RP_ACQUIRE(&se->sieve[bp]);
+                if(sptr == NULL) { sptr = (*(se->init))(se, bp, args); }
+                rp_tables_unlock(wk);
+                ssp[n].ptr = sptr;
+                ssp[n].end = sptr + se->p;
+                RP_INIT_TOC(t_init, se->p);
+#ifdef DEBUG
+                { long a, c = 0;
+                  printf("\nsieve(%ld, %ld) [high numerators to the left]:",
+                         se->p, bp);
+                  for(a = se->p-1; a >= 0; a--, c++)
+                  { if((c & (0xff >> RBA_SHIFT)) == 0) { printf("\n"); }
+                    PRINT_RBA(sptr[a]);
+                  }
+                  printf("\n");
+                  fflush(NULL);
+                }
+#endif
+              }
+            }
+          }
         }
-
         /* the primes of the third stage need no table, only the inverse of
          * b modulo each of them, and fill_checks() in sift.c looks that up
          * on the first numerator that reaches the stage: most denominators
@@ -3173,9 +3281,9 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
              * those above the last bit, high mod RBA_LENGTH */
             { mask_high = RBA_LENGTH - 1 - (high & (RBA_LENGTH - 1)); }
 
-            total += _ratpoints_sift0(b, w_low0, w_high0, args, cls,
-                                      survivors, mask_low, mask_high,
-                                      &ssp[0], &csp[0], quit, process, info);
+            total += _ratpoints_sift0(b, w_low0, w_high0, wk, cls,
+                                      mask_low, mask_high,
+                                      &ssp[0], &csp[0], process, info);
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
   } }
@@ -3204,14 +3312,14 @@ long sift(long b, ratpoints_bit_array *survivors, ratpoints_args *args,
  * swept as many words as adapt_at says.  The primes of the third stage are
  * not in the list: what that stage needs is looked up when a numerator
  * reaches it, see fill_checks() in sift.c. */
-static inline void fill_bp_list(long b, long k, long *bp_list,
-                                ratpoints_args *args,
-                                ratpoints_sieve_entry **sieve_list)
+static inline void fill_bp_list(long b, long k, long *bp_list, rp_worker *wk)
 { long n, sp2;
+  ratpoints_args *args = wk->args;
+  ratpoints_sieve_entry **sieve_list
+    = (ratpoints_sieve_entry **)args->sieve_list;
   const unsigned long *magics = (const unsigned long *)args->magics;
 
-  if(args->n_words >= args->adapt_at) { adapt_primes(args); }
-  sp2 = args->sp2;
+  sp2 = wk->sp2;
   RP_BP_TIC(t_bp);
   /* The reduction is exact below 2^32.  b times 2^-k mod p stays below that
    * for a denominator below 2^32 divided by the largest prime that can be
@@ -3269,6 +3377,710 @@ typedef struct {mpz_t *cof; long degree; long height;
    will hold the coefficents of the polynomial,
    multiplied by powers of the denominator b */
 
+/**************************************************************************
+ * The loop over the denominators, in blocks                              *
+ **************************************************************************/
+
+/* The denominators are visited in one of four shapes: the squares b = k^2
+ * (an odd degree and a leading coefficient +-1), the multiples b = d k^2 of
+ * the divisors d of the leading coefficient (an odd degree otherwise), every
+ * b that passes the denominator tests, taken a word of 64 at a time (an
+ * even degree; see the word loop below), or every b with no test but the
+ * one mod 64.  The steps of a shape -- the k, the words, or the b -- are cut
+ * into blocks of consecutive steps, numbered in the order of the loop, and
+ * a block is sieved as a whole, its denominators in order.  The block length
+ * is a function of the run alone: about RP_BLOCKS_WANTED blocks, but at
+ * least RP_BLOCK_MIN steps each, so that it is the same however many
+ * threads share the blocks and the points come out in the same order.  The
+ * minimum is for the small height bounds, where a word of 64 denominators
+ * sieves in a few microseconds: the calling thread is woken once per block
+ * to deliver its points, and with blocks of one word it would set the pace
+ * for the pool's threads.  The divisor shape has one segment of steps per
+ * divisor, in the order of the divisors; the others one segment. */
+#define RP_SHAPE_SQUARES  0
+#define RP_SHAPE_SQUARES1 1
+#define RP_SHAPE_WORDS    2
+#define RP_SHAPE_ALL      3
+#ifndef RP_BLOCKS_WANTED
+# define RP_BLOCKS_WANTED 1024
+#endif
+#ifndef RP_BLOCK_MIN
+# define RP_BLOCK_MIN 16
+#endif
+
+typedef struct { ratpoints_args *args;
+                 const rp_num_class *cls;   /* the numerator classes, by b mod 64 */
+                 unsigned long den_bits;    /* bit j: the class of b = j mod 64 has a pattern */
+                 forbidden_entry *forb_ba;  /* the forbidden divisors tested with bit arrays... */
+                 long nfb;                  /* ...how many of them... */
+                 forbidden_val *forbidden;  /* ...and by valuation; both zero-terminated */
+                 use_squares1_info *den_info; /* the valuation test of the divisor shape */
+                 long *divisors;            /* the divisors of the divisor shape, zero-terminated */
+                 jacobi_info ji;            /* the Jacobi symbol test by Legendre symbols... */
+                 unsigned char jtab[RP_JACOBI_TABLE];
+                 int fast_jacobi;           /* ...when the leading coefficient allows it */
+                 int use_c_long; long lcf_long; /* the leading coefficient, when it fits a long */
+                 int shape;
+                 long len;                  /* steps per block */
+                 long nseg;                 /* segments: one, or one per divisor */
+                 long *seg_lo; long *seg_hi; /* the steps of each segment, both ends included */
+                 long *seg_block;           /* the first block of each segment; [nseg] = nblocks */
+                 long nblocks;
+                 /* the run-time correction: the counters in block order,
+                  * how many blocks they cover, the decisions (block i is
+                  * sieved with the last one whose first block is <= i; the
+                  * first is what sieving_info chose, for block 0), and
+                  * what the last block added was sieved with */
+                 rp_counts cnt; long nfolded;
+                 long ndec; long *dec_block; long *dec_sp2; long *dec_sp3;
+                 long last_sp2; long last_sp3; }
+        rp_run;
+
+/* the largest k with k^2 <= n (0 for n < 1) */
+static long floor_sqrt(long n)
+{ long k;
+
+  if(n < 1) { return(0); }
+  k = (long)sqrt((double)n);
+  while(k > 1 && k > n/k) { k--; }       /* k^2 > n */
+  while(k + 1 <= n/(k + 1)) { k++; }     /* (k+1)^2 <= n */
+  return(k);
+}
+
+static void run_setup(rp_run *run, ratpoints_args *args,
+                      const rp_num_class *cls, unsigned long den_bits,
+                      forbidden_entry *forb_ba, forbidden_val *forbidden,
+                      use_squares1_info *den_info, long *divisors,
+                      int use_c_long, long lcf_long, mpz_t tmp)
+{ long nseg = 1, s, n, steps = 0;
+
+  run->args = args; run->cls = cls; run->den_bits = den_bits;
+  run->forb_ba = forb_ba; run->forbidden = forbidden;
+  for(run->nfb = 0; forb_ba[run->nfb].p; run->nfb++) {}
+  run->den_info = den_info; run->divisors = divisors;
+  run->use_c_long = use_c_long; run->lcf_long = lcf_long;
+  run->fast_jacobi = 0;
+  if(args->flags & RATPOINTS_USE_SQUARES) { run->shape = RP_SHAPE_SQUARES; }
+  else if(args->flags & RATPOINTS_USE_SQUARES1)
+  { run->shape = RP_SHAPE_SQUARES1;
+    for(nseg = 0; divisors[nseg]; nseg++) {}
+  }
+  else if(args->flags & RATPOINTS_CHECK_DENOM)
+  { run->shape = RP_SHAPE_WORDS;
+    /* the Jacobi symbol test as a product of Legendre symbols, when the
+     * leading coefficient allows it; see jacobi_setup */
+    run->fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
+                         && jacobi_setup(&run->ji, run->jtab, RP_JACOBI_TABLE,
+                                         args->cof[args->degree], tmp,
+                                         args->b_high);
+  }
+  else { run->shape = RP_SHAPE_ALL; }
+  run->nseg = nseg;
+  run->seg_lo = malloc(3*(nseg + 1)*sizeof(long));
+  run->seg_hi = run->seg_lo + (nseg + 1);
+  run->seg_block = run->seg_hi + (nseg + 1);
+  for(s = 0; s < nseg; s++)
+  { long lo, hi;
+
+    switch(run->shape)
+    { case RP_SHAPE_SQUARES: /* the k with b_low <= k^2 <= b_high */
+        lo = ceil_sqrt(args->b_low); hi = floor_sqrt(args->b_high);
+        break;
+      case RP_SHAPE_SQUARES1: /* the k with b_low <= d k^2 <= b_high (the
+                               * divisors are at most b_high, see setup_us1) */
+      { long d = divisors[s];
+
+        lo = ceil_sqrt((args->b_low - 1)/d + 1); hi = floor_sqrt(args->b_high/d);
+        break;
+      }
+      case RP_SHAPE_WORDS: /* the words of 64 denominators */
+        lo = args->b_low >> LONG_SHIFT; hi = args->b_high >> LONG_SHIFT;
+        break;
+      default: /* RP_SHAPE_ALL */
+        lo = args->b_low; hi = args->b_high;
+        break;
+    }
+    run->seg_lo[s] = lo; run->seg_hi[s] = hi;
+    /* the divisor shape's segments are short; the others are one segment,
+     * whose length fits a long since lo >= 1 */
+    if(hi >= lo) { steps += (hi - lo) + 1; }
+  }
+  run->len = steps/RP_BLOCKS_WANTED + 1;
+  if(run->len < RP_BLOCK_MIN) { run->len = RP_BLOCK_MIN; }
+#ifdef RP_BLOCK_LEN
+  run->len = RP_BLOCK_LEN;  /* a fixed block length, to test the block boundaries */
+#endif
+  n = 0;
+  for(s = 0; s < nseg; s++)
+  { run->seg_block[s] = n;
+    if(run->seg_hi[s] >= run->seg_lo[s])
+    { n += (run->seg_hi[s] - run->seg_lo[s])/run->len + 1; }
+  }
+  run->seg_block[nseg] = n;
+  run->nblocks = n;
+  /* the correction: nothing counted yet, one decision -- at most one more
+   * per block added */
+  run->cnt.n_words = 0; run->cnt.n_arrays = 0; run->cnt.n_bits = 0;
+  run->cnt.n_coprime = 0; run->cnt.n_checks = 0; run->cnt.n_sifts = 0;
+  run->cnt.n_words_2 = 0; run->cnt.sp2 = args->sp2;
+  run->nfolded = 0;
+  run->dec_block = malloc(3*(n + 2)*sizeof(long));
+  run->dec_sp2 = run->dec_block + (n + 2);
+  run->dec_sp3 = run->dec_sp2 + (n + 2);
+  run->dec_block[0] = 0; run->dec_sp2[0] = args->sp2; run->dec_sp3[0] = args->sp3;
+  run->ndec = 1;
+  run->last_sp2 = args->sp2; run->last_sp3 = args->sp3;
+#ifdef DEBUG
+  printf("\n  denominator loop: shape %d, %ld segment(s), %ld block(s) of %ld"
+         " step(s)\n", run->shape, nseg, n, run->len);
+  fflush(NULL);
+#endif
+}
+
+static void run_clear(rp_run *run)
+{ free(run->seg_lo); run->seg_lo = NULL;
+  free(run->dec_block); run->dec_block = NULL;
+}
+
+/* Sieve block i: its denominators in order, on the worker wk.  Returns the
+ * number of points; wk->quit says whether process() stopped the search (a
+ * thread of the pool learns of a stop through its collector, at the next
+ * point: a block without one runs to its end, which is the bound on the
+ * work done after a stop). */
+static long run_block(rp_run *run, rp_worker *wk, long i,
+                      int process(long, long, const mpz_t, void*, int*),
+                      void *info)
+{ ratpoints_args *args = run->args;
+  const rp_num_class *cls = run->cls;
+  long total = 0;
+  long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
+    /* sp3_max, not sp3: adapt_primes may reach for a
+     * further prime as the run goes on */
+  long seg = 0, a, e;
+
+  /* the segment the block lies in, and its steps [a, e] */
+  while(run->seg_block[seg + 1] <= i) { seg++; }
+  a = run->seg_lo[seg] + (i - run->seg_block[seg])*run->len;
+  e = (run->seg_hi[seg] - a < run->len) ? run->seg_hi[seg]
+                                        : a + run->len - 1;
+  /* the moduli the block is sieved with: the correction's last decision
+   * for it; and the counters start from zero for the block */
+  { long d = RP_ACQUIRE(&run->ndec) - 1;
+
+    while(run->dec_block[d] > i) { d--; }
+    wk->dec = d; wk->sp2 = run->dec_sp2[d]; wk->sp3 = run->dec_sp3[d];
+  }
+  wk->n_words = 0; wk->n_arrays = 0; wk->n_bits = 0; wk->n_coprime = 0;
+  wk->n_checks = 0; wk->n_sifts = 0;
+
+  switch(run->shape)
+  { case RP_SHAPE_SQUARES:
+    { long k;
+
+      for(k = a; k <= e; k++)
+      { long bb = k*k;
+        const rp_num_class *cl = &cls[bb & 0x3f];
+
+        if(EXT0(cl->bits))
+        { fill_bp_list(bb, cl->k, bp_list, wk);
+          total += sift(bb, wk, cl, &bp_list[0], process, info);
+          if(wk->quit) { return(total); }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
+#endif
+      }
+      break;
+    }
+    case RP_SHAPE_SQUARES1:
+    { long d = run->divisors[seg], k;
+
+      for(k = a; k <= e; k++)
+      { long bb = d*k*k;
+        const rp_num_class *cl = &cls[bb & 0x3f];
+
+        if(EXT0(cl->bits))
+        { use_squares1_info *den_info = run->den_info;
+          int flag = 1;
+          long j;
+
+          for(j = 0; den_info[j].p; j++)
+          { int v = valuation1(bb, den_info[j].p);
+
+            if((v >= den_info[j].slope) && ((v + (den_info[j].val)) & 1))
+            { flag = 0; break; }
+          }
+          if(flag)
+          { fill_bp_list(bb, cl->k, bp_list, wk);
+            total += sift(bb, wk, cl, &bp_list[0], process, info);
+            if(wk->quit) { return(total); }
+          }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", bb); fflush(NULL); }
+#endif
+      }
+      break;
+    }
+    case RP_SHAPE_WORDS:
+    { /* The 2-adic test on a denominator depends on b mod 64 alone -- bit
+       * b mod 64 of den_bits says whether its class has a numerator
+       * pattern -- and the forbidden-divisor arrays are words indexed by b
+       * mod 64 as well.  So the denominators are taken a word of 64 at a
+       * time: the word of those that pass both tests is one AND per array,
+       * and the loop below visits only the bits that are set, which on a
+       * random curve are a third of the denominators.  Bit j of the word
+       * for w stands for b = 64*w + j.  Word w of the run reads entry
+       * w mod p of the array of the prime p: the pointers are set for the
+       * block's first word, by the multiply-high reduction while the word
+       * number allows it (every height bound below 2^38), and step on from
+       * there. */
+      forbidden_entry *fba;
+      long nfb = run->nfb, n, w;
+      int small = (a <= RP_MULMOD_LIMIT);
+
+      { const unsigned long *cur[nfb > 0 ? nfb : 1];
+
+        for(n = 0, fba = run->forb_ba; n < nfb; n++, fba++)
+        { cur[n] = fba->start + (small ? RP_MULMOD(a, fba->p, fba->magic)
+                                       : mod(a, fba->p));
+        }
+        for(w = a; ; w++)
+        { unsigned long b_bits = run->den_bits;
+          long base = w << LONG_SHIFT;
+
+          for(n = 0, fba = run->forb_ba; n < nfb; n++, fba++)
+          { b_bits &= *cur[n];
+            cur[n]++;
+            if(cur[n] == fba->end) { cur[n] = fba->start; }
+          }
+          /* the first and the last word may be entered part way */
+          if(w == run->seg_lo[0])
+          { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
+          if(w == run->seg_hi[0])
+          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
+#ifdef DEBUG
+          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
+          fflush(NULL);
+#endif
+          while(b_bits)
+          { long b = base + RP_CTZL(b_bits);
+            const rp_num_class *cl = &cls[b & 0x3f];
+            forbidden_val *forb;
+
+            b_bits &= b_bits - 1UL;
+            /* the Jacobi symbol test comes first when it is the cheap one:
+             * a few multiplications against the divisions of the valuation
+             * test, and it rejects half of what gets here */
+            if(run->fast_jacobi && !jacobi_test(b, &run->ji))
+            {
+#ifdef DEBUG
+              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+              fflush(NULL);
+#endif
+              continue;
+            }
+            /* check if denominator is excluded: is v_p(b) one of the
+             * valuations the entry for p forbids? */
+            for(forb = run->forbidden;
+                forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
+                forb++) {};
+#ifdef DEBUG
+            if(forb->p)
+            { printf("\nb = %ld: excluded, v_%ld(b) = %ld\n",
+                     b, forb->p, valuation1(b, forb->p));
+              fflush(NULL);
+            }
+#endif
+            if(forb->p == 0
+                && (run->fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
+                      || (run->use_c_long
+                           ? jacobi1(b, run->lcf_long)
+                           : jacobi(b, wk->work[0], args->cof[args->degree]))
+                         == 1))
+            { fill_bp_list(b, cl->k, bp_list, wk);
+              total += sift(b, wk, cl, &bp_list[0], process, info);
+              if(wk->quit) { return(total); }
+            }
+#ifdef DEBUG
+            else
+            { if(forb->p == 0)
+              { printf("\nb = %ld: excluded by Jacobi symbol\n", b);
+                fflush(NULL);
+            } }
+#endif
+          }
+          if(w == e) { break; }
+        }
+      }
+      break;
+    }
+    default: /* RP_SHAPE_ALL */
+    { long b;
+
+      for(b = a; ; b++)
+      { const rp_num_class *cl = &cls[b & 0x3f];
+
+        if(EXT0(cl->bits))
+        { fill_bp_list(b, cl->k, bp_list, wk);
+          total += sift(b, wk, cl, &bp_list[0], process, info);
+          if(wk->quit) { return(total); }
+        }
+#ifdef DEBUG
+        else { printf("\nb = %ld: excluded mod 64\n", b); fflush(NULL); }
+#endif
+        if(b == e) { break; } /* b++ could overflow */
+      }
+    }
+  }
+  return(total);
+}
+
+/* What one block's sieving reports back: its counters, and the decision
+ * (with its sp2 and sp3) it was sieved with. */
+typedef struct { unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 long dec; long sp2; long sp3; }
+        rp_blockstat;
+
+static void worker_stat(const rp_worker *wk, rp_blockstat *st)
+{ st->n_words = wk->n_words; st->n_arrays = wk->n_arrays;
+  st->n_bits = wk->n_bits; st->n_coprime = wk->n_coprime;
+  st->n_checks = wk->n_checks; st->n_sifts = wk->n_sifts;
+  st->dec = wk->dec; st->sp2 = wk->sp2; st->sp3 = wk->sp3;
+}
+
+/* The next block in the order of the run has been sieved, with the report
+ * st: add its counters to the run's, and see whether the correction is due.
+ * The first block sieved with a new sp2 restarts the counters downstream of
+ * the first stage, since what they held was counted under the old one.  A
+ * decision made here is for the blocks from RP_ADAPT_LAG past this one on;
+ * it is published after its entry is complete, so that a thread that sees
+ * the count sees the entry. */
+static void run_fold(rp_run *run, const rp_blockstat *st)
+{ ratpoints_args *args = run->args;
+  rp_counts *c = &run->cnt;
+  long j = run->nfolded++;
+
+  if(run->dec_sp2[st->dec] != c->sp2)
+  { c->n_bits = 0; c->n_coprime = 0; c->n_checks = 0; c->n_sifts = 0;
+    c->n_words_2 = c->n_words; c->sp2 = run->dec_sp2[st->dec];
+  }
+  c->n_words += st->n_words; c->n_arrays += st->n_arrays;
+  c->n_bits += st->n_bits; c->n_coprime += st->n_coprime;
+  c->n_checks += st->n_checks; c->n_sifts += st->n_sifts;
+  run->last_sp2 = st->sp2; run->last_sp3 = st->sp3;
+  if(c->n_words >= args->adapt_at)
+  { long sp2 = args->sp2, sp3 = args->sp3;
+
+    adapt_primes(args, c);
+    if(args->sp2 != sp2 || args->sp3 != sp3)
+    { long n = run->ndec;
+
+      run->dec_block[n] = j + RP_ADAPT_LAG + 1;
+      run->dec_sp2[n] = args->sp2; run->dec_sp3[n] = args->sp3;
+      RP_PUBLISH(&run->ndec, n + 1);
+    }
+  }
+}
+
+/**************************************************************************
+ * Threads: a pool of sieving threads per ratpoints_args                  *
+ **************************************************************************/
+
+/* What num_threads asks for.  The pool lives in args->pool from the first
+ * search that wants it to find_points_clear(); the calling thread hands the
+ * blocks out and delivers the points, the threads of the pool sieve.  The
+ * development instrumentation counts in static variables, so those builds
+ * sieve on the calling thread whatever is asked. */
+#if defined(RATPOINTS_NO_THREADS) || defined(RP_PHASE_TIMING) \
+    || defined(RP_PRIME_STATS) || defined(RP_STOP_AFTER) || defined(DEBUG)
+# define RP_THREADS 0
+#else
+# define RP_THREADS 1
+#endif
+
+#if RP_THREADS
+#include <pthread.h>
+#include <unistd.h>
+
+/* A point as the sieve handed it to the collector: the arguments of the
+ * process() call the calling thread makes for it later. */
+typedef struct { long x; long z; mpz_t y; } rp_point;
+
+/* A slot holds what one block produced until the calling thread has
+ * delivered it: the points in the order they were found, and the block's
+ * report for run_fold().  done is set by the thread that sieved the block
+ * and cleared by the calling thread, both under the pool's lock. */
+typedef struct { long block;
+                 rp_point *pts; long npts; long cap;
+                 rp_blockstat st;
+                 int done; }
+        rp_slot;
+
+/* Blocks in flight at most.  Block i takes slot i mod this, whose previous
+ * block i - RP_ADAPT_LAG - 2 has been delivered by the time block i may
+ * start (the lag rule waits for block i - RP_ADAPT_LAG - 1). */
+#define RP_POOL_SLOTS (RP_ADAPT_LAG + 2)
+
+typedef struct
+{ long nthreads;              /* threads running */
+  long nalloc;                /* per-thread arrays allocated */
+  rp_worker *workers;         /* one per thread */
+  mpz_t **works;              /* each thread's gmp temporaries... */
+  check_spec **checks;        /* ...and third-stage array */
+  pthread_t *threads;
+  rp_slot slots[RP_POOL_SLOTS];
+  pthread_mutex_t lock;       /* guards the job fields below and the slots' done flags */
+  pthread_mutex_t tables;     /* the sieve tables are built under this one */
+  pthread_cond_t cv_work;     /* the threads wait here: for a job, for the lag, for stop */
+  pthread_cond_t cv_emit;     /* the calling thread waits here: for a block, for the threads to leave */
+  int exiting;                /* the pool is being torn down */
+  long job;                   /* counts the searches; a thread joins one when it sees a new number */
+  rp_run *run;                /* the search's run */
+  long next_block;            /* the next block to hand out */
+  long nfolded;               /* blocks delivered and folded, in order */
+  long joined; long active;   /* threads that have joined this search, and are still in it */
+  int stop;                   /* leave the search: it is over, or process() stopped it (atomic) */
+  int failed;                 /* a thread could not keep its points: the search fails (atomic) */
+} rp_pool;
+
+static void rp_tables_lock(rp_worker *wk)
+{ if(wk->pool) { pthread_mutex_lock(&((rp_pool *)wk->pool)->tables); } }
+
+static void rp_tables_unlock(rp_worker *wk)
+{ if(wk->pool) { pthread_mutex_unlock(&((rp_pool *)wk->pool)->tables); } }
+
+/* The collector: what a sieving thread's sieve calls in place of process().
+ * It keeps the point in the thread's slot, and it reports the stop flag
+ * back through quit, which makes the sieve unwind as it does for process(). */
+static int collect(long x, long z, const mpz_t y, void *info, int *quit)
+{ rp_worker *wk = (rp_worker *)info;
+  rp_slot *slot = (rp_slot *)wk->slot;
+  long n = slot->npts;
+
+  if(n == slot->cap)
+  { long c = (slot->cap > 0) ? 2*slot->cap : 16, k;
+    rp_point *pts = realloc(slot->pts, c*sizeof(rp_point));
+
+    if(pts == NULL) /* out of memory: the block cannot be finished, so the
+                     * search must fail rather than deliver less than it found */
+    { RP_PUBLISH(&((rp_pool *)wk->pool)->failed, 1); *quit = 1; return(0); }
+    for(k = slot->cap; k < c; k++) { mpz_init(pts[k].y); }
+    slot->pts = pts; slot->cap = c;
+  }
+  slot->pts[n].x = x; slot->pts[n].z = z;
+  mpz_set(slot->pts[n].y, y);
+  slot->npts = n + 1;
+  *quit = RP_RELAXED(wk->stop);
+  return(0);
+}
+
+/* A thread of the pool: join each search as it comes, take blocks until
+ * none is left or the search is stopped, leave. */
+static void *rp_worker_main(void *arg)
+{ rp_worker *wk = (rp_worker *)arg;
+  rp_pool *pool = (rp_pool *)wk->pool;
+  long myjob = 0;
+
+  for(;;)
+  { rp_run *run;
+
+    pthread_mutex_lock(&pool->lock);
+    while(!pool->exiting && pool->job == myjob)
+    { pthread_cond_wait(&pool->cv_work, &pool->lock); }
+    if(pool->exiting) { pthread_mutex_unlock(&pool->lock); return(NULL); }
+    myjob = pool->job; run = pool->run;
+    pool->joined++; pool->active++;
+    pthread_mutex_unlock(&pool->lock);
+    for(;;)
+    { long i;
+      rp_slot *slot;
+
+      pthread_mutex_lock(&pool->lock);
+      i = pool->next_block;
+      if(RP_RELAXED(&pool->stop) || i >= run->nblocks)
+      { pthread_mutex_unlock(&pool->lock); break; }
+      pool->next_block = i + 1;
+      /* the lag: the decisions block i is sieved with are made from the
+       * blocks up to i - RP_ADAPT_LAG - 1, so those must have been folded
+       * (which also frees the slot) */
+      while(!RP_RELAXED(&pool->stop) && pool->nfolded < i - RP_ADAPT_LAG)
+      { pthread_cond_wait(&pool->cv_work, &pool->lock); }
+      if(RP_RELAXED(&pool->stop)) { pthread_mutex_unlock(&pool->lock); break; }
+      pthread_mutex_unlock(&pool->lock);
+      slot = &pool->slots[i % RP_POOL_SLOTS];
+      slot->block = i; slot->npts = 0;
+      wk->slot = slot; wk->quit = 0;
+      run_block(run, wk, i, collect, wk);
+      worker_stat(wk, &slot->st);
+      pthread_mutex_lock(&pool->lock);
+      slot->done = 1;
+      pthread_cond_broadcast(&pool->cv_emit);
+      pthread_mutex_unlock(&pool->lock);
+    }
+    pthread_mutex_lock(&pool->lock);
+    pool->active--;
+    pthread_cond_broadcast(&pool->cv_emit);
+    pthread_mutex_unlock(&pool->lock);
+  }
+}
+
+static void rp_pool_destroy(ratpoints_args *args)
+{ rp_pool *pool = (rp_pool *)args->pool;
+  long t, k;
+
+  if(pool == NULL) { return; }
+  pthread_mutex_lock(&pool->lock);
+  pool->exiting = 1;
+  pthread_cond_broadcast(&pool->cv_work);
+  pthread_mutex_unlock(&pool->lock);
+  for(t = 0; t < pool->nthreads; t++) { pthread_join(pool->threads[t], NULL); }
+  pthread_mutex_destroy(&pool->lock); pthread_mutex_destroy(&pool->tables);
+  pthread_cond_destroy(&pool->cv_work); pthread_cond_destroy(&pool->cv_emit);
+  for(t = 0; t < pool->nalloc; t++)
+  { if(pool->works[t])
+    { for(k = 0; k < args->work_length; k++) { mpz_clear(pool->works[t][k]); }
+      free(pool->works[t]);
+    }
+    free(pool->checks[t]);
+  }
+  for(k = 0; k < RP_POOL_SLOTS; k++)
+  { long j;
+
+    for(j = 0; j < pool->slots[k].cap; j++) { mpz_clear(pool->slots[k].pts[j].y); }
+    free(pool->slots[k].pts);
+  }
+  free(pool->works); free(pool->checks); free(pool->workers); free(pool->threads);
+  free(pool);
+  args->pool = NULL;
+}
+
+/* A pool of n threads, or NULL when it cannot be had. */
+static rp_pool *rp_pool_create(ratpoints_args *args, long n)
+{ rp_pool *pool = calloc(1, sizeof(rp_pool));
+  long t, k;
+
+  if(pool == NULL) { return(NULL); }
+  pool->workers = calloc(n, sizeof(rp_worker));
+  pool->works = calloc(n, sizeof(mpz_t *));
+  pool->checks = calloc(n, sizeof(check_spec *));
+  pool->threads = calloc(n, sizeof(pthread_t));
+  if(pool->workers == NULL || pool->works == NULL || pool->checks == NULL
+       || pool->threads == NULL)
+  { free(pool->workers); free(pool->works); free(pool->checks);
+    free(pool->threads); free(pool);
+    return(NULL);
+  }
+  pthread_mutex_init(&pool->lock, NULL); pthread_mutex_init(&pool->tables, NULL);
+  pthread_cond_init(&pool->cv_work, NULL); pthread_cond_init(&pool->cv_emit, NULL);
+  pool->exiting = 0; pool->job = 0; pool->run = NULL; pool->stop = 1;
+  pool->nthreads = 0; pool->nalloc = n;
+  args->pool = pool;
+  for(t = 0; t < n; t++)
+  { pool->works[t] = malloc(args->work_length*sizeof(mpz_t));
+    pool->checks[t] = malloc(RATPOINTS_NUM_PRIMES*sizeof(check_spec));
+    if(pool->works[t] == NULL || pool->checks[t] == NULL)
+    { free(pool->works[t]); pool->works[t] = NULL; rp_pool_destroy(args); return(NULL); }
+    for(k = 0; k < args->work_length; k++) { mpz_init(pool->works[t][k]); }
+    pool->workers[t].pool = pool; pool->workers[t].stop = &pool->stop;
+    pool->workers[t].slot = NULL;
+  }
+  for(t = 0; t < n; t++)
+  { if(pthread_create(&pool->threads[t], NULL, rp_worker_main, &pool->workers[t]) != 0)
+    { rp_pool_destroy(args); return(NULL); }
+    pool->nthreads = t + 1;
+  }
+  return(pool);
+}
+
+/* The pool this search sieves on, or NULL: the calling thread then. */
+static rp_pool *rp_pool_for(ratpoints_args *args)
+{ long n = args->num_threads;
+  rp_pool *pool = (rp_pool *)args->pool;
+
+  if(n < 0) { n = sysconf(_SC_NPROCESSORS_ONLN); }
+  if(n < 2) { return(NULL); } /* an idle pool from an earlier call stays */
+  if(n > RP_ADAPT_LAG + 1) { n = RP_ADAPT_LAG + 1; } /* more would wait for a block */
+  if(pool != NULL && pool->nthreads == n) { return(pool); }
+  rp_pool_destroy(args);
+  return(rp_pool_create(args, n));
+}
+
+/* The search on the pool.  The calling thread starts the job, then takes
+ * the blocks in order as they complete, delivers each block's points to
+ * process() -- from this thread only, and in the order a single thread
+ * would have found them -- and folds its report; when process() stops the
+ * search, the threads are told to abandon their blocks and nothing more is
+ * delivered.  At the end it waits until every thread has left the job, so
+ * that nothing of the run is used after this returns. */
+static long run_threaded(rp_run *run, rp_pool *pool,
+                         int process(long, long, const mpz_t, void*, int*),
+                         void *info, int *quit)
+{ ratpoints_args *args = run->args;
+  long total = 0, i, t;
+
+  for(t = 0; t < pool->nthreads; t++)
+  { worker_init(&pool->workers[t], args, pool->works[t], pool->checks[t]); }
+  pthread_mutex_lock(&pool->lock);
+  pool->run = run; pool->next_block = 0; pool->nfolded = 0;
+  pool->joined = 0; pool->active = 0;
+  RP_PUBLISH(&pool->stop, 0); RP_PUBLISH(&pool->failed, 0);
+  for(i = 0; i < RP_POOL_SLOTS; i++)
+  { pool->slots[i].done = 0; pool->slots[i].block = -1; }
+  pool->job++;
+  pthread_cond_broadcast(&pool->cv_work);
+  pthread_mutex_unlock(&pool->lock);
+
+  for(i = 0; i < run->nblocks; i++)
+  { rp_slot *slot = &pool->slots[i % RP_POOL_SLOTS];
+    long k;
+
+    pthread_mutex_lock(&pool->lock);
+    while(!slot->done) { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
+    pthread_mutex_unlock(&pool->lock);
+    if(RP_RELAXED(&pool->failed)) { break; }
+    for(k = 0; k < slot->npts && !*quit; k++)
+    { total += process(slot->pts[k].x, slot->pts[k].z, slot->pts[k].y,
+                       info, quit);
+    }
+    if(*quit) { break; }
+    run_fold(run, &slot->st);
+    pthread_mutex_lock(&pool->lock);
+    slot->done = 0;
+    pool->nfolded = i + 1;
+    pthread_cond_broadcast(&pool->cv_work);
+    pthread_mutex_unlock(&pool->lock);
+  }
+  pthread_mutex_lock(&pool->lock);
+  RP_PUBLISH(&pool->stop, 1);
+  pthread_cond_broadcast(&pool->cv_work);
+  while(pool->joined < pool->nthreads || pool->active > 0)
+  { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
+  pool->run = NULL;
+  pthread_mutex_unlock(&pool->lock);
+  for(t = 0; t < pool->nthreads; t++) { worker_clear(&pool->workers[t]); }
+  return(RP_RELAXED(&pool->failed) ? RATPOINTS_NO_MEMORY : total);
+}
+
+#else /* !RP_THREADS: the calling thread sieves, whatever num_threads says */
+
+typedef struct { long nthreads; } rp_pool;
+
+static void rp_tables_lock(rp_worker *wk) { (void)wk; }
+static void rp_tables_unlock(rp_worker *wk) { (void)wk; }
+static void rp_pool_destroy(ratpoints_args *args) { args->pool = NULL; }
+static rp_pool *rp_pool_for(ratpoints_args *args) { (void)args; return(NULL); }
+static long run_threaded(rp_run *run, rp_pool *pool,
+                         int process(long, long, const mpz_t, void*, int*),
+                         void *info, int *quit)
+{ (void)run; (void)pool; (void)process; (void)info; (void)quit; return(0); }
+
+#endif /* RP_THREADS */
+
+
+
 static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info);
 
@@ -3314,7 +4126,9 @@ static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;       /* total counts the points */
-  int quit = 0;
+  int quit = 0;         /* for the points at infinity; the sieve has wk.quit */
+  rp_worker wk;         /* the sieving thread */
+  rp_run run;           /* the loop over the denominators, in blocks */
   /* Whether the caller left the number of primes to us.  If it did,
    * sieving_info may look past RATPOINTS_DEFAULT_NUM_PRIMES for the curves
    * that need it; an explicit num_primes is a hard limit. */
@@ -3348,12 +4162,6 @@ static long find_points_work_1(ratpoints_args *args,
 
   args->flags &= RATPOINTS_FLAGS_INPUT_MASK;
   args->flags |= RATPOINTS_CHECK_DENOM;
-
-  /* the counts that say what the sieve actually did, which the choice of
-   * primes is corrected from as the run goes on */
-  args->n_words = 0; args->n_arrays = 0; args->n_bits = 0;
-  args->n_coprime = 0; args->n_checks = 0; args->n_sifts = 0;
-  args->n_words_2 = 0;
 
   /* initialize memory management */
   args->se_next = args->se_buffer;
@@ -3828,25 +4636,19 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
   /* now do the sieving */
-  { ratpoints_bit_array *survivors;
-    void *survivors_na;
-    /* the row shifts of the numerator classes: one row per distinct
+  { /* the row shifts of the numerator classes: one row per distinct
      * packing (a dozen or so; at most 64), over every prime that may come to
      * be sieved with */
     long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
+    long i;
 
 #ifdef DEBUG
     printf("\nfind_points_work: allocating space for survivors...");
     fflush(NULL);
 #endif
 
-    /* allocate space for survivors array; make sure of correct alignment.
-     * One spare bit array pays for the alignment, and one more for the
-     * sentinel that the scan in _ratpoints_sift0 runs into: it sits just
-     * past the range, and the range can be all of array_size. */
-    survivors_na = malloc((args->array_size+2)*sizeof(ratpoints_bit_array));
-    survivors = (ratpoints_bit_array *)
-                pointer_align(survivors_na, sizeof(ratpoints_bit_array));
+    worker_init(&wk, args, args->work, (check_spec *)args->stage3_list);
+    wk.pool = NULL; wk.slot = NULL; wk.stop = NULL; /* this thread sieves */
     /* the row shifts of the numerator classes, now that the primes are
      * known */
     class_offsets(&cls[0], sieve_list, args->sp3_max, &offsets[0]);
@@ -3854,256 +4656,32 @@ static long find_points_work_1(ratpoints_args *args,
     printf(" done\n");
     fflush(NULL);
 #endif
+    run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
+              divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
+    { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for */
 
-    if(args->flags & (RATPOINTS_USE_SQUARES | RATPOINTS_USE_SQUARES1))
-    { if(args->flags & RATPOINTS_USE_SQUARES)
-      /* need only take squares as denoms */
-      { long b, bb;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
+      if(pool != NULL)
+      { long found = run_threaded(&run, pool, process, info, &quit);
 
-#ifdef DEBUG
-        printf("\n  using squares\n");
-        fflush(NULL);
-#endif
+        if(found < 0) { run_clear(&run); worker_clear(&wk); return(found); }
+        total += found;
+      }
+      else
+      { for(i = 0; i < run.nblocks; i++)
+        { rp_blockstat st;
 
-        /* from the first square in the range; b*b <= b_high, written so
-         * that the square cannot overflow */
-        for(b = ceil_sqrt(args->b_low); b <= args->b_high/b; b++)
-        { const rp_num_class *cl;
-
-          bb = b*b;
-          cl = &cls[bb & 0x3f];
-          if(EXT0(cl->bits))
-          { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-            total += sift(bb, survivors, args, cl,
-                          sieve_list, &bp_list[0],
-                          &quit, process, info);
-            if(quit) { break; }
-          }
-
-#ifdef DEBUG
-          else
-          { printf("\nb = %ld: excluded mod 64\n", bb);
-            fflush(NULL);
-          }
-#endif
+          total += run_block(&run, &wk, i, process, info);
+          worker_stat(&wk, &st);
+          run_fold(&run, &st);
+          if(wk.quit) { break; }
         }
       }
-      else /* args->flags & RATPOINTS_USE_SQUARES1 */
-      { long *div = &divisors[0];
-        long b, bb;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-
-#ifdef DEBUG
-        printf("\n  using squares times divisors of leading coefficient\n");
-        fflush(NULL);
-#endif
-
-        for( ; *div; div++)
-        {
-#ifdef DEBUG
-          printf("\n  divisor = %ld\n", *div);
-          fflush(NULL);
-#endif
-
-          /* from the first multiple of the divisor by a square in the
-           * range; d*b*b <= b_high, written so that the product cannot
-           * overflow (the divisors are at most b_high, see setup_us1) */
-          for(b = ceil_sqrt((args->b_low - 1)/(*div) + 1);
-              b <= (args->b_high/(*div))/b; b++)
-          { int flag = 1;
-            const rp_num_class *cl;
-
-            bb = (*div)*b*b;
-            cl = &cls[bb & 0x3f];
-            if(EXT0(cl->bits))
-            { long i;
-
-              for(i = 0; den_info[i].p; i++)
-              { int v = valuation1(bb, den_info[i].p);
-                if((v >= den_info[i].slope)
-                     && ((v + (den_info[i].val)) & 1))
-                { flag = 0; break; }
-              }
-              if(flag)
-              { fill_bp_list(bb, cl->k, bp_list, args, sieve_list);
-                total += sift(bb, survivors, args, cl,
-                              sieve_list, &bp_list[0],
-                              &quit, process, info);
-                if(quit) { break; }
-              }
-            }
-
-#ifdef DEBUG
-            else
-            { printf("\nb = %ld: excluded mod 64\n", bb);
-              fflush(NULL);
-            }
-#endif
-          }
-        if(quit) { break; }
-        }
-    } }
-    else
-    { if(args->flags & RATPOINTS_CHECK_DENOM)
-      { forbidden_val *forb;
-        long b;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-        long w, w_low = args->b_low >> LONG_SHIFT;
-        long w_high = args->b_high >> LONG_SHIFT;
-        /* the Jacobi symbol test as a product of Legendre symbols, when the
-         * leading coefficient allows it; see jacobi_setup */
-        jacobi_info ji;
-        unsigned char jtab[RP_JACOBI_TABLE];
-        int fast_jacobi = (args->flags & RATPOINTS_USE_JACOBI)
-                            && jacobi_setup(&ji, jtab, RP_JACOBI_TABLE,
-                                            c[degree], work[0], args->b_high);
-
-#ifdef DEBUG
-        printf("\n  taking account of forbidden divisors of the denominator\n");
-        if(args->flags & RATPOINTS_USE_JACOBI)
-        { printf("  Jacobi symbol test %s\n",
-                 fast_jacobi ? "by Legendre symbols" : "by jacobi1/jacobi");
-        }
-        fflush(NULL);
-#endif
-
-        /* The 2-adic test on a denominator depends on b mod 64 alone -- bit
-         * b mod 64 of den_bits says whether its class has a numerator
-         * pattern -- and the forbidden-divisor arrays are words indexed by b
-         * mod 64 as well.  So the denominators are taken a word of 64 at a
-         * time: the word of those that pass both tests is one AND per array,
-         * and the loop below visits only the bits that are set, which on a
-         * random curve are a third of the denominators.  Bit j of the word
-         * for w stands for b = 64*w + j. */
-        { forbidden_entry *fba = &forb_ba[0];
-
-          while(fba->p)
-          { fba->curr = fba->start + mod(w_low, fba->p);
-            fba++;
-          }
-        }
-
-#ifdef DEBUG
-        printf("\n  den_bits = %*.*lx\n", WIDTH, WIDTH, den_bits);
-        fflush(NULL);
-#endif
-
-        for(w = w_low; w <= w_high; w++)
-        { unsigned long b_bits = den_bits;
-          long base = w << LONG_SHIFT;
-
-          { forbidden_entry *fba = &forb_ba[0];
-
-            while(fba->p)
-            { b_bits &= *(fba->curr);
-              fba->curr++;
-              if(fba->curr == fba->end) { fba->curr = fba->start; }
-              fba++;
-            }
-          }
-          /* the first and the last word may be entered part way */
-          if(w == w_low) { b_bits &= ~0UL << (args->b_low & LONG_MASK); }
-          if(w == w_high)
-          { b_bits &= ~0UL >> (LONG_MASK - (args->b_high & LONG_MASK)); }
-
-#ifdef DEBUG
-          printf("\n  w = %ld: b_bits = %*.*lx\n", w, WIDTH, WIDTH, b_bits);
-          fflush(NULL);
-#endif
-
-          while(b_bits)
-          { const rp_num_class *cl;
-
-            b = base + RP_CTZL(b_bits);
-            b_bits &= b_bits - 1UL;
-            cl = &cls[b & 0x3f];
-
-            /* the Jacobi symbol test comes first when it is the cheap one:
-             * a few multiplications against the divisions of the valuation
-             * test, and it rejects half of what gets here */
-            if(fast_jacobi && !jacobi_test(b, &ji))
-            {
-#ifdef DEBUG
-              printf("\nb = %ld: excluded by Jacobi symbol\n", b);
-              fflush(NULL);
-#endif
-              continue;
-            }
-
-            /* check if denominator is excluded: is v_p(b) one of the
-             * valuations the entry for p forbids? */
-            for(forb = &forbidden[0];
-                forb->p && !((forb->mask >> valuation1(b, forb->p)) & 1);
-                forb++) {};
-
-#ifdef DEBUG
-            if(forb->p)
-            { printf("\nb = %ld: excluded, v_%ld(b) = %ld\n",
-                     b, forb->p, valuation1(b, forb->p));
-              fflush(NULL);
-            }
-#endif
-
-            if(forb->p == 0
-                && (fast_jacobi || !(args->flags & RATPOINTS_USE_JACOBI)
-                      || (use_c_long
-                           ? jacobi1(b, c_long[degree])
-                           : jacobi(b, work[0], c[degree])) == 1))
-            { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
-              total += sift(b, survivors, args, cl,
-                            sieve_list, &bp_list[0],
-                            &quit, process, info);
-              if(quit) { break; }
-            }
-
-#ifdef DEBUG
-            else
-            { if(forb->p == 0)
-              { printf("\nb = %ld: excluded by Jacobi symbol\n", b);
-                fflush(NULL);
-            } }
-#endif
-
-          }
-          if(quit) { break; }
-        }
-      } /* if(args->flags & RATPOINTS_CHECK_DENOM) */
-      else
-      { long b;
-        long bp_list[args->sp3_max > 0 ? args->sp3_max : 1];
-          /* sp3_max, not sp3: adapt_primes may reach for a
-           * further prime as the run goes on */
-
-        for(b = args->b_low; b <= args->b_high; b++)
-        { const rp_num_class *cl = &cls[b & 0x3f];
-
-          if(EXT0(cl->bits))
-          { fill_bp_list(b, cl->k, bp_list, args, sieve_list);
-            total += sift(b, survivors, args, cl,
-                          sieve_list, &bp_list[0],
-                          &quit, process, info);
-            if(quit) { break; }
-          }
-
-#ifdef DEBUG
-          else
-          { printf("\nb = %ld: excluded mod 64\n", b);
-            fflush(NULL);
-          }
-#endif
-
-          if(b == LONG_MAX) { break; } /* b++ would overflow */
-      } }
     }
+    /* what the last block was sieved with is what the search used */
+    args->sp2 = run.last_sp2; args->sp3 = run.last_sp3;
+    run_clear(&run);
     /* de-allocate memory */
-    free(survivors_na);
+    worker_clear(&wk);
   }
 
 #if defined(RP_PRIME_STATS) && defined(RP_PHASE_TIMING)
@@ -4125,8 +4703,8 @@ static long find_points_work_1(ratpoints_args *args,
             args->run_words,
             (double)(_rp_arrays_swept - last_arrays)*(double)RBA_PACK,
             args->run_denoms, (double)(_rp_bp_dens - last_dens),
-            args->n_words, args->n_arrays, args->n_bits,
-            args->n_coprime, args->n_checks,
+            run.cnt.n_words, run.cnt.n_arrays, run.cnt.n_bits,
+            run.cnt.n_coprime, run.cnt.n_checks,
             EXT0(cls[1].bits) ? cls[1].k : -1L,
             args->sp1, args->sp2, _rp_sift0_calls - last_calls,
             _rp_phase1_cycles - last_cyc1, _rp_phase2_cycles - last_cyc2,
@@ -4187,22 +4765,24 @@ long find_points(ratpoints_args *args,
  * This function is called by _ratpoints_sift0(), see sift.c .            *
  **************************************************************************/
 
-long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
+long _ratpoints_check_point(long a, long b, rp_worker *wk,
                  int process(long, long, const mpz_t, void*, int*), void *info)
 {
+  const ratpoints_args *args = wk->args;
   mpz_t *c = args->cof;
   long degree = args->degree;
   int reverse = args->flags & RATPOINTS_REVERSED;
   long total = 0;
-  mpz_t *work = args->work;
+  mpz_t *work = wk->work;
   mpz_t *bc = &work[3];
+  int *quit = &wk->quit;
 
   if(!(args->flags & RATPOINTS_NO_CHECK))
   { long k;
 
     /* Compute F(a, b), where F is the homogenized version of f
        of smallest possible even degree  */
-    if(args->flags & RATPOINTS_COMPUTE_BC)
+    if(wk->compute_bc)
     { /* compute entries bc[k] = c[k] * b^(degree-k), k < degree */
       RP_BC_TIC(t_bc);
 
@@ -4217,7 +4797,7 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
         mpz_mul(bc[k], c[k], work[0]);
       }
       /* note that bc[] has been computed for the current b */
-      args->flags &= ~RATPOINTS_COMPUTE_BC;
+      wk->compute_bc = 0;
       RP_BC_TOC(t_bc);
     }
 

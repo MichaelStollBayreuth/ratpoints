@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -57,6 +57,27 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
 #endif
 
 #include "ratpoints.h"
+
+/* Threads.  The library sieves on several threads when asked to (the
+ * num_threads field): POSIX threads, and the gcc/clang atomic builtins for
+ * the few words that one thread writes and another reads without a lock --
+ * a pointer to a sieve table that a thread has just built, the count of the
+ * correction's decisions, the flag that stops a search.  RP_PUBLISH writes
+ * such a word after everything it points to is complete, RP_ACQUIRE reads
+ * it so that what it points to is seen complete, and RP_RELAXED reads a
+ * flag.  (Not a fence after a loop of relaxed loads: ThreadSanitizer does
+ * not see through fences, and the acquire loads cost nothing measurable.)
+ * With -DRATPOINTS_NO_THREADS they are the plain operations, and the
+ * library sieves on the calling thread whatever num_threads says. */
+#ifndef RATPOINTS_NO_THREADS
+# define RP_ACQUIRE(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
+# define RP_RELAXED(p)    __atomic_load_n((p), __ATOMIC_RELAXED)
+# define RP_PUBLISH(p, v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#else
+# define RP_ACQUIRE(p)    (*(p))
+# define RP_RELAXED(p)    (*(p))
+# define RP_PUBLISH(p, v) (*(p) = (v))
+#endif
 
 #define FLOOR(a,b) (((a) < 0) ? -(1 + (-(a)-1) / (b)) : (a) / (b))
 #define CEIL(a,b) (((a) <= 0) ? -(-(a) / (b)) : 1 + ((a)-1) / (b))
@@ -525,6 +546,34 @@ typedef struct ratpoints_sieve_entry_s
           ratpoints_bit_array* sieve[RATPOINTS_MAX_PRIME_EVEN]; }
         ratpoints_sieve_entry;
 
+/* The state of one sieving thread.  Everything the path from a denominator
+ * to its points writes is here, so that several of them can sieve the same
+ * curve at once from one ratpoints_args that they only read: the survivors
+ * array (array_size bit arrays, one spare for the alignment and one for the
+ * sentinel the scan of the second stage runs into), the gmp temporaries
+ * (work[0..2], and from work[3] on the coefficients times the powers of the
+ * current denominator), the third stage's check_spec array, the numbers of
+ * moduli in force, the counters of the block being sieved (which the run
+ * folds into its own in block order, for the run-time correction; dec is
+ * the correction's decision the block is sieved with), the two flags that
+ * say what has been computed for the current denominator, and the flag
+ * process() sets to stop the search.  A thread of a pool (find_points.c)
+ * also knows its pool, the slot it puts its block's points into, and the
+ * flag that tells it to abandon the block; on the calling thread the three
+ * are NULL. */
+typedef struct { ratpoints_args *args;
+                 ratpoints_bit_array *survivors; void *survivors_na;
+                 mpz_t *work;
+                 check_spec *checks;
+                 long sp1; long sp2; long sp3;
+                 unsigned long n_words; unsigned long n_arrays;
+                 unsigned long n_bits; unsigned long n_coprime;
+                 unsigned long n_checks; unsigned long n_sifts;
+                 long dec;
+                 int compute_bc; int stage3_filled; int quit;
+                 void *pool; void *slot; const int *stop; }
+        rp_worker;
+
 /* The following two functions are provided in init.c: the table row of a
  * prime power and of a product of moduli for the residue b, built into the
  * table buffer like the rows of the primes (the CODE_INIT_SIEVE functions
@@ -534,7 +583,7 @@ ratpoints_bit_array *_ratpoints_sieve_init_power(void *se1, long b1, void *args1
 ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *args1);
 
 /* The following function is provided in find_points.c : */
-long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
+long _ratpoints_check_point(long a, long b, rp_worker *wk,
                  int process(long, long, const mpz_t, void*, int*), void *info);
 
 /* The following function is provided in sift.c : */
@@ -549,10 +598,9 @@ long _ratpoints_check_point(long a, long b, ratpoints_args *args, int *quit,
  * RATPOINTS_CHUNK bit arrays and sieves what is left over in narrower legs
  * (the arm for RATPOINTS_CHUNK 1 takes any length as well). */
 long _ratpoints_sift0(long b, long w_low, long w_high,
-           ratpoints_args *args, const rp_num_class *cls,
-           ratpoints_bit_array *survivors,
+           rp_worker *wk, const rp_num_class *cls,
            long mask_low, long mask_high, sieve_spec *sieves,
-           check_spec *checks, int *quit,
+           check_spec *checks,
            int process(long, long, const mpz_t, void*, int*), void *info);
 
 /* The following function is provided in sturm.c : */

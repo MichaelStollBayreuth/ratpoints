@@ -7,14 +7,29 @@ to find rational points on hyperelliptic curves.
 
 The program is distributed under the GNU GPL, version 2 (or later).
 
-Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.0.pdf).
+Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.1.pdf).
 
-The current version is **ratpoints-3.0.0** from September 21, 2026. Compared to version 2.2.4, it works
-out for itself what it used to be told, sieves between two and ten times faster, and comes with a test
-suite that exercises nearly every line of the code. It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**. Programs
-using the library must be recompiled, since `ratpoints_args` has gained fields.
+The current version is **ratpoints-3.1.0** from September 24, 2026. New in it:
 
-The main improvements over version 2.2.x:
+* **The sieve can run on several threads.** `ratpoints ... -t n` sieves on
+  n threads (`-t 0`: as many as the machine has processors), and programs
+  using the library ask for them through the field `num_threads`. What is
+  printed, and what the library's callback receives, is the same in the
+  same order whatever the number of threads, and the callback is called
+  from the calling thread only. Threads speed up long runs: on a 16-core
+  machine a search with height bound 400000 runs 9.4 times faster on 16
+  threads than on one. `make THREADS=0` builds without threads. Programs using the library
+  must be recompiled, since `ratpoints_args` has gained fields.
+* **The 512-bit build has been verified** on AVX-512 hardware; see below.
+* `make testthreads` checks that the output does not depend on the threads,
+  and `make tsan` runs the threaded tests under ThreadSanitizer.
+
+Version 3.0.0 from September 21, 2026, compared to version 2.2.4, works
+out for itself what it used to be told, sieves between two and ten times faster,
+and comes with a test suite that exercises nearly every line of the code.
+It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**.
+
+The main improvements of version 3.0.0 over version 2.2.x:
 
 * **The sieving parameters are chosen from the curve.**
   How many moduli each sieving stage uses, and which ones, follows from the
@@ -96,8 +111,9 @@ my machine allows) were made by Claude Code (Anthropic),
 in multiple sessions supervised by myself.
 
 The same holds for the improvements of version 3.0.0 over 2.2.4 described above,
-and for the test suite: they were worked out, implemented and measured
-by Claude Code in many such sessions, with the decisions taken by myself.
+for the test suite and for the threads of version 3.1.0: they were worked out,
+implemented and measured by Claude Code in many such sessions, with the
+decisions taken by myself.
 
 ### ratpoints-gpu
 

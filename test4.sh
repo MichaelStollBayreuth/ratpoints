@@ -40,14 +40,18 @@ RP=${RP:-./ratpoints}
 # whose target fails with 1 when they differ)
 [ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
 
+# options added to every invocation of t and f (not to the tests of the
+# argument checks, e): "make testthreads" passes -t, since the output must
+# not depend on the number of threads
+RPOPTS=${RPOPTS:-}
 # run ratpoints, the arguments announced first
-t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@"; }
+t() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo; "$RP" "$@" $RPOPTS; }
 # the same, with the output run through a filter (the first argument, a
 # shell command reading its standard input), which is announced with the
 # arguments: for the runs that look at one line of a report, or count them
 f() { filt=$1; shift
       printf '#'; for a; do printf ' <%s>' "$a"; done; echo " | $filt"
-      "$RP" "$@" | eval "$filt"
+      "$RP" "$@" $RPOPTS | eval "$filt"
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
@@ -70,8 +74,10 @@ m() { t "$@" | grep -v '^This is ratpoints-\|used for\|further primes\|primes us
 # depends on the width of a bit array), and what the exact check is put at
 # (the compiled-in constants).  Two of the reports say what the primes
 # beyond 127 say, and differ in a build with PRIME_SIZE 7, whose table ends
-# there; test4-configs.sh compares that build without this part
+# there; test4-configs.sh compares that build without this part.  The
+# first line of the report names the version and goes too
 v() { t "$@" | awk '
+  /^This is ratpoints-/ { next }
   /bits set per word/ { skip = 1; next }
   /^  use [0-9]+ (moduli|primes) for (first|second|third) stage:/ { skip = 1; next }
   /one exact check is put at/ { skip = 1; next }

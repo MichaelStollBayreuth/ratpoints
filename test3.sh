@@ -27,28 +27,32 @@
 # 21    the -v report of the numerator packing, on a curve whose
 #       odd denominators take one numerator in eight and whose even ones
 #       one in four or none
-RP=./ratpoints
+RP=${RP:-./ratpoints}
 # no program to run: exit 2 (the comparison with the reference is make's,
 # whose target fails with 1 when they differ)
 [ -x "$RP" ] || { echo "$RP: not an executable" >&2; exit 2; }
-$RP '1 2' 20 -q
-$RP '1 2 0' 50 -q
-$RP '0 19 1' 45 -q
-$RP '0 1 -1' 45 -q
-$RP '0 3 3' 45 -q
-$RP '0 -9' 45 -q
-$RP '-4 1' 45 -q
-$RP '-1000000000 0 0 1' 45 -q
-$RP '0 1 0 0 -1000000000' 45 -q
-$RP '-10000000 0 0 1' 100 -q
-$RP '-1000000 0 0 0 1' 10 -q -k
-$RP '-1000000 0 0 0 1' 10 -q -l -5 -u 5
-$RP '2 0 3' 200 -q -j -F 0 -x
-$RP '2 0 3' 200 -v -j -F 0 -x | grep 'mod 64'
-$RP '2 0 3' 300000 -q -j -F 0
-$RP '10 10 5 -7 0 3 -2' 16383 -q
-$RP '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 moduli for second stage\|use 0 primes for third stage'
-$RP '1 2 1' 20 -q
-$RP '1 0 126 0 441' 100 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
-$RP '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
-$RP '-5 10 -9 -6 7 -1 3' 200 -v | grep 'bit arrays hold'
+# options added to every invocation: "make testthreads" passes -t, since the
+# output must not depend on the number of threads
+RPOPTS=${RPOPTS:-}
+rp() { "$RP" "$@" $RPOPTS; }
+rp '1 2' 20 -q
+rp '1 2 0' 50 -q
+rp '0 19 1' 45 -q
+rp '0 1 -1' 45 -q
+rp '0 3 3' 45 -q
+rp '0 -9' 45 -q
+rp '-4 1' 45 -q
+rp '-1000000000 0 0 1' 45 -q
+rp '0 1 0 0 -1000000000' 45 -q
+rp '-10000000 0 0 1' 100 -q
+rp '-1000000 0 0 0 1' 10 -q -k
+rp '-1000000 0 0 0 1' 10 -q -l -5 -u 5
+rp '2 0 3' 200 -q -j -F 0 -x
+rp '2 0 3' 200 -v -j -F 0 -x | grep 'mod 64'
+rp '2 0 3' 300000 -q -j -F 0
+rp '10 10 5 -7 0 3 -2' 16383 -q
+rp '10 10 5 -7 0 3 -2' 16383 -v 2>&1 | grep -c 'use 0 moduli for second stage\|use 0 primes for third stage'
+rp '1 2 1' 20 -q
+rp '1 0 126 0 441' 100 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
+rp '10 10 5 -7 0 3 -2' 1000 -n 5 -N 8 -P 2 -z | sed -n '/moduli used/,$p'
+rp '-5 10 -9 -6 7 -1 3' 200 -v | grep 'bit arrays hold'

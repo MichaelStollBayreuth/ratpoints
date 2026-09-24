@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -37,7 +37,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-3.0.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.1.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \
@@ -71,7 +71,7 @@ char *usage_str =
     "                 [-r survivors_per_word] [-R extra_primes] [-U words]\n"
     "                 [-C table_cost] [-A adapt]\n"
     "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
-    "                 [-F max_forbidden] [-s] [-S [iter]]\n"
+    "                 [-F max_forbidden] [-t threads] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
     "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
 
@@ -263,6 +263,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   args->sturm         = RATPOINTS_DEFAULT_STURM; /* default */
   args->num_primes    = -1; /* gives default value */
   args->max_forbidden = -1; /* gives default value */
+  args->num_threads   = 1;  /* sieve on this thread; see -t */
   args->flags         = 0;  /* do the check by default */
                             /* list y-coordinates by default */
                             /* allow reversal of polynomial */
@@ -336,6 +337,13 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(6); }
           i++;
           if(sscanf(argv[i], " %ld", &(args->max_forbidden)) != 1) { error(6); }
+          i++;
+          break;
+        case 't': /* sieving threads; 0: as many as there are processors */
+          if(argc == i) { error(6); }
+          i++;
+          if(sscanf(argv[i], " %ld", &(args->num_threads)) != 1) { error(6); }
+          if(args->num_threads == 0) { args->num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */

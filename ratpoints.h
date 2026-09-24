@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -367,6 +367,13 @@ typedef struct { mpz_t *cof; long degree; long height;
                  long sp3_extra; double sp3_per_denom; double check_cost;
                  long array_size;
                  long sturm; long num_primes; long max_forbidden;
+                 long num_threads;
+                   /* how many threads sieve: 1 (or less), the calling one;
+                      n > 1: n threads besides the calling one, which hands
+                      out the work and delivers the points, in the order a
+                      single thread would find them; negative: as many as
+                      there are online processors.  A library built without
+                      threads (RATPOINTS_NO_THREADS) ignores it. */
                  unsigned int flags;
                  long sp1_used; long sp2_used; long sp3_used;
                    /* output: the number of sieving moduli (primes and
@@ -386,12 +393,9 @@ typedef struct { mpz_t *cof; long degree; long height;
                  void *ba_buffer_na; long ba_buffer_primes;
                  long ba_buffer_arrays; void *pw_buffer;
                  double run_words; double run_denoms;
-                 unsigned long n_words; unsigned long n_arrays;
-                 unsigned long n_bits; unsigned long n_coprime;
-                 unsigned long n_checks; unsigned long n_sifts;
-                 unsigned long n_words_2;
-                 unsigned long adapt_at; long sp3_max; int stage3_filled;
+                 unsigned long adapt_at; long sp3_max;
                  double check_rel;
+                 void *pool;
                }
         ratpoints_args;
 
@@ -414,7 +418,6 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_USE_JACOBI      (unsigned int)0x1000
   /* the Jacobi symbol test on the denominators applies: even degree, the
      leading coefficient is not a square, and RATPOINTS_NO_JACOBI is not set */
-#define RATPOINTS_COMPUTE_BC      (unsigned int)0x2000
 #define RATPOINTS_NO_REVERSE_AUTO (unsigned int)0x4000
   /* the program itself decided not to reverse (intervals given, or bounds
      on the denominator); kept apart from RATPOINTS_NO_REVERSE so that the
@@ -424,6 +427,8 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_NON_SQUAREFREE (-1)
 #define RATPOINTS_BAD_ARGS (-2)
 #define RATPOINTS_WORK_LENGTH_TOO_SMALL (-3)
+#define RATPOINTS_NO_MEMORY (-4)  /* a sieving thread ran out of memory for
+                                     the points of a block */
 
 /* Function prototypes */
 long find_points(ratpoints_args*,

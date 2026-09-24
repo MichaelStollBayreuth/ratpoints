@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -113,6 +113,7 @@ int main(int argc, char *argv[])
                             * would stop sieving_info from looking past
                             * it on the curves that run out of primes. */
   long max_forbidden = RATPOINTS_DEFAULT_MAX_FORBIDDEN;
+  long num_threads   = 1;
   long b_low         = 1;
   long b_high        = height;
   long sturm_iter    = RATPOINTS_DEFAULT_STURM;
@@ -162,6 +163,13 @@ int main(int argc, char *argv[])
           if(argc == i) return(-6);
           i++;
           if(sscanf(argv[i], " %ld", &max_forbidden) != 1) return(-6);
+          i++;
+          break;
+        case 't': /* sieving threads; 0: as many as there are processors */
+          if(argc == i) return(-6);
+          i++;
+          if(sscanf(argv[i], " %ld", &num_threads) != 1) return(-6);
+          if(num_threads == 0) { num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */
@@ -370,6 +378,7 @@ int main(int argc, char *argv[])
           args.sturm         = sturm_iter;
           args.num_primes    = num_primes;
           args.max_forbidden = max_forbidden;
+          args.num_threads   = num_threads;
           args.flags         = flags;
         }
 
@@ -412,6 +421,7 @@ int main(int argc, char *argv[])
           RP_CHECK_L(sturm, sturm_iter)
           RP_CHECK_L(num_primes, num_primes)
           RP_CHECK_L(max_forbidden, max_forbidden)
+          RP_CHECK_L(num_threads, num_threads)
           if((args.flags & RATPOINTS_FLAGS_INPUT_MASK) != flags)
           { printf("input flags changed: %x -> %x\n", flags,
                    args.flags & RATPOINTS_FLAGS_INPUT_MASK); }

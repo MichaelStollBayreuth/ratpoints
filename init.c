@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.0.0                                                     *
+ * ratpoints-3.1.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -177,7 +177,7 @@ static ratpoints_bit_array *sieve_init_##prime(void *se1, long b1, void *args1) 
       } \
       RP_INIT_REPLICATE(prime) \
       /* set sieve array and return the pointer */ \
-      se->sieve[b] = (ratpoints_bit_array *)si; \
+      RP_PUBLISH(&se->sieve[b], (ratpoints_bit_array *)si); \
       return((ratpoints_bit_array *)si); \
   } } \
 }
@@ -238,7 +238,7 @@ static ratpoints_bit_array *sieve_init_##prime(void *se1, long b1, void *args1) 
     } } \
     RP_INIT_REPLICATE(prime) \
     /* set sieve array and return the pointer */ \
-    se->sieve[b] = (ratpoints_bit_array *)si; \
+    RP_PUBLISH(&se->sieve[b], (ratpoints_bit_array *)si); \
     return((ratpoints_bit_array *)si); \
   } \
 }
@@ -388,7 +388,7 @@ ratpoints_bit_array *_ratpoints_sieve_init_power(void *se1, long b1, void *args1
 #ifdef RP_VERIFY_MODULI
   { int power = 1; verify_row(row, m, b, 1, &m, &p, &power, args); }
 #endif
-  se->sieve[b] = row;
+  RP_PUBLISH(&se->sieve[b], row); /* complete, so it may be read now */
   return(row);
 }
 
@@ -408,7 +408,9 @@ ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *arg
   { ratpoints_sieve_entry *fe = se->factor[i];
     long bf = b % fe->p;
 
-    frow[i] = fe->sieve[bf] ? fe->sieve[bf] : (*(fe->init))(fe, bf, args);
+    ratpoints_bit_array *fr = RP_ACQUIRE(&fe->sieve[bf]);
+
+    frow[i] = fr ? fr : (*(fe->init))(fe, bf, args);
   }
   /* the factors' rows are read before the row is taken from the buffer, so
    * that a factor built just now does not land where this row goes */
@@ -438,6 +440,6 @@ ratpoints_bit_array *_ratpoints_sieve_init_product(void *se1, long b1, void *arg
     verify_row(row, m, b, se->nf, q, p, power, args);
   }
 #endif
-  se->sieve[b] = row;
+  RP_PUBLISH(&se->sieve[b], row); /* complete, so it may be read now */
   return(row);
 }
