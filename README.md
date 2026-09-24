@@ -9,7 +9,7 @@ The program is distributed under the GNU GPL, version 2 (or later).
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.1.pdf).
 
-The current version is **ratpoints-3.1.0** from XXXX XX, 2026. New in it:
+The current version is **ratpoints-3.1.0** from September 24, 2026. New in it:
 
 * **The sieve can run on several threads.** `ratpoints ... -t n` sieves on
   n threads (`-t 0`: as many as the machine has processors), and programs
