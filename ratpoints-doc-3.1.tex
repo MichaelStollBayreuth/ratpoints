@@ -267,14 +267,14 @@ machine it gained 6 to 7\% at either width over the constants compiled in,
 which were measured on the author's laptop, and it found the same values at
 both widths.
 
-If you leave out \verb+-mavx512f+ and compile with just
-\verb+-DUSE_AVX512+, then \texttt{gcc} will express the 64-byte vectors
-through narrower operations, so that the code runs on any machine. This is
-of no use in production (it is slower than the 256-bit version), but it
-does allow the 512-bit code path to be tested without the corresponding
-hardware. \texttt{gcc} will warn that passing a 512-bit vector argument
-without AVX512F enabled changes the ABI; this is harmless, as the whole
-library is built with the same flags.
+% If you leave out \verb+-mavx512f+ and compile with just
+% \verb+-DUSE_AVX512+, then \texttt{gcc} will express the 64-byte vectors
+% through narrower operations, so that the code runs on any machine. This is
+% of no use in production (it is slower than the 256-bit version), but it
+% does allow the 512-bit code path to be tested without the corresponding
+% hardware. \texttt{gcc} will warn that passing a 512-bit vector argument
+% without AVX512F enabled changes the ABI; this is harmless, as the whole
+% library is built with the same flags.
 
 \subsection{Run various tests}\label{sec:tests}
 
@@ -291,6 +291,8 @@ output of a sample run. The two should be identical; otherwise the
 message \texttt{Test failed!} will be displayed (on its own on a line) and
 the target fails, so that \texttt{make} exits with an error and names the
 test.
+
+\vfill\pagebreak % manual formatting
 
 \begin{verbatim}
 > make test1once
@@ -447,6 +449,8 @@ builds the library and the test programs in \texttt{build-tsan/} with
 \texttt{gcc}'s ThreadSanitizer and runs the threaded tests on them
 (\texttt{tsan.sh}, which has the compiler flags): every output must match
 its reference, and the sanitizer must not report a data race. A few minutes.
+
+\vfill\pagebreak % manual formatting
 
 \begin{verbatim}
 > make timing
@@ -1915,7 +1919,7 @@ several threads.
         (Sections~\ref{sec:threads} and~\ref{sec:library}). The loop over
         the denominators is cut into blocks whose length depends on the
         search alone, the threads take the blocks in order, and the points
-        of a block are delivered when every earlier block has been: what
+        of a block are delivered after those of every earlier block: what
         the program prints, what the callback receives and in which order,
         and where \texttt{*quit} takes effect do not depend on the number
         of threads, and neither do the sieving parameters chosen and their
@@ -1928,11 +1932,11 @@ several threads.
         rather than deliver fewer points than it found. On a 16-core
         machine a search at height bound $4\cdot10^5$ runs $9.4$ times
         faster on 16 threads than on one and the long test suites $5.7$
-        to $7.9$ times, and on those suites two threads spend the
-        processor cycles of one. Programs using the library must
+        to $7.9$ times faster. Programs using the library must
         be recompiled, since \texttt{ratpoints\_args} has gained fields.
   \item \emph{The 512-bit build} has been run on AVX-512 hardware, where the
-        test suite passes; Section~\ref{sec:build} says what it is worth.
+        test suite passes; see Section~\ref{sec:build} for when it makes sense
+        to use it.
   \item \emph{Tests.} \texttt{make testthreads} runs the suites with several
         threads and with the blocks of the denominator loop fixed at other
         lengths, and \texttt{make tsan} runs them under ThreadSanitizer

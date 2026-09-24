@@ -16,7 +16,7 @@ The current version is **ratpoints-3.1.0** from XXXX XX, 2026. New in it:
   using the library ask for them through the field `num_threads`. What is
   printed, and what the library's callback receives, is the same in the
   same order whatever the number of threads, and the callback is called
-  from the calling thread only. Threads pay for long runs: on a 16-core
+  from the calling thread only. Threads speed up long runs: on a 16-core
   machine a search with height bound 400000 runs 9.4 times faster on 16
   threads than on one. `make THREADS=0` builds without threads. Programs using the library
   must be recompiled, since `ratpoints_args` has gained fields.
@@ -25,8 +25,9 @@ The current version is **ratpoints-3.1.0** from XXXX XX, 2026. New in it:
   and `make tsan` runs the threaded tests under ThreadSanitizer.
 
 Version 3.0.0 from September 21, 2026, compared to version 2.2.4, works
-out for itself what it used to be told, sieves between two and ten times faster, and comes with a test
-suite that exercises nearly every line of the code. It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**.
+out for itself what it used to be told, sieves between two and ten times faster,
+and comes with a test suite that exercises nearly every line of the code.
+It needs a 64-bit `long`; **version 2.2.4 is the last one for 32-bit machines**.
 
 The main improvements of version 3.0.0 over version 2.2.x:
 
