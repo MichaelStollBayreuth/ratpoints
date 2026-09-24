@@ -706,16 +706,21 @@ program, not the first one found in time. At most $33$ threads sieve at
 once, so \verb+-t 0+ on a machine with more processors uses~$33$; a
 build for more cores is described in Section~\ref{sec:build}.
 
-Threads pay for long runs. On the author's laptop, a search with a height
-bound of $4\cdot10^5$ takes $1.9$~seconds on one thread and $1.0$, $0.7$
-and $0.4$ on 2, 4 and~10; the sieve's work is divided without loss
-(measured in processor cycles, two threads spend what one does), so what
-the elapsed time shows beyond that is the machine -- a laptop's power
-budget lowers the clock as more cores work. At a small height bound the
-set-up of a search, which runs on one thread, is a large share of the run
-and there is little to gain; many curves at a small height bound are
-better searched by independent searches running in parallel
-(Section~\ref{sec:library}).
+Threads pay for long runs. On a 16-core AMD Ryzen~9 9950X3D, a search
+with a height bound of $4\cdot10^5$ (the curve of \texttt{make timing})
+takes $1.50$~seconds on one thread and $0.80$, $0.45$, $0.24$ and $0.16$
+on 2, 4, 8 and~16 (measured by \textbf{Drew Sutherland}); the two long
+test suites, 1008 random curves and 30 point-rich curves at height bound
+$2\cdot10^5$, run $5.7$ and $7.9$ times faster on 16 threads than on one,
+since every curve has a set-up that one thread does. On the author's
+laptop, whose power budget lowers the clock as more cores work, the same
+search takes $1.9$~seconds on one thread and $1.0$, $0.7$ and $0.4$ on 2,
+4 and~10; the sieve's work is divided without loss (measured in processor
+cycles, two threads spend what one does), so what the elapsed time shows
+beyond that is the machine. At a small height bound the set-up of a
+search is a large share of the run and there is little to gain; many
+curves at a small height bound are better searched by independent
+searches running in parallel (Section~\ref{sec:library}).
 
 \subsection{Setting the parameters for the sieve} \label{fd}
 
@@ -1920,10 +1925,11 @@ several threads.
         threads sieve unless the library is built for more
         (Section~\ref{sec:build}). A search that cannot
         keep the points of a block fails with \texttt{RATPOINTS\_NO\_MEMORY}
-        rather than deliver fewer points than it found. On the author's
-        laptop a search at height bound $4\cdot10^5$ takes $1.9$~s on one
-        thread and $0.4$~s on ten, and on the long test suites two threads
-        spend the processor cycles of one. Programs using the library must
+        rather than deliver fewer points than it found. On a 16-core
+        machine a search at height bound $4\cdot10^5$ runs $9.4$ times
+        faster on 16 threads than on one and the long test suites $5.7$
+        to $7.9$ times, and on those suites two threads spend the
+        processor cycles of one. Programs using the library must
         be recompiled, since \texttt{ratpoints\_args} has gained fields.
   \item \emph{The 512-bit build} has been run on AVX-512 hardware, where the
         test suite passes; Section~\ref{sec:build} says what it is worth.
