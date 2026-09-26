@@ -708,7 +708,12 @@ parameters are chosen and revised from the same counts on the same
 schedule, and the first point is the first point of the sequential
 program, not the first one found in time. At most $33$ threads sieve at
 once, so \verb+-t 0+ on a machine with more processors uses~$33$; a
-build for more cores is described in Section~\ref{sec:build}.
+build for more cores is described in Section~\ref{sec:build}. On a
+processor with hyperthreading, one thread per physical core is the better
+choice, and \verb+-t 0+ counts hardware threads: on an Intel i7-13700K
+with eight performance and eight efficiency cores, 16 threads ran the two
+long test suites $8$ and $9$ times faster than one thread, and 24 threads,
+one per hardware thread, $7$ and $8$ times.
 
 Threads pay for long runs. On a 16-core AMD Ryzen~9 9950X3D, a search
 with a height bound of $4\cdot10^5$ (the curve of \texttt{make timing})
@@ -1601,6 +1606,19 @@ into~\texttt{ratpoints.h}. The file records the configuration it was
 measured for and is ignored, with a warning, if you later build with another
 register width or~\texttt{PRIME\_SIZE}.
 
+The compiled-in values are the laptop's, with one exception: two faster
+machines, an Intel i7-13700K and an AMD Ryzen~9 9950X3D, both found the
+threshold $0.002$ better than the laptop's $0.003$ by $2$ to $3.6\%$ on the
+two test sets, and the lower value costs nothing on the laptop, so it is
+the one compiled in; on the i7-13700K it makes the random test curves
+$4.6\%$ faster at $16383$ and $2.2\%$ at $2\cdot10^5$ and changes nothing
+on the point-rich ones. The offset is where machines and height bounds
+disagree: on the i7-13700K, \texttt{make tune} moved it from $11$ to~$4$,
+\texttt{make tunehigh} back to~$6$, and even that gained $2$ to $3\%$ on
+three of the four test sets while losing $4.6\%$ on the point-rich curves
+at $2\cdot10^5$. So the compiled-in offset stays, and a retuned one is
+worth having only if your runs look like the sets it was measured on.
+
 \texttt{make tune} is deliberately not part of~\texttt{make all}: it takes several minutes
 (about three for the 256-bit build on the author's machine, four for
 128~bits, six for the plain 64-bit one and eight for the 512-bit code
@@ -1943,6 +1961,16 @@ several threads.
         (Section~\ref{sec:tests}).
 \end{itemize}
 
+\textbf{Since version 3.1.0} (in the repository, to appear in the next
+release): the compiled-in threshold \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
+is $0.002$ instead of $0.003$, which two faster machines found best and
+which costs nothing on the author's laptop; on an Intel i7-13700K it makes
+the random test curves $4.6\%$ faster at $16383$ and $2.2\%$ at
+$2\cdot10^5$ and changes nothing on the point-rich ones
+(Section~\ref{sec:retune}), and the ladder of \texttt{tune.sh} brackets the
+new value. The manual now says that one thread per physical core beats one
+per hardware thread (Section~\ref{sec:threads}).
+
 %=========================================================================
 
 \appendix
@@ -2129,11 +2157,13 @@ different value costs.
 \begin{tabular}{@{}P{4.0cm}P{1.7cm}P{5.6cm}P{5.6cm}@{}}
 constant (\texttt{RATPOINTS\_\dots}) & value & what it is; how the value was found & how flat \\
 \hline
-\texttt{SURVIVORS\_PER\_WORD} & $0.003$ &
+\texttt{SURVIVORS\_PER\_WORD} & $0.002$ &
   the threshold at which the first stage stops taking moduli; fitted by
-  \texttt{make tune} at $16383$ &
-  $0.0045$ costs $2.7\%$ and $0.0075$ costs $8.6\%$; $0.0015$ to $0.002$
-  cost nothing; the same at $2\cdot10^5$ \\[3pt]
+  \texttt{make tune} at $16383$, on the author's laptop and on two faster
+  machines (Section~\ref{sec:retune}) &
+  on the laptop $0.0015$ to $0.003$ cost nothing, $0.0045$ costs $2.7\%$
+  and $0.0075$ costs $8.6\%$, the same at $2\cdot10^5$; on an i7-13700K
+  and a Ryzen~9 9950X3D, $0.003$ costs $2$ to $3.6\%$ \\[3pt]
 \texttt{SP2\_EXTRA}, \texttt{SP2\_U0} & $11$, $1.6\cdot10^6$ &
   the second-stage offset of an arbitrarily long run, and the run length at
   which a prime's set-up costs as much as its sieving; fitted to four
