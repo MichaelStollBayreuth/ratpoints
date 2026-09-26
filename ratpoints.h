@@ -90,7 +90,7 @@
  * regimes that matter, and a value that suits one can be poor for the
  * other.  The offset matters much less than the threshold. */
 #ifndef RATPOINTS_SURVIVORS_PER_WORD
-# define RATPOINTS_SURVIVORS_PER_WORD 0.003 /* when to stop the first stage */
+# define RATPOINTS_SURVIVORS_PER_WORD 0.002 /* when to stop the first stage */
 #endif
 #ifndef RATPOINTS_SP2_EXTRA
 # define RATPOINTS_SP2_EXTRA 11             /* sp2 = sp1 + this, capped */

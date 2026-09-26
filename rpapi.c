@@ -136,6 +136,10 @@ int main(void)
   /* initialise for degree 3 -- the work space then holds a polynomial of
    * degree up to 3 -- and search a conic */
   curve(&args, 2, pyth, 10); args.degree = 3;
+  /* the five machine constants pinned, so that the report of what was
+   * used depends neither on the values compiled in nor on a tuning.mk */
+  args.survivors_per_word = 0.003; args.sp2_extra = 11; args.sp2_u0 = 1.6e6;
+  args.cost_table = 38.0; args.sp3_per_denom = 0.013;
   find_points_init(&args);
   args.degree = 2;
   report("find_points_work: y^2 = x^2 + 1, height 10", find_points_work(&args, count, NULL));

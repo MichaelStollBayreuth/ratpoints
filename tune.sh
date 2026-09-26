@@ -88,7 +88,7 @@ WARMUP=${WARMUP:-20}       # seconds of load before measuring
 # stage's set-up is done on demand, for the denominators that bring a
 # survivor that far, so the cost is small, and the ladder reaches down
 # accordingly.
-R_VALUES=${R_VALUES:-"0.0015 0.002 0.0045 0.0075"}
+R_VALUES=${R_VALUES:-"0.001 0.0015 0.003 0.0045"}
 E_VALUES=${E_VALUES:-"4 6 9 13 18"}
 U_VALUES=${U_VALUES:-"3e5 6e5 2.4e6 5e6"}
 C_VALUES=${C_VALUES:-"10 20 70 140"}

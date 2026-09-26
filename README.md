@@ -18,7 +18,8 @@ The current version is **ratpoints-3.1.0** from September 24, 2026. New in it:
   same order whatever the number of threads, and the callback is called
   from the calling thread only. Threads speed up long runs: on a 16-core
   machine a search with height bound 400000 runs 9.4 times faster on 16
-  threads than on one. `make THREADS=0` builds without threads. Programs using the library
+  threads than on one; one thread per physical core is best, and `-t 0`
+  counts hardware threads. `make THREADS=0` builds without threads. Programs using the library
   must be recompiled, since `ratpoints_args` has gained fields.
 * **The 512-bit build has been verified** on AVX-512 hardware; see below.
 * `make testthreads` checks that the output does not depend on the threads,
