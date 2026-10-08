@@ -177,6 +177,7 @@ int main(int argc, char *argv[])
   /* initialize data structure to be passed to process... */
   { data *info = malloc(sizeof(data));
 
+    if(info == NULL) { error(10); }
     info->print_between   = 0;
     info->no_output       = no_output;
     info->pf              = print_format;
@@ -194,6 +195,7 @@ int main(int argc, char *argv[])
   if(total < 0) /* error signaled by find_points? */
   { mpz_clear(tmp); mpz_clear(tmp2);
     if(total == RATPOINTS_NON_SQUAREFREE) error(8);
+    if(total == RATPOINTS_NO_MEMORY) error(10);
     error(9);
   }
   /* if no point was processed, print string_before;
@@ -443,6 +445,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 print_format = malloc((l+1)*sizeof(char));
+                if(print_format == NULL) { error(10); }
                 strcpy(print_format, argv[i]);
               }
               i++;
@@ -452,6 +455,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_before = malloc((l+1)*sizeof(char));
+                if(string_before == NULL) { error(10); }
                 strcpy(string_before, argv[i]);
               }
               i++;
@@ -461,6 +465,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_between = malloc((l+1)*sizeof(char));
+                if(string_between == NULL) { error(10); }
                 strcpy(string_between, argv[i]);
               }
               i++;
@@ -470,6 +475,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_after = malloc((l+1)*sizeof(char));
+                if(string_after == NULL) { error(10); }
                 strcpy(string_after, argv[i]);
               }
               i++;
@@ -755,6 +761,7 @@ void error(long errno)
             break;
     case 8: printf("\nPolynomial is not square-free.\n\n"); break;
     case 9: printf("\nBug no. 1 - please report!\n\n"); break;
+    case 10: printf("\nNot enough memory.\n\n"); break;
   }
   fflush(stdout);
   exit(errno);

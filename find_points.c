@@ -198,7 +198,8 @@ void *pointer_align(void *xx, long m)
  * args->ba_buffer_na keeps the address malloc returned, so that it can be
  * freed later; the +1 leaves the leeway needed for the alignment.
  * args->ba_buffer_primes and args->ba_buffer_arrays record what the block
- * is good for.
+ * is good for: nothing, when the memory could not be had, in which case
+ * the functions below return 0.
  */
 static long ba_buffer_need(long n, long extra)
 { long need = extra;
@@ -208,14 +209,16 @@ static long ba_buffer_need(long n, long extra)
   return(need);
 }
 
-static void alloc_ba_buffer(ratpoints_args *args, long n, long extra)
+static int alloc_ba_buffer(ratpoints_args *args, long n, long extra)
 { long need = ba_buffer_need(n, extra);
 
   args->ba_buffer_na = malloc((need+1)*sizeof(ratpoints_bit_array));
+  if(args->ba_buffer_na == NULL) { n = 0; need = 0; }
   args->ba_buffer = pointer_align(args->ba_buffer_na, sizeof(ratpoints_bit_array));
   args->ba_next = args->ba_buffer;
   args->ba_buffer_primes = n;
   args->ba_buffer_arrays = need;
+  return(args->ba_buffer_na != NULL);
 }
 
 /* Make sure the block holds the tables of the first n primes and extra
@@ -224,12 +227,13 @@ static void alloc_ba_buffer(ratpoints_args *args, long n, long extra)
  * allocator, reset at the start of every curve, and the tables are built
  * lazily while sieving, so before the first denominator it can simply be
  * replaced. */
-static void ensure_ba_buffer(ratpoints_args *args, long n, long extra)
+static int ensure_ba_buffer(ratpoints_args *args, long n, long extra)
 { if(ba_buffer_need(n, extra) > args->ba_buffer_arrays
      || n > args->ba_buffer_primes)
   { free(args->ba_buffer_na);
-    alloc_ba_buffer(args, n, extra);
+    return(alloc_ba_buffer(args, n, extra));
   }
+  return(1);
 }
 
 /* How many prime powers p^e, e >= 2, lie below RATPOINTS_MAX_PRIME_EVEN: the
@@ -257,6 +261,7 @@ void find_points_init(ratpoints_args *args)
 #endif
 
   /* and initialize the mpz_t's in it */
+  if(work == NULL) { work_len = 0; }
   { long i;
     for(i = 0; i < work_len; i++) mpz_init(work[i]);
   }
@@ -322,6 +327,17 @@ void find_points_init(ratpoints_args *args)
    * sieving_info */
   args->forb_words = NULL; args->forb_words_len = 0;
   args->pool = NULL; /* the sieving threads, from the first search that wants them */
+
+  /* No search can do without any of these, so if one could not be had, all
+   * of them are given back, and find_points_work returns RATPOINTS_NO_MEMORY
+   * on finding work NULL. */
+  if(work == NULL || args->se_buffer == NULL || args->pw_buffer == NULL
+     || args->ba_buffer_na == NULL || args->int_buffer == NULL
+     || args->sieve_list == NULL || args->stage3_list == NULL
+     || args->magics == NULL || args->den_info == NULL
+     || args->divisors == NULL || args->forb_ba == NULL
+     || args->forbidden == NULL)
+  { find_points_clear(args); }
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -2484,6 +2500,8 @@ static long sieving_info(ratpoints_args *args,
                          unsigned long den_bits, const rp_num_class *cls)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
+ * or RATPOINTS_NO_MEMORY, when the buffer for the sieve tables cannot be
+ * enlarged to what the primes chosen need;
  * or else returns 0. */
 {
   mpz_t *c = args->cof;
@@ -2754,7 +2772,7 @@ static long sieving_info(ratpoints_args *args,
    * primes; if the loop went further, that block has to grow.  Nothing has
    * been taken from it yet -- the tables are built lazily during the sieving
    * itself -- so it can simply be replaced. */
-  ensure_ba_buffer(args, pn_lim, 0);
+  if(!ensure_ba_buffer(args, pn_lim, 0)) { return(RATPOINTS_NO_MEMORY); }
 
   /* The run shape again, now that the forbidden divisors are known and can
    * be taken off the denominator count; see run_shape.  The keys the primes
@@ -3014,7 +3032,7 @@ static long sieving_info(ratpoints_args *args,
         }
       }
     }
-    ensure_ba_buffer(args, pn_lim, extra);
+    if(!ensure_ba_buffer(args, pn_lim, extra)) { return(RATPOINTS_NO_MEMORY); }
   }
 
   /* the reciprocals the first two stages reduce word numbers with, in the order
@@ -3063,9 +3081,10 @@ static long sieving_info(ratpoints_args *args,
  **************************************************************************/
 
 /* The sieving thread wk: its survivors array, its gmp temporaries, its
- * counters and its quit flag; the shared arguments through it. */
-static void worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
-                        check_spec *checks)
+ * counters and its quit flag; the shared arguments through it.  Returns 0
+ * when there is no memory for the survivors array. */
+static int worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
+                       check_spec *checks)
 { wk->args = args;
   /* allocate space for survivors array; make sure of correct alignment.
    * One spare bit array pays for the alignment, and one more for the
@@ -3083,6 +3102,7 @@ static void worker_init(rp_worker *wk, ratpoints_args *args, mpz_t *work,
   wk->n_checks = 0; wk->n_sifts = 0; wk->dec = 0;
   wk->compute_bc = 0; wk->stage3_filled = 0; wk->quit = 0;
   /* pool, slot and stop are the pool's business, set once when it is made */
+  return(wk->survivors_na != NULL);
 }
 
 static void worker_clear(rp_worker *wk)
@@ -3582,11 +3602,13 @@ static long floor_sqrt(long n)
   return(k);
 }
 
-static void run_setup(rp_run *run, ratpoints_args *args,
-                      const rp_num_class *cls, unsigned long den_bits,
-                      forbidden_entry *forb_ba, forbidden_val *forbidden,
-                      use_squares1_info *den_info, long *divisors,
-                      int use_c_long, long lcf_long, mpz_t tmp)
+/* Returns 0 when there is no memory for the run's arrays; run_clear frees
+ * what there was. */
+static int run_setup(rp_run *run, ratpoints_args *args,
+                     const rp_num_class *cls, unsigned long den_bits,
+                     forbidden_entry *forb_ba, forbidden_val *forbidden,
+                     use_squares1_info *den_info, long *divisors,
+                     int use_c_long, long lcf_long, mpz_t tmp)
 { long nseg = 1, s, n, steps = 0;
 
   run->args = args; run->cls = cls; run->den_bits = den_bits;
@@ -3611,7 +3633,9 @@ static void run_setup(rp_run *run, ratpoints_args *args,
   }
   else { run->shape = RP_SHAPE_ALL; }
   run->nseg = nseg;
+  run->dec_block = NULL;
   run->seg_lo = malloc(3*(nseg + 1)*sizeof(long));
+  if(run->seg_lo == NULL) { return(0); }
   run->seg_hi = run->seg_lo + (nseg + 1);
   run->seg_block = run->seg_hi + (nseg + 1);
   for(s = 0; s < nseg; s++)
@@ -3660,6 +3684,7 @@ static void run_setup(rp_run *run, ratpoints_args *args,
   run->cnt.n_words_2 = 0; run->cnt.sp2 = args->sp2;
   run->nfolded = 0;
   run->dec_block = malloc(3*(n + 2)*sizeof(long));
+  if(run->dec_block == NULL) { return(0); }
   run->dec_sp2 = run->dec_block + (n + 2);
   run->dec_sp3 = run->dec_sp2 + (n + 2);
   run->dec_block[0] = 0; run->dec_sp2[0] = args->sp2; run->dec_sp3[0] = args->sp3;
@@ -3670,6 +3695,7 @@ static void run_setup(rp_run *run, ratpoints_args *args,
          " step(s)\n", run->shape, nseg, n, run->len);
   fflush(NULL);
 #endif
+  return(1);
 }
 
 static void run_clear(rp_run *run)
@@ -3951,11 +3977,13 @@ typedef struct { long x; long z; mpz_t y; } rp_point;
 /* A slot holds what one block produced until the calling thread has
  * delivered it: the points in the order they were found, and the block's
  * report for run_fold().  done is set by the thread that sieved the block
- * and cleared by the calling thread, both under the pool's lock. */
+ * and cleared by the calling thread, both under the pool's lock.  failed
+ * says that the thread had no memory for a further point: the points of
+ * the block end before it. */
 typedef struct { long block;
                  rp_point *pts; long npts; long cap;
                  rp_blockstat st;
-                 int done; }
+                 int done; int failed; }
         rp_slot;
 
 /* Blocks in flight at most.  Block i takes slot i mod this, whose previous
@@ -3982,7 +4010,6 @@ typedef struct
   long nfolded;               /* blocks delivered and folded, in order */
   long joined; long active;   /* threads that have joined this search, and are still in it */
   int stop;                   /* leave the search: it is over, or process() stopped it (atomic) */
-  int failed;                 /* a thread could not keep its points: the search fails (atomic) */
 } rp_pool;
 
 static void rp_tables_lock(rp_worker *wk)
@@ -4004,8 +4031,10 @@ static int collect(long x, long z, const mpz_t y, void *info, int *quit)
     rp_point *pts = realloc(slot->pts, c*sizeof(rp_point));
 
     if(pts == NULL) /* out of memory: the block cannot be finished, so the
-                     * search must fail rather than deliver less than it found */
-    { RP_PUBLISH(&((rp_pool *)wk->pool)->failed, 1); *quit = 1; return(0); }
+                     * search must fail rather than deliver less than it
+                     * found -- unless process() stops it before this point,
+                     * which the calling thread will see (run_threaded) */
+    { slot->failed = 1; *quit = 1; return(0); }
     for(k = slot->cap; k < c; k++) { mpz_init(pts[k].y); }
     slot->pts = pts; slot->cap = c;
   }
@@ -4050,7 +4079,7 @@ static void *rp_worker_main(void *arg)
       if(RP_RELAXED(&pool->stop)) { pthread_mutex_unlock(&pool->lock); break; }
       pthread_mutex_unlock(&pool->lock);
       slot = &pool->slots[i % RP_POOL_SLOTS];
-      slot->block = i; slot->npts = 0;
+      slot->block = i; slot->npts = 0; slot->failed = 0;
       wk->slot = slot; wk->quit = 0;
       run_block(run, wk, i, collect, wk);
       worker_stat(wk, &slot->st);
@@ -4151,21 +4180,33 @@ static rp_pool *rp_pool_for(ratpoints_args *args)
  * the blocks in order as they complete, delivers each block's points to
  * process() -- from this thread only, and in the order a single thread
  * would have found them -- and folds its report; when process() stops the
- * search, the threads are told to abandon their blocks and nothing more is
- * delivered.  At the end it waits until every thread has left the job, so
- * that nothing of the run is used after this returns. */
+ * search, the block it stopped in is folded too, as in the loop on one
+ * thread (find_points_work), so that what the search reports it used is
+ * what that block was sieved with; then the threads are told to abandon
+ * their blocks and nothing more is delivered.  A block whose thread had no
+ * memory for one of its points fails the search when the delivery reaches
+ * that point; a failure past the point where process() stopped the search
+ * is not looked at, since one thread would have completed that search.  At
+ * the end it waits until every thread has left the job, so that nothing of
+ * the run is used after this returns. */
 static long run_threaded(rp_run *run, rp_pool *pool,
                          int process(long, long, const mpz_t, void*, int*),
                          void *info, int *quit)
 { ratpoints_args *args = run->args;
   long total = 0, i, t;
+  int failed = 0;
 
+  /* every thread's survivors array, or none */
   for(t = 0; t < pool->nthreads; t++)
-  { worker_init(&pool->workers[t], args, pool->works[t], pool->checks[t]); }
+  { if(!worker_init(&pool->workers[t], args, pool->works[t], pool->checks[t]))
+    { for( ; t >= 0; t--) { worker_clear(&pool->workers[t]); }
+      return(RATPOINTS_NO_MEMORY);
+    }
+  }
   pthread_mutex_lock(&pool->lock);
   pool->run = run; pool->next_block = 0; pool->nfolded = 0;
   pool->joined = 0; pool->active = 0;
-  RP_PUBLISH(&pool->stop, 0); RP_PUBLISH(&pool->failed, 0);
+  RP_PUBLISH(&pool->stop, 0);
   for(i = 0; i < RP_POOL_SLOTS; i++)
   { pool->slots[i].done = 0; pool->slots[i].block = -1; }
   pool->job++;
@@ -4179,13 +4220,13 @@ static long run_threaded(rp_run *run, rp_pool *pool,
     pthread_mutex_lock(&pool->lock);
     while(!slot->done) { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
     pthread_mutex_unlock(&pool->lock);
-    if(RP_RELAXED(&pool->failed)) { break; }
     for(k = 0; k < slot->npts && !*quit; k++)
     { total += process(slot->pts[k].x, slot->pts[k].z, slot->pts[k].y,
                        info, quit);
     }
-    if(*quit) { break; }
+    if(slot->failed && !*quit) { failed = 1; break; }
     run_fold(run, &slot->st);
+    if(*quit) { break; }
     pthread_mutex_lock(&pool->lock);
     slot->done = 0;
     pool->nfolded = i + 1;
@@ -4200,7 +4241,7 @@ static long run_threaded(rp_run *run, rp_pool *pool,
   pool->run = NULL;
   pthread_mutex_unlock(&pool->lock);
   for(t = 0; t < pool->nthreads; t++) { worker_clear(&pool->workers[t]); }
-  return(RP_RELAXED(&pool->failed) ? RATPOINTS_NO_MEMORY : total);
+  return(failed ? RATPOINTS_NO_MEMORY : total);
 }
 
 #else /* !RP_THREADS: the calling thread sieves, whatever num_threads says */
@@ -4313,6 +4354,7 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
   if(c == NULL) return(RATPOINTS_BAD_ARGS);
+  if(work == NULL) return(RATPOINTS_NO_MEMORY); /* see find_points_init */
   if(args->work_length < 3 + degree+1) return(RATPOINTS_WORK_LENGTH_TOO_SMALL);
   /* Eliminate leading zero coefficients */
   { long old_degree = degree;
@@ -4344,7 +4386,7 @@ static long find_points_work_1(ratpoints_args *args,
    * call wants more, enlarge it.  Nothing points into the buffer at this
    * moment -- it is a bump allocator and ba_next was reset above -- so it can
    * simply be replaced. */
-  ensure_ba_buffer(args, args->num_primes, 0);
+  if(!ensure_ba_buffer(args, args->num_primes, 0)) { return(RATPOINTS_NO_MEMORY); }
   if(args->sp2 > args->num_primes) { args->sp2 = args->num_primes; }
   if(args->sp2 >= 0 && args->sp1 > args->sp2) { args->sp1 = args->sp2; }
 
@@ -4687,6 +4729,7 @@ static long find_points_work_1(ratpoints_args *args,
                               bits_per_word, np_is_default,
                               den_bits, &cls[0]);
 
+    if(ret == RATPOINTS_NO_MEMORY) { return(ret); }
     if(ret)
     {
 
@@ -4815,7 +4858,8 @@ static long find_points_work_1(ratpoints_args *args,
     fflush(NULL);
 #endif
 
-    worker_init(&wk, args, args->work, (check_spec *)args->stage3_list);
+    if(!worker_init(&wk, args, args->work, (check_spec *)args->stage3_list))
+    { return(RATPOINTS_NO_MEMORY); }
     wk.pool = NULL; wk.slot = NULL; wk.stop = NULL; /* this thread sieves */
     /* the row shifts of the numerator classes, now that the primes are
      * known */
@@ -4824,8 +4868,9 @@ static long find_points_work_1(ratpoints_args *args,
     printf(" done\n");
     fflush(NULL);
 #endif
-    run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
-              divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
+    if(!run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
+                  divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]))
+    { run_clear(&run); worker_clear(&wk); return(RATPOINTS_NO_MEMORY); }
     exact_bounds(args, &bounds[0]);
     run.bounds = &bounds[0]; run.nbounds = args->num_inter;
     { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for */

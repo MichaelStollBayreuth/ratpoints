@@ -606,7 +606,8 @@ The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
-(e.g., if you specify two leading zero coefficients).
+(e.g., if you specify two leading zero coefficients), and when it cannot
+get the memory for the search (``Not enough memory.'').
 
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.
@@ -1116,13 +1117,24 @@ for counting the points; usually it will be~1.
 Whatever \texttt{num\_threads} says, \texttt{proc} is called from the
 thread that called \texttt{find\_points}, never from a sieving thread, and
 for the same points in the same order as a single thread finds them; the
-return value of \texttt{find\_points} and the point at which \texttt{*quit}
-takes effect are the same as well. So \texttt{proc} and \texttt{info} need
+return value of \texttt{find\_points}, the point at which \texttt{*quit}
+takes effect and what the three \texttt{\_used} fields report are the same
+as well. So \texttt{proc} and \texttt{info} need
 no protection against concurrent calls. A sieving thread keeps the points
 it finds until every earlier block of the search has been delivered; if it
 cannot get the memory for that, the search fails with the return value
 \texttt{RATPOINTS\_NO\_MEMORY} rather than deliver fewer points than it
-found.
+found, unless \texttt{*quit} stops it before the first point that could
+not be kept.
+
+\texttt{RATPOINTS\_NO\_MEMORY} is also returned, after freeing what the
+search allocated, when the search cannot get the memory for its sieving
+tables or its arrays; the points delivered before are points of the curve,
+but the search is incomplete. If \texttt{find\_points\_init} cannot get its
+memory, it frees what it got, and \texttt{find\_points\_work} then returns
+\texttt{RATPOINTS\_NO\_MEMORY} (\texttt{find\_points\_clear} can be called as
+usual). The memory of the gmp integers is gmp's: by default gmp ends the
+program when it runs out.
 
 The usual framework for using \texttt{find\_points} is as follows.
 

@@ -84,6 +84,13 @@ static int keep(long a, long b, const mpz_t y, void *info, int *quit)
 static int keep_one(long a, long b, const mpz_t y, void *info, int *quit)
 { keep(a, b, y, info, quit); *quit = 1; return(1); }
 
+/* the same, stopping at the first point with a denominator of at least
+ * stop_b */
+static long stop_b = 0;
+
+static int keep_until(long a, long b, const mpz_t y, void *info, int *quit)
+{ keep(a, b, y, info, quit); if(b >= stop_b) { *quit = 1; } return(1); }
+
 /* whether the two kept runs agree, point by point and in order */
 static void same_points(void)
 { long n, same = (nkept[0] == nkept[1]);
@@ -399,6 +406,33 @@ int main(void)
   curve(&args, 2, pyth, 2000); args.num_threads = 1;
   keep_to = 1; report("and one thread after that", find_points_work(&args, keep, NULL));
   same_points();
+  /* A search that the callback stops in a block sieved with fewer primes
+   * than the block before it: on this curve of many points the correction
+   * during the run drops a prime of the third stage, and the first point
+   * with b >= 2700, (846 : +-y : 2755), lies in the first block sieved
+   * without it.  The moduli reported are what that block was sieved with,
+   * on one thread and on three; the constants are pinned, as above. */
+  { static const long rich[] = {16, 20, -131, -109, 152, 49, 4};
+    long used[2][3], k;
+
+    for(k = 0; k < 2; k++)
+    { curve(&args, 6, rich, 50000); args.num_threads = 1 + 2*k;
+      args.survivors_per_word = 0.003; args.sp2_extra = 11; args.sp2_u0 = 1.6e6;
+      args.cost_table = 38.0; args.sp3_per_denom = 0.013;
+      stop_b = 2700; keep_to = k;
+      report(k ? "the same on three threads"
+               : "a curve of many points, height 50000, stopped at b >= 2700",
+             find_points_work(&args, keep_until, NULL));
+      used[k][0] = args.sp1_used; used[k][1] = args.sp2_used;
+      used[k][2] = args.sp3_used;
+    }
+    same_points();
+    for(k = 0; k < 2; k++)
+    { printf("  %s: %ld moduli in the first stage, %ld in both, %ld primes in the third\n",
+             k ? "three threads" : "one thread", used[k][0], used[k][1],
+             used[k][2] - used[k][1]);
+    }
+  }
   find_points_clear(&args);
   curve(&args, 6, sextic, 3000); args.num_threads = 4;
   report("find_points on four threads (the pool made and freed inside)",
