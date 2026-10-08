@@ -767,9 +767,9 @@ t '48 3' 50 -q -l -50 -u -15.666666666666668 -l -15.666666666666666 -u 50
 # doubles X0 = 0.7500011987221257 and X1 = 0.7500011987221258, so in
 # neither [X0 - 8 ulps, X0] nor [X1, X1 + 8 ulps], and in
 # [X0 - 8 ulps, X1 + 8 ulps].  For (3226666674000000004,
-# 4302222234444444453, 5377777791955555565) a/b lies 63/b below the end
-# U = 0.7499999995738637 of [U - 8 ulps, U], while b U rounded to a double
-# is a - 4
+# 4302222234444444453, 5377777791955555565) a/b lies about 63/b below the
+# end U = 0.7499999995738637 of [U - 8 ulps, U], while b U rounded to a
+# double is a - 4
 t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221257 -l 0.7500011987221258 -u 0.7500011987221267
 t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221267
 t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0.7499999995738628 -u 0.7499999995738637
@@ -790,6 +790,12 @@ t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854775807
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -9223372036854775807
 t '-3 0 1' 9223372036854775807 -q -dl 1 -du 1 -l -1e30 -u -9223372036854774784
 t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
+# Ends below 2^-75 in absolute value, whose binary exponents the search cuts
+# down to one that the product of the denominator and the mantissa can be
+# shifted by: x = 0 lies in [-1e-300, 1e-300] and not in [-1, -2^-1074] or
+# [2^-1074, 1] (4.9e-324 is read as 2^-1074), which hold x = -3/4 and 3/4
+t '1 0 1' 10 -q -l -1e-300 -u 1e-300
+t '1 0 1' 10 -q -l -1 -u -4.9e-324 -l 4.9e-324 -u 1
 # the isolation of the positivity region at a depth beyond 55, which is
 # taken as 55 (and -v reports 55): up to that depth the ends of its
 # intervals, n/2^e, are exact as doubles.  1 - 103x is positive up to its

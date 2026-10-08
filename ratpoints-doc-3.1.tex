@@ -389,7 +389,8 @@ runs \texttt{rpapi}, a program that tests what the library offers and the
 command-line program cannot reach: the checks that
 \texttt{find\_points\_work} makes on its arguments and the error codes it
 returns, a callback that stops the search or declines a point, the flags,
-and a sequence of searches on one initialized structure
+more search intervals than the command line takes, and a sequence of
+searches on one initialized structure
 (Section~\ref{sec:library}); the output is compared against
 \texttt{testbase-api}.
 
@@ -401,7 +402,9 @@ compile-time switches: the register widths 64, 128 (both variants) and
 512 (emulated); \texttt{RATPOINTS\_CHUNK=1}, one register in the first
 stage; \texttt{USE\_LONG\_IN\_PHASE\_2}, the second stage one word at a
 time; \texttt{PRIME\_SIZE} 7 and~9, the smaller and the larger prime table;
-and composite moduli off and unbounded.  Each is
+composite moduli off and unbounded; and \texttt{RP\_NO\_INT128}, the forms
+for a compiler without a 128-bit integer type, which gcc and clang have on
+every 64-bit machine.  Each is
 built in a directory of its own, so that the build in the working
 directory is left alone (\texttt{test4-configs.sh}); the points found
 must not depend on any of these, so every build is compared against the
@@ -421,12 +424,12 @@ for each source file, the lines executed
 and the branches taken at least once (\texttt{coverage.sh}); the
 annotated sources are left in that directory.
 When this was written the tests executed $99.5\%$ of the lines
-of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c}
-and~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is guards
-against states no caller can produce, the paths that a failure to create a
-thread or to get memory would take, arms that other compile-time settings
-reach (\texttt{test4configs} runs those builds, but this measures one), and
-a few conditions the arithmetic makes impossible.
+of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c},
+$97\%$ of~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is
+guards against states no caller can produce, the paths that a failure to
+create a thread or to get memory would take, arms that other compile-time
+settings reach (\texttt{test4configs} runs those builds, but this measures
+one), and a few conditions the arithmetic makes impossible.
 
 \begin{verbatim}
 > make testthreads
@@ -998,7 +1001,8 @@ of the next (so two intervals that meet in an end must be given as one).
 An end may be infinite, but not NaN; intervals that break these rules make
 the call return \texttt{RATPOINTS\_BAD\_ARGS}. The ends are taken exactly:
 the search takes the $x = a/b$ with $\texttt{low} \le x \le \texttt{up}$ for
-one of the intervals.
+one of the intervals. There may be any number of intervals (the search
+keeps its copies of them on the heap, not on the stack).
 Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least

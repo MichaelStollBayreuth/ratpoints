@@ -27,6 +27,7 @@
  ***********************************************************************/
 
 #include <math.h>
+#include <stdlib.h>
 
 #include "ratpoints.h"
 
@@ -50,6 +51,8 @@
  *        domain), return value is number of intervals                    *
  * +  0 - polynomial is everywhere negative, ivlist may be changed        *
  * + -1 - polynomial is not squarefree, ivlist unchanged                  *
+ * + RATPOINTS_NO_MEMORY - no memory for the copy of ivlist that the      *
+ *        intersection is made from, ivlist unchanged                     *
  **************************************************************************/
 
 /* A helper function: evaluate the polynomial in cofs[] of given degree
@@ -260,10 +263,19 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
     iterate(min, max, 0, 0, count2, count1,
             (degree & 1) ? -slcf : slcf, slcf, 0);
     num_intervals = iptr - &ivlocal[0];
-    /* intersect with given intervals */
-    { ratpoints_interval local_copy[num_iv];
+    /* intersect with given intervals, from a copy of them on the heap (a
+     * caller may give any number) */
+    { ratpoints_interval *local_copy
+        = malloc(num_iv*sizeof(ratpoints_interval));
       long n, n1, n2;
 
+      if(local_copy == NULL)
+      { for(n = 0; n <= degree; n++)
+        { for(m = 0; m <= degree; m++)
+            { mpz_clear(sturm[n][m]); }
+        }
+        return(RATPOINTS_NO_MEMORY);
+      }
       /* make a copy of the given list */
       for(n = 0; n < num_iv; n++) { local_copy[n] = ivlist[n]; }
       n1 = 0; n2 = 0; n = 0;
@@ -303,6 +315,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
               n1++;
       } } } }
       args->num_inter = new_num = n;
+      free(local_copy);
     }
   }
   for(n = 0; n <= degree; n++)

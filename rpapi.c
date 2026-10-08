@@ -354,6 +354,30 @@ int main(void)
     report("y^2 = x - 2^53, height 2^53 + 1, denominator 1",
            find_points_work(&args, show, NULL));
   }
+  /* Any number of intervals: 600000 of them, [n, n + 1/2] for n from
+   * -300000 on, without the Sturm step and with it, which keeps a copy of
+   * them.  Of the points of height up to 20, those with x = 0, 5/12, 4/3,
+   * 12/5, -3/4, -8/15 and -15/8 lie in the intervals, and those with x = 3/4,
+   * 8/15, 15/8, -5/12, -4/3 and -12/5 between them: fourteen points and the
+   * two at infinity. */
+  { long nbig = 600000, k;
+    ratpoints_interval *big = malloc((nbig + 2)*sizeof(ratpoints_interval));
+
+    if(big == NULL) { printf("no memory for the intervals\n"); return(1); }
+    for(k = 0; k < nbig; k++)
+    { big[k].low = (double)(k - nbig/2); big[k].up = big[k].low + 0.5; }
+    curve(&args, 2, pyth, 20); args.sturm = -1;
+    args.domain = big; args.num_inter = nbig;
+    report("height 20 on [n, n + 1/2], 600000 of them, no Sturm step",
+           find_points_work(&args, count, NULL));
+    for(k = 0; k < nbig; k++)
+    { big[k].low = (double)(k - nbig/2); big[k].up = big[k].low + 0.5; }
+    curve(&args, 2, pyth, 20);
+    args.domain = big; args.num_inter = nbig;
+    report("height 20 on [n, n + 1/2], 600000 of them",
+           find_points_work(&args, count, NULL));
+    free(big);
+  }
   find_points_clear(&args);
 
   /* the wrapper, initialising for the degree of each curve */

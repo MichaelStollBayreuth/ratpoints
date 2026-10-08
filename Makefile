@@ -49,9 +49,10 @@
 #               the callback, the flags), against testbase-api
 #   test4configs  test4 again on the library built with the other
 #               compile-time switches: register widths 64, 128, 512,
-#               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7 and
-#               composite moduli off and unbounded (test4-configs.sh);
-#               builds each in a directory of its own, about a minute
+#               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7,
+#               composite moduli off and unbounded, and no 128-bit integers
+#               (test4-configs.sh); builds each in a directory of its own,
+#               about a minute
 #   coverage    build the sources instrumented for gcov in build-coverage/,
 #               run the tests through that build and print how much of each
 #               source file they executed (coverage.sh); a minute or so
@@ -135,6 +136,8 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  other without the code-alignment difference two builds would bring (the
 #  multiplication is worth 2 to 3%).  "-DRP_MOD_COUNTS" reports how often the
 #  chain of conditional subtractions actually divides.
+# Add "-DRP_NO_INT128" to build as on a compiler without a 128-bit integer
+#  type; "make test4configs" tests that build.
 # When comparing two builds whose *source* differs, be aware that where gcc
 #  happens to place the hot loops is worth about 10% here, reproducibly, so
 #  repeating the runs will not reveal it. Rebuild both with, say,
