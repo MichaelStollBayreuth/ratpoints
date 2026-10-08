@@ -801,3 +801,13 @@ f "grep 'iterations for'" '1 -103' 200 -v -S 62
 # other, so they must come out as -1, 0 and 1, and the points (2 : 0 : 3),
 # (-5 : 0 : 7) and (15 : 0 : 13) lie on the ends of the positivity region
 t '-150000000000000000000000000008550 145000000000000000000000000008265 302000000000000000000000000017214 -273000000000000000000000000015561' 30 -q
+# the leading coefficient -2^63, the most negative long, in the Jacobi
+# symbol test on denominators beyond 2^32, where jacobi1 computes it:
+# y^2 = 1 - 1100690047 x - 2^63 x^2 has the point x = 1/4294968331, and the
+# window holds the whole region where the polynomial is positive (between
+# -3.95e-10 and 2.75e-10); then y^2 = 1 - 2^63 x^2 with the point
+# x = 1/(2^60 + 2), as (2^60 + 2)^2 - 2^63 = (2^60 - 2)^2, a denominator
+# whose odd part is beyond 2^59, so that the symbol is computed without a
+# reduction first
+t '1 -1100690047 -9223372036854775808' 4294968331 -q -dl 4294968331 -du 4294968331 -l -1e-9 -u 1e-9
+t '1 0 -9223372036854775808' 1152921504606846980 -q -dl 1152921504606846977 -du 1152921504606846980 -l 0 -u 1e-17

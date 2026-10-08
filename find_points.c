@@ -530,7 +530,12 @@ static inline int jacobi1(long b, const long lcf)
   /* remove 2's from b */
   while((b & 1) == 0) b >>= 1;
   f = lcf;
-  if(f < 0) { f = -f; neg = 1; }
+  if(f < 0)
+  { /* -LONG_MIN does not fit a long, but a quarter of it does, and as b
+     * is odd, the two have the same symbol and no prime in common with b */
+    if(f == LONG_MIN) { f /= 4; }
+    f = -f; neg = 1;
+  }
   if(b < 1UL<<(LONG_LENGTH - 5)) f = mod(f, b); /* mod() forms 16*b */
   if(f == 0) return(1);
 
@@ -2717,12 +2722,13 @@ static long sieving_info(ratpoints_args *args,
       }
     }
   }
-  if(args->flags & RATPOINTS_CHECK_DENOM)
-  { forb_ba[fba].p = 0;        /* terminating zero */
-    forbidden[fdc].p = 0;      /* terminating zero */
-    /* args->max_forbidden is an input and stays one: writing the number
-     * found into it latched the test off for a caller that reuses args. */
-  }
+  /* Both arrays end in a zero entry, for every degree: with an odd one the
+   * denominators are not checked and the arrays stay empty, but run_setup
+   * counts the entries of the first all the same. */
+  forb_ba[fba].p = 0;        /* terminating zero */
+  forbidden[fdc].p = 0;      /* terminating zero */
+  /* args->max_forbidden is an input and stays one: writing the number
+   * found into it latched the test off for a caller that reuses args. */
 
   /* nothing for the checked denominator loop to test? then use the plain one */
   if(fba + fdc == 0 && !(args->flags & RATPOINTS_USE_JACOBI))
@@ -4262,7 +4268,8 @@ static long find_points_work_1(ratpoints_args *args,
   forbidden_val *forbidden = (forbidden_val *)args->forbidden;
     /* The forbidden divisors, two zero-terminated arrays: primes that are
        tested for with bit arrays, and primes with a set of valuations that
-       are tested for by division.  Used when the degree is even. */
+       are tested for by division.  Used when the degree is even, and empty
+       when it is odd. */
 
   use_squares1_info *den_info = (use_squares1_info *)args->den_info;
   long *divisors = (long *)args->divisors;
