@@ -11643,3 +11643,203 @@ exit 6
 (9223372036854775676 : 76 : 1)
 (9223372036854775676 : -76 : 1)
 # <5 3 7> <9223372036854775807> <-q> <-dl> <9223372036854775800> <-du> <9223372036854775807> <-l> <0> <-u> <1e-18> <-n> <9223372036854775807> <-R> <9223372036854775807> <-U> <0> <-P> <9223372036854775807>
+# <1 0 1> <9223372036854775808> <-dl> <1> <-du> <1> <-l> <0> <-u> <0>
+
+Incorrect height argument.
+exit 4
+# <1 0 1> <99999999999999999999999> <-dl> <1> <-du> <1> <-l> <0> <-u> <0>
+
+Incorrect height argument.
+exit 4
+# <1 0 1> <1e5>
+
+Incorrect height argument.
+exit 4
+# <1 2 3> <10> <-dl> <9223372036854775808>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-du> <-9223372036854775809>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-n> <3x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-S> <10x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 0 1> <10> <-q> <-l> <0> <-u> <nan>
+
+Incorrect interval arguments (not alternating, too many, or not ordered).
+exit 7
+# <1 0 1> <10> <-q> <-l> <nan> <-u> <nan>
+
+Incorrect interval arguments (not alternating, too many, or not ordered).
+exit 7
+# <1 0 1> <10> <-q> <-l> <nan>
+
+Incorrect interval arguments (not alternating, too many, or not ordered).
+exit 7
+# <1 0 1> <10> <-q> <-u> <nan>
+
+Incorrect interval arguments (not alternating, too many, or not ordered).
+exit 7
+# <1 0 1> <10> <-q> <-l> <0> <-u> <1x>
+
+Incorrect interval arguments (not alternating, too many, or not ordered).
+exit 7
+# <1 2 3> <10> <-r> <nan>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-U> <nan>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-C> <nan>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-Q> <nan>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-W> <nan>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 2 3> <10> <-W> <306x>
+
+Wrong syntax for optional arguments:
+
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 6
+# <1 0 1> <10> <-q> <-l> <-inf> <-u> <inf>
+(1 : 1 : 0)
+(1 : -1 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-4 : 5 : 3)
+(-4 : -5 : 3)
+(4 : 5 : 3)
+(4 : -5 : 3)
+(-3 : 5 : 4)
+(-3 : -5 : 4)
+(3 : 5 : 4)
+(3 : -5 : 4)
+# <1 0 1> <10> <-q> <-l> <-inf> <-u> <-1> <-l> <1> <-u> <inf>
+(1 : 1 : 0)
+(1 : -1 : 0)
+(-4 : 5 : 3)
+(-4 : -5 : 3)
+(4 : 5 : 3)
+(4 : -5 : 3)
+# <1 0 126 0 441> <200> <-q> <-z> <-fs> <start\n> <-fm> <, > <-fe> <end\n>
+start
+end
+# <-1 0 -1> <50> <-q> <-z> <-fs> <start\n> <-fm> <, > <-fe> <end\n>
+start
+end
+# <1 0 126 0 441> <200> <-q> <-z> <-1> <-fs> <[> <-fe> <]\n>
+[]

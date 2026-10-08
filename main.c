@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include <math.h>
 
 #include "ratpoints.h"
@@ -82,6 +83,8 @@ char *usage_str =
 
 int read_input(long, char *argv[], ratpoints_args*);
 char *scan_mpz(char*, mpz_t);
+int scan_long(char*, long*);
+int scan_double(char*, double*);
 void print_poly(mpz_t*, long);
 void print_string(char*);
 void message(long n, long total, ratpoints_args *args);
@@ -145,6 +148,7 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
 int main(int argc, char *argv[])
 {
   long total;
+  int before_printed; /* whether process has printed string_before */
   ratpoints_args args;
 
   { long n;
@@ -189,6 +193,7 @@ int main(int argc, char *argv[])
 
     /* ...and call find_points */
     total = find_points(&args, process, (void *)info);
+    before_printed = info->print_between;
     /* clean up */
     free(info);
   }
@@ -198,10 +203,10 @@ int main(int argc, char *argv[])
     if(total == RATPOINTS_NO_MEMORY) error(10);
     error(9);
   }
-  /* if no point was processed, print string_before;
-   * otherwise this is done by process before printing
-   * the first point. */
-  if(total == 0) { print_string(string_before); }
+  /* process prints string_before before the first point it prints;
+   * if it printed none (there was no point, or -z suppressed them),
+   * print string_before now, in place of the points. */
+  if(!before_printed) { print_string(string_before); }
   /* terminate the output of the points */
   print_string(string_after);
   if(!quiet)
@@ -298,7 +303,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   }
 
   /* read height bound */
-  if(sscanf(argv[2], " %ld", &(args->height)) != 1 || args->height < 1)
+  if(!scan_long(argv[2], &(args->height)) || args->height < 1)
   { error(4); }
   args->b_high = args->height;
 
@@ -323,7 +328,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           i++;
           if(l_seen) { error(7); } /* -l -l */
           if(num_inter == RATPOINTS_MAX_DEGREE) { error(7); }
-          if(sscanf(argv[i], " %lf", &domain[num_inter].low) != 1) { error(7); }
+          if(!scan_double(argv[i], &domain[num_inter].low)) { error(7); }
           if(num_inter > 0 && domain[num_inter-1].up >= domain[num_inter].low)
           { error(7); }
           i++;
@@ -336,7 +341,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           { if(num_inter == 0) { domain[0].low = -height_end(args->height); }
             else { error(7); } /* -u -u */
           }
-          if(sscanf(argv[i], " %lf", &domain[num_inter].up) != 1) { error(7); }
+          if(!scan_double(argv[i], &domain[num_inter].up)) { error(7); }
           if(domain[num_inter].low > domain[num_inter].up) { error(7); }
           i++;
           l_seen = 0;
@@ -345,32 +350,32 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
         case 'p': /* max number of primes used */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->num_primes)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->num_primes))) { error(6); }
           i++;
           break;
         case 'F': /* max number of "forbidden divisors of denominator" */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->max_forbidden)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->max_forbidden))) { error(6); }
           i++;
           break;
         case 't': /* sieving threads; 0: as many as there are processors */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->num_threads)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->num_threads))) { error(6); }
           if(args->num_threads == 0) { args->num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp1)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp1))) { error(6); }
           i++;
           break;
         case 'N': /* number of primes used for sieving altogether */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp2)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp2))) { error(6); }
           i++;
           break;
         case 'r': /* the survivors of the first stage per 64-bit word swept
@@ -379,7 +384,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * (ratpoints.h, RATPOINTS_SURVIVORS_PER_WORD) */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->survivors_per_word)) != 1)
+          if(!scan_double(argv[i], &(args->survivors_per_word)))
           { error(6); }
           i++;
           break;
@@ -387,7 +392,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * absent */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp2_extra))) { error(6); }
           i++;
           break;
         case 'U': /* the number of numerator words at which a second-stage
@@ -395,7 +400,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * short runs.  Zero leaves -R flat */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->sp2_u0))) { error(6); }
           i++;
           break;
         case 'A': /* how much of the choice to correct during the run from
@@ -403,7 +408,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * third stage, 2 the second stage as well */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->adapt))) { error(6); }
           i++;
           break;
         case 'C': /* what building one row of a sieve table costs, in units
@@ -411,14 +416,14 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * by what they say alone */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->cost_table))) { error(6); }
           i++;
           break;
         case 'P': /* how many primes the third stage adds to sp2; negative
                    * means choose it from the curve */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp3_extra)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp3_extra))) { error(6); }
           i++;
           break;
         case 'Q': /* what one third-stage prime costs per denominator, as a
@@ -426,7 +431,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * absent */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->sp3_per_denom))) { error(6); }
           i++;
           break;
         case 'W': /* what one exact check costs, in rdtsc cycles; negative
@@ -435,7 +440,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * coefficients */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->check_cost))) { error(6); }
           i++;
           break;
         case 'f': /* printing format */
@@ -551,7 +556,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           args->sturm = RATPOINTS_DEFAULT_STURM;
           i++;
           if(i <= argc && argv[i][0] != '-')
-          { if(sscanf(argv[i], " %ld", &(args->sturm)) != 1) { error(6); }
+          { if(!scan_long(argv[i], &(args->sturm))) { error(6); }
             i++;
           }
           break;
@@ -560,13 +565,13 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           { case 'l': /* lower bound */
               if(argc == i) { error(6); }
               i++;
-              if(sscanf(argv[i], " %ld", &(args->b_low)) != 1) { error(6); }
+              if(!scan_long(argv[i], &(args->b_low))) { error(6); }
               i++;
               break;
             case 'u': /* upper bound */
               if(argc == i) { error(6); }
               i++;
-              if(sscanf(argv[i], " %ld", &(args->b_high)) != 1) { error(6); }
+              if(!scan_long(argv[i], &(args->b_high))) { error(6); }
               i++;
               break;
             default: { error(6); }
@@ -617,6 +622,30 @@ char *scan_mpz(char *s, mpz_t x)
   if(neg) { mpz_neg(tmp2, tmp2); }
   mpz_set(x, tmp2);
   return s;
+}
+
+/* Read the integer that is the whole of s (blanks before it allowed) into
+ * x.  Returns 0 if s is not an integer or if the integer does not fit a
+ * long. */
+int scan_long(char *s, long *x)
+{
+  char *end;
+
+  errno = 0;
+  *x = strtol(s, &end, 10);
+  return(end != s && *end == 0 && errno == 0);
+}
+
+/* Read the real number that is the whole of s (blanks before it allowed)
+ * into x.  Returns 0 if s is not a number or if it is a NaN.  An infinity
+ * is accepted, since -l -inf and -u inf are interval ends that bound
+ * nothing, and a number beyond the range of a double is read as one. */
+int scan_double(char *s, double *x)
+{
+  char *end;
+
+  *x = strtod(s, &end);
+  return(end != s && *end == 0 && !isnan(*x));
 }
 
 
@@ -747,10 +776,10 @@ void message(long n, long total, ratpoints_args *args)
   fflush(stdout);
 }
 
-/* Print error message number errno and exit. */
-void error(long errno)
+/* Print error message number n and exit. */
+void error(long n)
 {
-  switch(errno)
+  switch(n)
   { case 3: printf("\nToo many coefficients.\n\n"); break;
     case 4: printf("\nIncorrect height argument.\n\n"); break;
     case 5: printf("\nThe polynomial must have degree at least 1.\n\n"); break;
@@ -764,5 +793,5 @@ void error(long errno)
     case 10: printf("\nNot enough memory.\n\n"); break;
   }
   fflush(stdout);
-  exit(errno);
+  exit(n);
 }

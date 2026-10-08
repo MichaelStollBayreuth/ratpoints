@@ -615,6 +615,12 @@ Some of the options have arguments, others don't; the ordering of
 the options and option-argument pairs is largely arbitrary.
 The exceptions are options with opposite effect, where the last one given counts,
 and the specification of the search intervals, which must be given in increasing order.
+Where an option takes a number, its argument must be that number and nothing
+else: an integer between~$-2^{63}$ and~$2^{63}-1$ (the range of a
+\texttt{long}) where the option takes an integer, and where it takes a real
+number, one that may be infinite (\verb+inf+, \verb+-inf+) but is not NaN. The
+program refuses any other argument with an error message, as it does a height
+bound that is not an integer from~$1$ to~$2^{63}-1$.
 
 \subsection{Early abort}
 
@@ -668,6 +674,9 @@ There are various ways to change this behavior.
         {\em string-before} is output. Then every point is printed
         according to {\em format}. Between any two points, {\em string-between}
         is output, and after the last point, {\em string-after} is output.
+        When no point is printed, because there is none or because
+        of~\verb+-z+, {\em string-before} and {\em string-after} are output
+        one after the other.
 
         As an example, consider the effect of \\
         \strut\quad\verb+-f "[%x,%y,%z]" -fs "{" -fm "," -fe "}\n"+

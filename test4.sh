@@ -32,7 +32,11 @@
 # The first part prints points and messages that are the same in 2.2.4 and
 # 3.0.0; the second part looks at the reports of -v, whose texts differ
 # between the versions; the third uses options that 2.2.4 does not have,
-# and ends with search intervals whose ends 2.2.4 does not take exactly.
+# and ends with what earlier versions got wrong: search intervals whose
+# ends they did not take exactly, isolations of the positivity region
+# deeper than 55 steps, the leading coefficient -2^63, the options of the
+# sieve at their extremes, arguments that are not numbers as a whole, out
+# of range or NaN, and -fs under -z.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -830,3 +834,36 @@ t '1 0 126 0 441' 200 -q -r 1.7976931348623157e308 -U 1.7976931348623157e308 -C 
 t '1 0 126 0 441' 200 -q -r 4.9e-324 -U 4.9e-324 -C 4.9e-324 -Q 4.9e-324 -W 4.9e-324
 t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854774784 -u 1e30 -R 9223372036854775807 -U 1e-300 -P 9223372036854775807
 t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18 -n 9223372036854775807 -R 9223372036854775807 -U 0 -P 9223372036854775807
+# a number given as the height bound or as the argument of an option has
+# to be the whole argument and to fit its type: an integer between -2^63
+# and 2^63 - 1 (the runs above search up to a height bound of 2^63 - 1),
+# a real number that is not NaN.  So the height bounds 2^63, 10^23 and 1e5
+# are refused, the denominator bounds 2^63 and -2^63 - 1, 3x and 10x where
+# an integer is expected, NaN and 1x as ends of a search interval and NaN
+# as the value of a constant of the sieve; the infinite ends that a missing
+# -l or -u stands for may be given
+e '1 0 1' 9223372036854775808 -dl 1 -du 1 -l 0 -u 0
+e '1 0 1' 99999999999999999999999 -dl 1 -du 1 -l 0 -u 0
+e '1 0 1' 1e5
+e '1 2 3' 10 -dl 9223372036854775808
+e '1 2 3' 10 -du -9223372036854775809
+e '1 2 3' 10 -n 3x
+e '1 2 3' 10 -S 10x
+e '1 0 1' 10 -q -l 0 -u nan
+e '1 0 1' 10 -q -l nan -u nan
+e '1 0 1' 10 -q -l nan
+e '1 0 1' 10 -q -u nan
+e '1 0 1' 10 -q -l 0 -u 1x
+e '1 2 3' 10 -r nan
+e '1 2 3' 10 -U nan
+e '1 2 3' 10 -C nan
+e '1 2 3' 10 -Q nan
+e '1 2 3' 10 -W nan
+e '1 2 3' 10 -W 306x
+t '1 0 1' 10 -q -l -inf -u inf
+t '1 0 1' 10 -q -l -inf -u -1 -l 1 -u inf
+# with -z, the strings of -fs and -fe are printed one after the other in
+# place of the points, whether there are points or not, and -fm is not
+t '1 0 126 0 441' 200 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
+t '-1 0 -1' 50 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
+t '1 0 126 0 441' 200 -q -z -1 -fs '[' -fe ']\n'
