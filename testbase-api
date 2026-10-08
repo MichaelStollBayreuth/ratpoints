@@ -93,8 +93,7 @@ and one thread after that                                2852  (2852 seen)
 a curve of many points, height 50000, stopped at b >= 2700  123  (123 seen)
 the same on three threads                                 123  (123 seen)
   the two runs: 123 and 123 points, the same in the same order
-  one thread: 15 moduli in the first stage, 25 in both, 3 primes in the third
-  three threads: 15 moduli in the first stage, 25 in both, 3 primes in the third
+  the moduli reported: the same on one and three threads
 find_points on four threads (the pool made and freed inside)    8  (8 seen)
 y^2 = 7x^2 + 3x + 5, height 1000, the defaults            884  (884 seen)
   the fields of type double at NaN, -NaN, inf, -inf, the largest and the least

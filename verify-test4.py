@@ -18,10 +18,14 @@ of the search, and otherwise reported as not checked -- except when the
 degree is odd and the denominator range is what makes the search large:
 then only the denominators a point can have are tried, e m^2 with e a
 divisor of the leading coefficient (see brute_points), which is how the
-runs at the top of the range of a long are checked.  The pairs -x prints
-beyond the points are survivors of the sieve, which need not be points,
-but they must lie in the search: coprime, in the height box, in the
-denominator range and in the search intervals.
+runs at the top of the range of a long are checked; and a run of -1 whose
+point has the denominator 1, the first of every search, is checked by
+trying the numerators of that denominator in the order of the search up
+to the point printed, which has to be the first point found (see
+first_point_b1).  The pairs -x prints beyond the points are survivors of
+the sieve, which need not be points, but they must lie in the search:
+coprime, in the height box, in the denominator range and in the search
+intervals.
 
 Whether the program refuses its arguments, and with which exit status, is
 decided by the rules of main.c, which parse_args follows: the coefficients
@@ -279,6 +283,31 @@ def gp_points(c, H):
         if r >= 0 and r*r == c[d]: pts[(1, 0)] = {r, -r}
     return pts
 
+def first_point_b1(c, H, ivs, a_end):
+    """For -1 on a search too large for brute_points, when the point printed
+    has the denominator 1: the first point of the search with that
+    denominator, as a dict like brute_points', found by trying its
+    numerators in the order of the search -- the intervals in turn, each
+    upward -- up to a_end; empty if there is none, None if they are too
+    many.  The denominator 1 is the first of every search that includes it,
+    whatever the shape of the loop over the denominators (the squares, the
+    squares times the divisors of the leading coefficient, the divisor 1
+    first, or every one), so this is the point -1 has to print."""
+    d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
+    if not ivs: ivs = [(None, None)]
+    tried = 0
+    for lo, up in ivs:
+        alo, ahi = numerators(1, lo, up, H)
+        for a in range(alo, min(ahi, a_end) + 1):
+            tried += 1
+            if tried > 10**6: return None
+            v = sum(c[i]*a**i for i in range(d + 1))   # F(a, 1)
+            if v < 0: continue
+            r = math.isqrt(v)
+            if r*r == v: return {(a, 1): {r, -r}}
+    return {}
+
 def squarefree(c):
     """whether f = sum c_i x^i, leading zeros dropped, is squarefree as a
     binary form of even degree: no repeated root, and no double root at
@@ -385,6 +414,9 @@ def main():
         pts = None
         if not big or o['du'] is not None or o['ivs']:
             pts = brute_points(c, H, o['dl'], o['du'], o['ivs'], want_inf)
+        if pts is None and o['one'] and o['dl'] == 1 and len(printed) == 1 \
+           and not o['x'] and not o['y'] and list(printed)[0][1] == 1:
+            pts = first_point_b1(c, H, o['ivs'], list(printed)[0][0])
         if pts is None:
             if o['dl'] == 1 and o['du'] is None and not o['ivs']:
                 pts = gp_points(c, H)
@@ -411,7 +443,9 @@ def main():
             if pts and not allp: fail('-1 printed nothing, but there are points')
             elif allp:
                 (a, b), = allp.keys()
-                if (a, b) not in pts: fail('-1 printed (%d : %d), not a point' % (a, b))
+                if (a, b) not in pts:
+                    fail('-1 printed (%d : %d), not a point (or, where only the numerators '
+                         'of the denominator 1 up to it are tried, not the first)' % (a, b))
                 elif printed and printed[(a, b)][0] not in pts[(a, b)]: fail('-1: wrong y')
             continue
         if o['x'] or o['y']:

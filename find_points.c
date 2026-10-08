@@ -3597,6 +3597,10 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
             total += _ratpoints_sift0(b, w_low0, w_high0, wk, cls,
                                       mask_low, mask_high,
                                       &ssp[0], &csp[0], process, info);
+            /* a thread of a pool also stops when the calling thread has
+             * stopped the search (see run_threaded), and looks after every
+             * call of the sieve: its next point may be far off */
+            if(wk->stop != NULL && RP_RELAXED(wk->stop)) { *quit = 1; }
             if(*quit) { RP_SIFT_TOC(t_sift); return(total); }
       } } }
   } }
@@ -3706,10 +3710,11 @@ typedef struct {mpz_t *cof; long degree; long height;
  * least RP_BLOCK_MIN steps each, so that it is the same however many
  * threads share the blocks and the points come out in the same order.  The
  * minimum is for the small height bounds, where a word of 64 denominators
- * sieves in a few microseconds: the calling thread is woken once per block
- * to deliver its points, and with blocks of one word it would set the pace
- * for the pool's threads.  The divisor shape has one segment of steps per
- * divisor, in the order of the divisors; the others one segment. */
+ * sieves in a few microseconds: the calling thread is woken at the end of
+ * every block (and for the points of the block it delivers), and with
+ * blocks of one word it would set the pace for the pool's threads.  The
+ * divisor shape has one segment of steps per divisor, in the order of the
+ * divisors; the others one segment. */
 #define RP_SHAPE_SQUARES  0
 #define RP_SHAPE_SQUARES1 1
 #define RP_SHAPE_WORDS    2
@@ -3871,10 +3876,9 @@ static void run_clear(rp_run *run)
 }
 
 /* Sieve block i: its denominators in order, on the worker wk.  Returns the
- * number of points; wk->quit says whether process() stopped the search (a
- * thread of the pool learns of a stop through its collector, at the next
- * point: a block without one runs to its end, which is the bound on the
- * work done after a stop). */
+ * number of points; wk->quit says whether the search was stopped (by
+ * process(), or for a thread of the pool by the calling thread, which it
+ * learns of at its next point or after its current call of the sieve). */
 static long run_block(rp_run *run, rp_worker *wk, long i,
                       int process(long, long, const mpz_t, void*, int*),
                       void *info)
@@ -4136,20 +4140,44 @@ static void run_fold(rp_run *run, const rp_blockstat *st)
 #include <unistd.h>
 
 /* A point as the sieve handed it to the collector: the arguments of the
- * process() call the calling thread makes for it later. */
+ * process() call the calling thread makes for it. */
 typedef struct { long x; long z; mpz_t y; } rp_point;
 
-/* A slot holds what one block produced until the calling thread has
+/* The points of a block are stored in chunks that do not move once they
+ * are made, so that the calling thread can deliver them while the thread
+ * that sieves the block adds more.  Chunk j has room for RP_CHUNK_MIN << j
+ * points: they double, as a growing array would, but nothing is copied;
+ * RP_CHUNKS of them hold more points than any memory.  A slot keeps its
+ * chunks, with their gmp integers, for the blocks that come after. */
+#define RP_CHUNK_MIN 16L
+#define RP_CHUNKS 48
+
+/* A slot holds what one block produces until the calling thread has
  * delivered it: the points in the order they were found, and the block's
- * report for run_fold().  done is set by the thread that sieved the block
- * and cleared by the calling thread, both under the pool's lock.  failed
- * says that the thread had no memory for a further point: the points of
- * the block end before it. */
-typedef struct { long block;
-                 rp_point *pts; long npts; long cap;
+ * report for run_fold().  The thread that sieves the block stores each
+ * point and then publishes the count npts; the calling thread reads the
+ * count and then the points below it, and while it waits for the next one
+ * it sets waiting, so that the thread wakes it (see run_threaded for the
+ * handshake).  The thread sets done when the block is finished; done and
+ * waiting are written under the pool's lock.  The calling thread clears
+ * npts and done when it has delivered the block, which frees the slot.
+ * failed says that the thread had no memory for a further point: the
+ * points of the block end before it.  put and put_n are the thread's own:
+ * the chunk it fills and how many points that has. */
+typedef struct { rp_point *chunk[RP_CHUNKS];
+                 long npts;
+                 long put; long put_n;
                  rp_blockstat st;
-                 int done; int failed; }
+                 int done; int failed; int waiting; }
         rp_slot;
+
+/* The two halves of the handshake by which a sieving thread wakes the
+ * calling thread for a point it waits for: each side stores one word and
+ * then loads the other side's, both in the one order of all sequentially
+ * consistent operations, so that at least one of the two loads sees the
+ * other side's store. */
+#define RP_SEQ_STORE(p, v) __atomic_store_n((p), (v), __ATOMIC_SEQ_CST)
+#define RP_SEQ_LOAD(p)     __atomic_load_n((p), __ATOMIC_SEQ_CST)
 
 /* Blocks in flight at most.  Block i takes slot i mod this, whose previous
  * block i - RP_ADAPT_LAG - 2 has been delivered by the time block i may
@@ -4167,7 +4195,8 @@ typedef struct
   pthread_mutex_t lock;       /* guards the job fields below and the slots' done flags */
   pthread_mutex_t tables;     /* the sieve tables are built under this one */
   pthread_cond_t cv_work;     /* the threads wait here: for a job, for the lag, for stop */
-  pthread_cond_t cv_emit;     /* the calling thread waits here: for a block, for the threads to leave */
+  pthread_cond_t cv_emit;     /* the calling thread waits here: for a point or the end
+                               * of a block, for the threads to leave */
   int exiting;                /* the pool is being torn down */
   long job;                   /* counts the searches; a thread joins one when it sees a new number */
   rp_run *run;                /* the search's run */
@@ -4183,29 +4212,46 @@ static void rp_tables_lock(rp_worker *wk)
 static void rp_tables_unlock(rp_worker *wk)
 { if(wk->pool) { pthread_mutex_unlock(&((rp_pool *)wk->pool)->tables); } }
 
+/* Chunk j of the slot, with its gmp integers; 0 when there is no memory
+ * for it. */
+static int rp_new_chunk(rp_slot *slot, long j)
+{ long n = RP_CHUNK_MIN << j, k;
+  rp_point *c = malloc(n*sizeof(rp_point));
+
+  if(c == NULL) { return(0); }
+  for(k = 0; k < n; k++) { mpz_init(c[k].y); }
+  slot->chunk[j] = c;
+  return(1);
+}
+
 /* The collector: what a sieving thread's sieve calls in place of process().
- * It keeps the point in the thread's slot, and it reports the stop flag
- * back through quit, which makes the sieve unwind as it does for process(). */
+ * It stores the point in the thread's slot and publishes it, wakes the
+ * calling thread if that waits for it, and reports the stop flag back
+ * through quit, which makes the sieve unwind as it does for process(). */
 static int collect(long x, long z, const mpz_t y, void *info, int *quit)
 { rp_worker *wk = (rp_worker *)info;
   rp_slot *slot = (rp_slot *)wk->slot;
-  long n = slot->npts;
+  long n = RP_RELAXED(&slot->npts), j = slot->put, m = slot->put_n;
+  rp_point *pt;
 
-  if(n == slot->cap)
-  { long c = (slot->cap > 0) ? 2*slot->cap : 16, k;
-    rp_point *pts = realloc(slot->pts, c*sizeof(rp_point));
-
-    if(pts == NULL) /* out of memory: the block cannot be finished, so the
-                     * search must fail rather than deliver less than it
-                     * found -- unless process() stops it before this point,
-                     * which the calling thread will see (run_threaded) */
-    { slot->failed = 1; *quit = 1; return(0); }
-    for(k = slot->cap; k < c; k++) { mpz_init(pts[k].y); }
-    slot->pts = pts; slot->cap = c;
+  if(m == RP_CHUNK_MIN << j) { j++; m = 0; } /* the chunk is full */
+  if(j == RP_CHUNKS || (slot->chunk[j] == NULL && !rp_new_chunk(slot, j)))
+  { /* out of memory: the block cannot be finished, so the search must fail
+     * rather than deliver less than it found -- unless process() stops it
+     * before this point, which the calling thread will see (run_threaded) */
+    slot->failed = 1; *quit = 1; return(0);
   }
-  slot->pts[n].x = x; slot->pts[n].z = z;
-  mpz_set(slot->pts[n].y, y);
-  slot->npts = n + 1;
+  pt = &slot->chunk[j][m];
+  pt->x = x; pt->z = z; mpz_set(pt->y, y);
+  slot->put = j; slot->put_n = m + 1;
+  RP_SEQ_STORE(&slot->npts, n + 1);
+  if(RP_SEQ_LOAD(&slot->waiting))
+  { rp_pool *pool = (rp_pool *)wk->pool;
+
+    pthread_mutex_lock(&pool->lock);
+    pthread_cond_broadcast(&pool->cv_emit);
+    pthread_mutex_unlock(&pool->lock);
+  }
   *quit = RP_RELAXED(wk->stop);
   return(0);
 }
@@ -4243,8 +4289,8 @@ static void *rp_worker_main(void *arg)
       { pthread_cond_wait(&pool->cv_work, &pool->lock); }
       if(RP_RELAXED(&pool->stop)) { pthread_mutex_unlock(&pool->lock); break; }
       pthread_mutex_unlock(&pool->lock);
-      slot = &pool->slots[i % RP_POOL_SLOTS];
-      slot->block = i; slot->npts = 0; slot->failed = 0;
+      slot = &pool->slots[i % RP_POOL_SLOTS]; /* freed by the calling thread */
+      slot->put = 0; slot->put_n = 0;
       wk->slot = slot; wk->quit = 0;
       run_block(run, wk, i, collect, wk);
       worker_stat(wk, &slot->st);
@@ -4279,11 +4325,14 @@ static void rp_pool_destroy(ratpoints_args *args)
     }
     free(pool->checks[t]);
   }
-  for(k = 0; k < RP_POOL_SLOTS; k++)
-  { long j;
+  for(k = 0; k < RP_POOL_SLOTS; k++) /* the chunks are made in order */
+  { rp_slot *slot = &pool->slots[k];
+    long j, m;
 
-    for(j = 0; j < pool->slots[k].cap; j++) { mpz_clear(pool->slots[k].pts[j].y); }
-    free(pool->slots[k].pts);
+    for(j = 0; j < RP_CHUNKS && slot->chunk[j] != NULL; j++)
+    { for(m = 0; m < RP_CHUNK_MIN << j; m++) { mpz_clear(slot->chunk[j][m].y); }
+      free(slot->chunk[j]);
+    }
   }
   free(pool->works); free(pool->checks); free(pool->workers); free(pool->threads);
   free(pool);
@@ -4341,59 +4390,92 @@ static rp_pool *rp_pool_for(ratpoints_args *args)
   return(rp_pool_create(args, n));
 }
 
-/* The search on the pool.  The calling thread starts the job, then takes
- * the blocks in order as they complete, delivers each block's points to
- * process() -- from this thread only, and in the order a single thread
- * would have found them -- and folds its report; when process() stops the
- * search, the block it stopped in is folded too, as in the loop on one
- * thread (find_points_work), so that what the search reports it used is
- * what that block was sieved with; then the threads are told to abandon
- * their blocks and nothing more is delivered.  A block whose thread had no
- * memory for one of its points fails the search when the delivery reaches
- * that point; a failure past the point where process() stopped the search
- * is not looked at, since one thread would have completed that search.  At
- * the end it waits until every thread has left the job, so that nothing of
- * the run is used after this returns. */
-static long run_threaded(rp_run *run, rp_pool *pool,
-                         int process(long, long, const mpz_t, void*, int*),
-                         void *info, int *quit)
-{ ratpoints_args *args = run->args;
-  long total = 0, i, t;
-  int failed = 0;
+/* Every thread's survivors array for a search, or none: 0 then, and the
+ * calling thread sieves alone.  run_threaded frees them at its end. */
+static int rp_pool_arrays(rp_pool *pool, ratpoints_args *args)
+{ long t;
 
-  /* every thread's survivors array, or none */
   for(t = 0; t < pool->nthreads; t++)
   { if(!worker_init(&pool->workers[t], args, pool->works[t], pool->checks[t]))
     { for( ; t >= 0; t--) { worker_clear(&pool->workers[t]); }
-      return(RATPOINTS_NO_MEMORY);
+      return(0);
     }
   }
+  return(1);
+}
+
+/* The search on the pool, whose threads have their survivors arrays.  The
+ * calling thread starts the job, then takes the blocks in order and
+ * delivers each block's points to process() -- from this thread only, and
+ * in the order a single thread would have found them -- as they are found,
+ * while the block is being sieved; when the block is finished, it folds its
+ * report and frees its slot.  So a stop takes effect at once, as on one
+ * thread: when process() stops the search, nothing more is delivered, and
+ * the threads are told to abandon their blocks, which each does after its
+ * current call of the sieve (see sift) or at its next point.  The block
+ * process() stopped in is folded too, once its thread has left it, as in
+ * the loop on one thread (find_points_work), so that what the search
+ * reports it used is what that block was sieved with.  A block whose thread
+ * had no memory for one of its points fails the search when the delivery
+ * reaches that point; a failure past the point where process() stopped the
+ * search is not looked at, since one thread would have completed that
+ * search.  At the end it waits until every thread has left the job, so that
+ * nothing of the run is used after this returns. */
+static long run_threaded(rp_run *run, rp_pool *pool,
+                         int process(long, long, const mpz_t, void*, int*),
+                         void *info, int *quit)
+{ long total = 0, i, t, stopped = -1;
+  int failed = 0;
+
   pthread_mutex_lock(&pool->lock);
   pool->run = run; pool->next_block = 0; pool->nfolded = 0;
   pool->joined = 0; pool->active = 0;
   RP_PUBLISH(&pool->stop, 0);
   for(i = 0; i < RP_POOL_SLOTS; i++)
-  { pool->slots[i].done = 0; pool->slots[i].block = -1; }
+  { rp_slot *slot = &pool->slots[i];
+
+    RP_PUBLISH(&slot->npts, 0); RP_PUBLISH(&slot->waiting, 0);
+    slot->done = 0; slot->failed = 0;
+  }
   pool->job++;
   pthread_cond_broadcast(&pool->cv_work);
   pthread_mutex_unlock(&pool->lock);
 
   for(i = 0; i < run->nblocks; i++)
   { rp_slot *slot = &pool->slots[i % RP_POOL_SLOTS];
-    long k;
+    long k = 0, j = 0, m = 0; /* points delivered; the chunk of the next and
+                               * its place there */
+    int done = 0;
 
-    pthread_mutex_lock(&pool->lock);
-    while(!slot->done) { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
-    pthread_mutex_unlock(&pool->lock);
-    for(k = 0; k < slot->npts && !*quit; k++)
-    { total += process(slot->pts[k].x, slot->pts[k].z, slot->pts[k].y,
-                       info, quit);
+    for(;;)
+    { long n = RP_ACQUIRE(&slot->npts);
+
+      for( ; k < n && !*quit; k++, m++)
+      { rp_point *pt;
+
+        if(m == RP_CHUNK_MIN << j) { j++; m = 0; }
+        pt = &slot->chunk[j][m];
+        total += process(pt->x, pt->z, pt->y, info, quit);
+      }
+      if(*quit || done) { break; }
+      /* Every point stored so far is delivered: wait for the next one, or
+       * for the end of the block.  This thread sets waiting and then reads
+       * the count, the collector stores the count and then reads waiting,
+       * so either this thread sees the new point, or the collector sees
+       * waiting and wakes it -- under the lock, so not before it waits. */
+      pthread_mutex_lock(&pool->lock);
+      RP_SEQ_STORE(&slot->waiting, 1);
+      while(!slot->done && RP_SEQ_LOAD(&slot->npts) == k)
+      { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
+      RP_PUBLISH(&slot->waiting, 0);
+      done = slot->done; /* and then the count is final */
+      pthread_mutex_unlock(&pool->lock);
     }
-    if(slot->failed && !*quit) { failed = 1; break; }
+    if(*quit) { stopped = i; break; }
+    if(slot->failed) { failed = 1; break; }
     run_fold(run, &slot->st);
-    if(*quit) { break; }
     pthread_mutex_lock(&pool->lock);
-    slot->done = 0;
+    RP_PUBLISH(&slot->npts, 0); slot->done = 0;
     pool->nfolded = i + 1;
     pthread_cond_broadcast(&pool->cv_work);
     pthread_mutex_unlock(&pool->lock);
@@ -4405,6 +4487,9 @@ static long run_threaded(rp_run *run, rp_pool *pool,
   { pthread_cond_wait(&pool->cv_emit, &pool->lock); }
   pool->run = NULL;
   pthread_mutex_unlock(&pool->lock);
+  /* the thread of the block process() stopped in has left it, and its
+   * report is complete */
+  if(stopped >= 0) { run_fold(run, &pool->slots[stopped % RP_POOL_SLOTS].st); }
   for(t = 0; t < pool->nthreads; t++) { worker_clear(&pool->workers[t]); }
   return(failed ? RATPOINTS_NO_MEMORY : total);
 }
@@ -4417,6 +4502,8 @@ static void rp_tables_lock(rp_worker *wk) { (void)wk; }
 static void rp_tables_unlock(rp_worker *wk) { (void)wk; }
 static void rp_pool_destroy(ratpoints_args *args) { args->pool = NULL; }
 static rp_pool *rp_pool_for(ratpoints_args *args) { (void)args; return(NULL); }
+static int rp_pool_arrays(rp_pool *pool, ratpoints_args *args)
+{ (void)pool; (void)args; return(0); }
 static long run_threaded(rp_run *run, rp_pool *pool,
                          int process(long, long, const mpz_t, void*, int*),
                          void *info, int *quit)
@@ -5041,8 +5128,11 @@ static long find_points_work_1(ratpoints_args *args,
     if(!run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
                   divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]))
     { run_clear(&run); worker_clear(&wk); return(RATPOINTS_NO_MEMORY); }
-    { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for */
+    { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for, */
 
+      /* each with its survivors array: when one cannot be had, the calling
+       * thread sieves alone, as when the threads cannot be created */
+      if(pool != NULL && !rp_pool_arrays(pool, args)) { pool = NULL; }
       if(pool != NULL)
       { long found = run_threaded(&run, pool, process, info, &quit);
 

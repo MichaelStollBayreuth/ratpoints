@@ -473,8 +473,12 @@ int main(void)
    * than the block before it: on this curve of many points the correction
    * during the run drops a prime of the third stage, and the first point
    * with b >= 2700, (846 : +-y : 2755), lies in the first block sieved
-   * without it.  The moduli reported are what that block was sieved with,
-   * on one thread and on three; the constants are pinned, as above. */
+   * without it.  The moduli reported must be what that block was sieved
+   * with, on one thread and on three; the constants are pinned, as above.
+   * Which block a correction first applies to depends on the width of a
+   * bit array and on RP_ADAPT_LAG, and the stop lies in it as described
+   * in the default build only, so what is printed is whether the two runs
+   * report the same moduli, not the moduli. */
   { static const long rich[] = {16, 20, -131, -109, 152, 49, 4};
     long used[2][3], k;
 
@@ -490,11 +494,10 @@ int main(void)
       used[k][2] = args.sp3_used;
     }
     same_points();
-    for(k = 0; k < 2; k++)
-    { printf("  %s: %ld moduli in the first stage, %ld in both, %ld primes in the third\n",
-             k ? "three threads" : "one thread", used[k][0], used[k][1],
-             used[k][2] - used[k][1]);
-    }
+    printf("  the moduli reported: %s\n",
+           (used[0][0] == used[1][0] && used[0][1] == used[1][1]
+              && used[0][2] == used[1][2])
+             ? "the same on one and three threads" : "DIFFERENT");
   }
   find_points_clear(&args);
   curve(&args, 6, sextic, 3000); args.num_threads = 4;

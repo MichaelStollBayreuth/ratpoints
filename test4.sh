@@ -39,8 +39,9 @@
 # positivity region deeper than 55 steps, the leading coefficient -2^63,
 # the options of the sieve at their extremes, arguments that are not
 # numbers as a whole, out of range or NaN, -fs under -z, coefficient lists
-# that are not integers separated by white space, and the intervals that a
-# missing first -l or last -u leave open.
+# that are not integers separated by white space, the intervals that a
+# missing first -l or last -u leave open, and -1 in a search of a single
+# block.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -931,3 +932,20 @@ t '48 3' 50 -q -u -51 -s
 t '48 3' 50 -q -l 51 -s
 t '1 0 1' 10 -q -u -inf -l -5 -u 5
 t '1 0 1' 10 -q -l -5 -u -1 -l 10.5
+
+echo '---- a stop at the first point, whatever the threads ----'
+# -1 ends the search at the first point it prints, at once: on several
+# threads ("make testthreads" runs this file with -t 3 and -t 7) the points
+# of the block at the head of the order are delivered as they are found,
+# and every thread leaves its block after its current call of the sieve.
+# Each of these searches is a single block of the loop over the
+# denominators -- the squares up to 16, the one word of the denominators
+# up to 16, the denominator 1 -- over 2 * 10^12 numerators per denominator
+# or, at the height bound 2^63 - 1, nearly 2^64, and its first point is at
+# the start of the denominator 1: x + 10^12 vanishes at x = -10^12, the
+# lower end of the height bound, 2x^2 + 2 * 10^24 is (2 * 10^12)^2 there,
+# and x + 9223372036854769900 vanishes where its positivity region begins.
+# verify-test4.py tries the numerators of the denominator 1 up to the point
+t '1000000000000 1' 1000000000000 -q -du 16 -1 -i
+t '2000000000000000000000000 0 2' 1000000000000 -q -du 16 -1
+t '9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -1 -i

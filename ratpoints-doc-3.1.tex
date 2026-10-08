@@ -619,7 +619,10 @@ The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
 (e.g., if you specify two leading zero coefficients), and when it cannot
-get the memory for the search (``Not enough memory.'').
+get the memory for the search (``Not enough memory.''). The memory of the
+multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
+cannot get it, it prints its own message and ends the program, and with
+several threads (option~\verb+-t+) that is often what happens first.
 
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.
@@ -735,7 +738,12 @@ So the output is the same, line for line, however many threads are used,
 including the reports of~\verb+-v+ and what \verb+-1+ finds: the sieving
 parameters are chosen and revised from the same counts on the same
 schedule, and the first point is the first point of the sequential
-program, not the first one found in time. At most $33$ threads sieve at
+program, not the first one found in time. The points of the earliest
+block not yet printed are printed as they are found, so \verb+-1+ ends
+the search at once, as on one thread: when its point is printed, each
+thread leaves its block after the stretch of numerators it is sieving
+(at most \texttt{array\_size} bit arrays, Section~\ref{sec:library}),
+however long the block is. At most $33$ threads sieve at
 once, so \verb+-t 0+ on a machine with more processors uses~$33$; a
 build for more cores is described in Section~\ref{sec:build}. On a
 processor with hyperthreading, one thread per physical core is the better
@@ -1096,8 +1104,10 @@ that searches many curves should use the \texttt{find\_points\_init},
 \texttt{find\_points\_work}, \texttt{find\_points\_clear} sequence
 described below rather than \texttt{find\_points}, which creates and ends
 them on every call. A call with another value of \texttt{num\_threads}
-replaces them. If the threads cannot be created, the calling thread sieves
-alone. No more than $33$ threads are created, whatever the field says,
+replaces them. If the threads cannot be created, or one of them cannot get
+the array it sieves in for a search, the calling thread sieves alone (the
+threads stay for later calls). No more than $33$ threads are created,
+whatever the field says,
 unless the library is built for more (Section~\ref{sec:build}). A library
 built without threads (\texttt{make THREADS=0}) ignores the field.
 
@@ -1147,21 +1157,32 @@ for the same points in the same order as a single thread finds them; the
 return value of \texttt{find\_points}, the point at which \texttt{*quit}
 takes effect and what the three \texttt{\_used} fields report are the same
 as well. So \texttt{proc} and \texttt{info} need
-no protection against concurrent calls. A sieving thread keeps the points
+no protection against concurrent calls. The points of the earliest block
+not yet delivered are delivered as they are found, and a stop takes effect
+at once, as on one thread: when \texttt{proc} sets \texttt{*quit}, each
+sieving thread leaves its block after the stretch of numerators it is
+sieving (at most \texttt{array\_size} bit arrays), and the search returns.
+A sieving thread keeps the points
 it finds until every earlier block of the search has been delivered; if it
 cannot get the memory for that, the search fails with the return value
 \texttt{RATPOINTS\_NO\_MEMORY} rather than deliver fewer points than it
 found, unless \texttt{*quit} stops it before the first point that could
 not be kept.
 
-\texttt{RATPOINTS\_NO\_MEMORY} is also returned, after freeing what the
-search allocated, when the search cannot get the memory for its sieving
-tables or its arrays; the points delivered before are points of the curve,
-but the search is incomplete. If \texttt{find\_points\_init} cannot get its
-memory, it frees what it got, and \texttt{find\_points\_work} then returns
-\texttt{RATPOINTS\_NO\_MEMORY} (\texttt{find\_points\_clear} can be called as
-usual). The memory of the gmp integers is gmp's: by default gmp ends the
-program when it runs out.
+\texttt{RATPOINTS\_NO\_MEMORY} is also returned when the search cannot get
+the memory for its sieving tables or its arrays; the points delivered
+before are points of the curve, but the search is incomplete. The arrays
+the search allocated for itself are freed by then, but what the structure
+holds for the searches after it --- the memory of
+\texttt{find\_points\_init}, the buffers a search enlarges, and the sieving
+threads with their memory --- stays until \texttt{find\_points\_clear},
+which a caller short of memory can call, followed by
+\texttt{find\_points\_init}, before trying again. If
+\texttt{find\_points\_init} cannot get its memory, it frees what it got,
+and \texttt{find\_points\_work} then returns \texttt{RATPOINTS\_NO\_MEMORY}
+(\texttt{find\_points\_clear} can be called as usual). The memory of the
+gmp integers is gmp's: when gmp cannot get it, by default it prints a
+message and ends the program.
 
 The usual framework for using \texttt{find\_points} is as follows.
 
@@ -1223,6 +1244,9 @@ int main(int argc, char *argv[])
 
   data *info = malloc(sizeof(data));
 
+  if(info == NULL)
+  { ... } /* not enough memory */
+
   /* initialize multi-precision integer variables */
   for(n = 0; n <= degree; n++) { mpz_init(c[n]); }
 
@@ -1264,6 +1288,8 @@ int main(int argc, char *argv[])
     { ... }
     if(total == RATPOINTS_BAD_ARGS)
     { ... }
+    if(total == RATPOINTS_NO_MEMORY)
+    { ... } /* the search is incomplete */
 
     (...)
 
