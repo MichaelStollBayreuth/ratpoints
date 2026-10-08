@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "ratpoints.h"
 
@@ -227,6 +228,18 @@ int main(int argc, char *argv[])
  * get at the input                                                       *
  **************************************************************************/
 
+/* The end that stands for a missing first -l (negated) or last -u: the
+ * height bound as a double, rounded up when it is not one, so that the
+ * interval holds every x = a/b with |a| <= height (the library takes the
+ * ends of the intervals exactly). */
+static double height_end(long height)
+{ double h = (double)height;
+
+  if(h < 9223372036854775808.0 && (long)h < height)
+  { h = nextafter(h, HUGE_VAL); }
+  return(h);
+}
+
 int read_input(long argc, char *argv[], ratpoints_args *args)
 {
   int l_seen = 0;     /* flag for dealing with -l -u */
@@ -318,7 +331,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(7); }
           i++;
           if(!l_seen)
-          { if(num_inter == 0) { domain[0].low = -args->height; }
+          { if(num_inter == 0) { domain[0].low = -height_end(args->height); }
             else { error(7); } /* -u -u */
           }
           if(sscanf(argv[i], " %lf", &domain[num_inter].up) != 1) { error(7); }
@@ -556,8 +569,14 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
         default: { error(6); }
   } } }
   if(l_seen)
-  /* complete last interval */
-  { domain[num_inter].up = args->height; num_inter++; }
+  /* complete last interval; one that starts above the height bound holds no
+   * x = a/b of the search, and it is made [l, +infinity] rather than turned
+   * around, which the library would refuse */
+  { domain[num_inter].up = height_end(args->height);
+    if(domain[num_inter].up < domain[num_inter].low)
+    { domain[num_inter].up = HUGE_VAL; }
+    num_inter++;
+  }
   args->num_inter = num_inter;
 
   if(!print_format)

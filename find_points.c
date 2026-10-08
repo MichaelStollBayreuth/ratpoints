@@ -3098,8 +3098,103 @@ int set_rows(sieve_spec *ssp, ratpoints_sieve_entry **sieve_list,
   return(missing);
 }
 
+/* The search intervals in the form sift() reads them, made once per run by
+ * exact_bounds() from the doubles of args->domain.  An end x is an exact
+ * binary fraction, |x| = m 2^-s with m < 2^63 and 0 <= s < 128 (a double
+ * is one, from its mantissa and exponent; see exact_end for the ends of
+ * 2^63 or more in absolute value and those below 2^-75), and neg says
+ * whether x < 0.  For the denominator b the numerators of [l, u] are
+ * ceil(b l) .. floor(b u) within the height bound, and as b m < 2^126
+ * these are computed exactly in 128 bits (exact_scale): no rounding takes
+ * a numerator into an interval or out of it, so that two intervals that do
+ * not meet share no numerator, whatever b and the ends.  low_fixed says
+ * that the height bound decides the lower end for every denominator
+ * (l <= -height, so ceil(b l) <= -height), up_fixed the same for the upper
+ * end (u >= height); that spares the product for the ends at the bound,
+ * which are the most common ones. */
+typedef struct { unsigned long m; int s; int neg; } rp_end;
+typedef struct { rp_end low; rp_end up; int low_fixed; int up_fixed; }
+        rp_bounds;
+
+/* min(2^63, b m 2^-s), rounded up if up is set and down otherwise: the
+ * magnitude of b x for the end x = +-m 2^-s.  The product b m < 2^126 is
+ * exact in 128 bits, put together from 32-bit halves where the compiler
+ * has no 128-bit type. */
+static inline unsigned long exact_scale(long b, const rp_end *e, int up)
+{
+#if defined(__SIZEOF_INT128__)
+  unsigned __int128 p = (unsigned __int128)(unsigned long)b * e->m;
+  unsigned __int128 q = p >> e->s;
+
+  if(up && (q << e->s) != p) { q++; }
+  return((q >> 63) ? 1UL << 63 : (unsigned long)q);
+#else
+  const unsigned long lw = 0xffffffffUL;
+  unsigned long b0 = (unsigned long)b & lw, b1 = (unsigned long)b >> 32;
+  unsigned long m0 = e->m & lw, m1 = e->m >> 32;
+  unsigned long p00 = b0*m0, p01 = b0*m1, p10 = b1*m0;
+  unsigned long mid = (p00 >> 32) + (p01 & lw) + (p10 & lw);
+  unsigned long lo = (mid << 32) | (p00 & lw); /* b m = hi 2^64 + lo */
+  unsigned long hi = b1*m1 + (p01 >> 32) + (p10 >> 32) + (mid >> 32);
+  unsigned long qh, ql;  /* the quotient q = qh 2^64 + ql */
+  int s = e->s, rest;    /* and whether there is a remainder */
+
+  if(s == 0) { qh = hi; ql = lo; rest = 0; }
+  else if(s < 64)
+  { qh = hi >> s; ql = (lo >> s) | (hi << (64 - s));
+    rest = (lo << (64 - s)) != 0;
+  }
+  else if(s == 64) { qh = 0; ql = hi; rest = (lo != 0); }
+  else
+  { qh = 0; ql = hi >> (s - 64);
+    rest = (lo != 0) || (hi << (128 - s)) != 0;
+  }
+  if(up && rest) { ql++; if(ql == 0) { qh++; } }
+  return((qh != 0 || (ql >> 63)) ? 1UL << 63 : ql);
+#endif
+}
+
+/* x as an rp_end */
+static void exact_end(double x, rp_end *e)
+{ double ax = fabs(x);
+
+  e->neg = (x < 0.0);
+  /* 2^63 or more, infinity included: m = 2^63 is beyond every numerator,
+   * since |a| <= height < 2^63 */
+  if(!(ax < 9223372036854775808.0)) { e->m = 1UL << 63; e->s = 0; }
+  else
+  { int ex;
+    double f = frexp(ax, &ex);  /* ax = f 2^ex, 1/2 <= f < 1, or f = 0 */
+    unsigned long m = (unsigned long)ldexp(f, 53); /* f has 53 bits */
+    int s = 53 - ex;
+
+    /* ax < 2^63, so ex <= 63, and shifting m up by -s <= 10 leaves it
+     * below 2^63.  Beyond s = 127 (ax below 2^-75) nothing changes for
+     * b m < 2^116: the quotient is 0, with a remainder unless m = 0. */
+    if(s < 0) { m <<= -s; s = 0; }
+    if(s > 127) { s = 127; }
+    e->m = m; e->s = s;
+  }
+}
+
+/* The intervals of args->domain -- increasing, disjoint and without NaN,
+ * see find_points_work -- as rp_bounds. */
+static void exact_bounds(const ratpoints_args *args, rp_bounds *bd)
+{ unsigned long h = args->height;
+  long n;
+
+  for(n = 0; n < args->num_inter; n++)
+  { exact_end(args->domain[n].low, &bd[n].low);
+    exact_end(args->domain[n].up, &bd[n].up);
+    /* what b = 1 gives, every b gives, as |b x| >= |x| */
+    bd[n].low_fixed = bd[n].low.neg && exact_scale(1, &bd[n].low, 0) >= h;
+    bd[n].up_fixed = !bd[n].up.neg && exact_scale(1, &bd[n].up, 0) >= h;
+  }
+}
+
 static
 long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
+          const rp_bounds *bounds, long nbounds,
           int process(long, long, const mpz_t, void*, int*), void *info)
 {
   long total = 0;
@@ -3130,26 +3225,37 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
   { long k;
     long height = args->height;
 
-    for(k = 0; k < args->num_inter; k++)
+    for(k = 0; k < nbounds; k++)
     { long low, high;
-      /* For each of the positivity intervals,
-       * determine relevant interval [low, high] of numerators. */
-      { ratpoints_interval inter = args->domain[k];
+      /* For each of the positivity intervals [l, u], the numerators a with
+       * l <= a/b <= u and |a| <= height: low = ceil(b l) and
+       * high = floor(b u), exactly, clipped to the height bound (see
+       * rp_bounds). */
+      { const rp_bounds *bd = &bounds[k];
+        unsigned long t;
 
-        if(b*inter.low <= -height)
-        { low = -height; }
+        if(bd->low.neg) /* ceil(b l) = -floor(b |l|) */
+        { t = bd->low_fixed ? (unsigned long)height
+                            : exact_scale(b, &bd->low, 0);
+          low = (t >= (unsigned long)height) ? -height : -(long)t;
+        }
         else
-        { if(b*inter.low > height)
+        { t = exact_scale(b, &bd->low, 1);
+          if(t > (unsigned long)height)
           { RP_SIFT_TOC(t_sift);
             return(total); /* remaining numerator intervals are empty */
           }
-          low = ceil(b*inter.low);
+          low = (long)t;
         }
-        if(b*inter.up >= height)
-        { high = height; }
+        if(bd->up.neg) /* floor(b u) = -ceil(b |u|) */
+        { t = exact_scale(b, &bd->up, 1);
+          if(t > (unsigned long)height) { continue; } /* this numerator interval is empty */
+          high = -(long)t;
+        }
         else
-        { if(b*inter.up < -height) { continue; } /* this numerator interval is empty */
-          high = floor(b*inter.up);
+        { t = bd->up_fixed ? (unsigned long)height
+                           : exact_scale(b, &bd->up, 0);
+          high = (t >= (unsigned long)height) ? height : (long)t;
         }
       }
 
@@ -3233,11 +3339,14 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
 
       /* From numerators to bits: bit t stands for a0 + 2^k t, so the bits
        * are ceil((low - a0)/2^k) .. floor((high - a0)/2^k); the shifts of
-       * signed values round down, as they do throughout the program. */
-      { long k = cls->k, a0 = cls->a0;
+       * signed values round down, as they do throughout the program.  Each
+       * end is split into its multiple of 2^k and its rest r, 0 <= r < 2^k,
+       * and a0 (also below 2^k) is taken from the rest, so that nothing
+       * overflows when the end is within 2^k of LONG_MIN or LONG_MAX. */
+      { long k = cls->k, a0 = cls->a0, r = (1L << k) - 1;
 
-        low = (low - a0 + (1L << k) - 1) >> k;
-        high = (high - a0) >> k;
+        low = (low >> k) + (((low & r) - a0 + r) >> k);
+        high = (high >> k) + (((high & r) - a0) >> k);
       }
 
       /* The bit interval is [low, high], both ends included.  (Making it
@@ -3410,6 +3519,8 @@ typedef struct {mpz_t *cof; long degree; long height;
 
 typedef struct { ratpoints_args *args;
                  const rp_num_class *cls;   /* the numerator classes, by b mod 64 */
+                 const rp_bounds *bounds;   /* the search intervals... */
+                 long nbounds;              /* ...and how many (rp_bounds) */
                  unsigned long den_bits;    /* bit j: the class of b = j mod 64 has a pattern */
                  forbidden_entry *forb_ba;  /* the forbidden divisors tested with bit arrays... */
                  long nfb;                  /* ...how many of them... */
@@ -3583,7 +3694,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
 
         if(EXT0(cl->bits))
         { fill_bp_list(bb, cl->k, bp_list, wk);
-          total += sift(bb, wk, cl, &bp_list[0], process, info);
+          total += sift(bb, wk, cl, &bp_list[0], run->bounds, run->nbounds,
+                        process, info);
           if(wk->quit) { return(total); }
         }
 #ifdef DEBUG
@@ -3612,7 +3724,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
           }
           if(flag)
           { fill_bp_list(bb, cl->k, bp_list, wk);
-            total += sift(bb, wk, cl, &bp_list[0], process, info);
+            total += sift(bb, wk, cl, &bp_list[0], run->bounds, run->nbounds,
+                          process, info);
             if(wk->quit) { return(total); }
           }
         }
@@ -3699,7 +3812,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
                            : jacobi(b, wk->work[0], args->cof[args->degree]))
                          == 1))
             { fill_bp_list(b, cl->k, bp_list, wk);
-              total += sift(b, wk, cl, &bp_list[0], process, info);
+              total += sift(b, wk, cl, &bp_list[0], run->bounds, run->nbounds,
+                            process, info);
               if(wk->quit) { return(total); }
             }
 #ifdef DEBUG
@@ -3723,7 +3837,8 @@ static long run_block(rp_run *run, rp_worker *wk, long i,
 
         if(EXT0(cl->bits))
         { fill_bp_list(b, cl->k, bp_list, wk);
-          total += sift(b, wk, cl, &bp_list[0], process, info);
+          total += sift(b, wk, cl, &bp_list[0], run->bounds, run->nbounds,
+                        process, info);
           if(wk->quit) { return(total); }
         }
 #ifdef DEBUG
@@ -4224,7 +4339,11 @@ static long find_points_work_1(ratpoints_args *args,
    * the blocks a numerator interval is cut into only the last one can end
    * in a partial chunk (see _ratpoints_sift0) */
   args->array_size = CEIL(args->array_size, RATPOINTS_CHUNK)*RATPOINTS_CHUNK;
-  if(args->sturm > LONG_LENGTH - 2) { args->sturm = LONG_LENGTH - 2; }
+  /* The ends of the intervals the Sturm step keeps are made by halving to
+   * this depth and have at most depth - 2 significant bits, so up to 55
+   * they are doubles (53 bits) exactly; beyond, the conversion would round
+   * them, possibly inward, and a point next to an end could be lost. */
+  if(args->sturm > 55) { args->sturm = 55; }
 
   /* Don't reverse if intervals are specified or limits for the denominator
      are given */
@@ -4374,9 +4493,29 @@ static long find_points_work_1(ratpoints_args *args,
   /* Deal with the intervals */
   if(args->domain == NULL) { return(RATPOINTS_BAD_ARGS); }
   if(args->num_inter == 0)
-  /* default interval (effectively ]-infty,infty[) if none is given */
-  { args->domain[0].low = -height; args->domain[0].up = height;
+  /* default interval if none is given: [-height, height], which holds every
+   * x = a/b of the search, its ends rounded outward when height is not a
+   * double (so it is effectively ]-infty,infty[) */
+  { double h = (double)height;
+
+    if(h < 9223372036854775808.0 && (long)h < height)
+    { h = nextafter(h, HUGE_VAL); }
+    args->domain[0].low = -h; args->domain[0].up = h;
     args->num_inter = 1;
+  }
+  else
+  { /* The intervals given must be what the Sturm step and sift() assume,
+     * and what the command line enforces: closed, l <= u, increasing and
+     * disjoint (each ending below the start of the next), no end NaN --
+     * every comparison with a NaN is false, so the tests below refuse one
+     * as they stand. */
+    ratpoints_interval *iv = args->domain;
+    long n;
+
+    for(n = 0; n < args->num_inter; n++)
+    { if(!(iv[n].low <= iv[n].up) || (n > 0 && !(iv[n-1].up < iv[n].low)))
+      { return(RATPOINTS_BAD_ARGS); }
+    }
   }
 
   if(args->sturm >= 0)
@@ -4640,6 +4779,8 @@ static long find_points_work_1(ratpoints_args *args,
      * packing (a dozen or so; at most 64), over every prime that may come to
      * be sieved with */
     long offsets[num_packings(&cls[0])*(args->sp3_max > 0 ? args->sp3_max : 1)];
+    /* the search intervals in the exact form sift() reads them */
+    rp_bounds bounds[args->num_inter > 0 ? args->num_inter : 1];
     long i;
 
 #ifdef DEBUG
@@ -4658,6 +4799,8 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
     run_setup(&run, args, &cls[0], den_bits, forb_ba, forbidden, den_info,
               divisors, use_c_long, use_c_long ? c_long[degree] : 0, work[0]);
+    exact_bounds(args, &bounds[0]);
+    run.bounds = &bounds[0]; run.nbounds = args->num_inter;
     { rp_pool *pool = rp_pool_for(args); /* the threads, when asked for */
 
       if(pool != NULL)

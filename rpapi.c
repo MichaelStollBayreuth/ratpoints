@@ -34,6 +34,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "ratpoints.h"
 
 static mpz_t c[RATPOINTS_MAX_DEGREE+1];
@@ -226,6 +227,55 @@ int main(void)
   ret = find_points_work(&args, show, NULL);
   report("y^2 = x^2 + 1 on [-2, -1] U [0, 1]", ret);
   printf("  the region searched: %ld interval(s)\n", args.num_inter);
+  /* The intervals must be closed, l <= u, increasing and disjoint, with no
+   * end NaN, as the command line has them; anything else is refused, and
+   * num_inter and domain[] are left as they were.  At height 20 the curve
+   * has two points at infinity and fourteen with x in [0, 3], six with x in
+   * [-3, -1] and none with x in [5, 30]. */
+  curve(&args, 2, pyth, 20); args.num_inter = 1;
+  domain[0].low = 0.0; domain[0].up = 3.0;
+  report("height 20 on [0, 3]", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 2;
+  domain[0].low = 0.0; domain[0].up = 2.0; domain[1].low = 1.0; domain[1].up = 3.0;
+  report("height 20 on [0, 2], [1, 3] (overlapping)",
+         find_points_work(&args, count, NULL));
+  printf("  num_inter %ld, domain [%g, %g], [%g, %g]\n", args.num_inter,
+         domain[0].low, domain[0].up, domain[1].low, domain[1].up);
+  curve(&args, 2, pyth, 20); args.num_inter = 2;
+  domain[0].low = 0.0; domain[0].up = 1.5; domain[1].low = 1.5; domain[1].up = 3.0;
+  report("height 20 on [0, 1.5], [1.5, 3] (touching)",
+         find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 2;
+  domain[0].low = -3.0; domain[0].up = -1.0; domain[1].low = 5.0; domain[1].up = 30.0;
+  report("height 20 on [-3, -1], [5, 30]", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 2;
+  domain[0].low = 5.0; domain[0].up = 30.0; domain[1].low = -3.0; domain[1].up = -1.0;
+  report("height 20 on [5, 30], [-3, -1] (decreasing)",
+         find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 1;
+  domain[0].low = 2.0; domain[0].up = 1.0;
+  report("height 20 on [2, 1] (empty)", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 1;
+  domain[0].low = 0.0; domain[0].up = NAN;
+  report("height 20 on [0, NaN]", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 2; args.sturm = -1;
+  domain[0].low = NAN; domain[0].up = 1.0; domain[1].low = 2.0; domain[1].up = 3.0;
+  report("height 20 on [NaN, 1], [2, 3], no Sturm step",
+         find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 20); args.num_inter = 1;
+  domain[0].low = -HUGE_VAL; domain[0].up = HUGE_VAL;
+  report("height 20 on [-infinity, infinity]", find_points_work(&args, count, NULL));
+  /* The default interval at a height bound that is not a double has its
+   * ends rounded outward, so that it holds x = height: y^2 = x - 2^53 at
+   * height 2^53 + 1 with the denominator 1 has the points x = 2^53 and
+   * x = 2^53 + 1 and the one at infinity (the Sturm step to depth 55 cuts
+   * the search down to the numerators from 2^53 on). */
+  { static const long shifted[] = {-9007199254740992L, 1};
+
+    curve(&args, 1, shifted, 9007199254740993L); args.b_high = 1; args.sturm = 55;
+    report("y^2 = x - 2^53, height 2^53 + 1, denominator 1",
+           find_points_work(&args, show, NULL));
+  }
   find_points_clear(&args);
 
   /* the wrapper, initialising for the degree of each curve */

@@ -690,6 +690,10 @@ The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
 to~$+\infty$. The number $k$ of intervals is bounded by
 \texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+The ends are read as double-precision numbers (one that is not a double,
+such as~$2^{53}+1$, is rounded to the nearest double), and a point is
+searched for when its $x$-coordinate lies exactly in one of the intervals
+so read.
 
 \subsection{Using several threads}\label{sec:threads}
 
@@ -854,7 +858,9 @@ steps in the isolation of the real components to~$S$. This part of the
 program computes a Sturm sequence for the polynomial and uses it in order
 to find a union of intervals that contains the intervals of positivity
 of the polynomial. This is done by a successive subdivision of the
-interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth.
+interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth;
+a depth above~$55$ counts as~$55$, the largest at which the ends of the
+intervals are still exact in double precision.
 $S$ can be omitted; then it is given a default value. The option
 \verb+-s+ skips the Sturm sequence computation completely. This also has
 the effect of removing most of the check for squarefreeness.
@@ -973,12 +979,21 @@ typedef struct {double low; double up;} ratpoints_interval;
 \end{verbatim}
 
 the meaning of this should be clear. In \texttt{ratpoints}, this is set
-via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
+via the \verb+-l+ and \verb+-u+ options. The intervals are closed, and as on
+the command line they must be given in increasing order and be disjoint:
+$\texttt{low} \le \texttt{up}$ for each, and each one ends below the start
+of the next (so two intervals that meet in an end must be given as one).
+An end may be infinite, but not NaN; intervals that break these rules make
+the call return \texttt{RATPOINTS\_BAD\_ARGS}. The ends are taken exactly:
+the search takes the $x = a/b$ with $\texttt{low} \le x \le \texttt{up}$ for
+one of the intervals.
+Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
 \texttt{degree} intervals; a null pointer makes the call return
 \texttt{RATPOINTS\_BAD\_ARGS}, since the program stores the default
-interval $]-\texttt{height}, \texttt{height}[$ there. If \texttt{sturm} is
+interval $[-\texttt{height}, \texttt{height}]$ there, with its ends rounded
+outward when \texttt{height} is not a double. If \texttt{sturm} is
 negative, one interval is enough.)
 The program intersects the given intervals with the region where $f$ is
 positive (unless \texttt{sturm} has a negative value, which may lead to a

@@ -114,8 +114,20 @@ def brute_points(c, H, dl, du, ivs, want_inf):
             if r >= 0 and r*r == c[d]: pts[(1, 0)] = {r, -r}
     b_low = max(dl, 1)
     b_high = H if (du is None or du < 1) else min(du, H)
-    if not ivs: ivs = [(-float(H), float(H))]
-    ivs = [((-float(H) if lo is None else lo), (float(H) if up is None else up)) for lo, up in ivs]
+    # the search region: the intervals of the command line, closed, their
+    # ends the doubles it reads, taken exactly; a missing first -l or last
+    # -u, or no interval at all, is no bound (the program puts in the height
+    # bound rounded outward, which holds every a/b with |a| <= H)
+    if not ivs: ivs = [(None, None)]
+    def numerators(b, lo, up):
+        """the a with lo <= a/b <= up and |a| <= H: ceil(b lo) .. floor(b up)"""
+        if lo is None or lo == -math.inf: alo = -H
+        elif lo == math.inf: alo = H + 1
+        else: alo = max(-H, math.ceil(Fraction(lo)*b))
+        if up is None or up == math.inf: ahi = H
+        elif up == -math.inf: ahi = -H - 1
+        else: ahi = min(H, math.floor(Fraction(up)*b))
+        return alo, ahi
     # the denominators to try: every one in the range -- or, when the range
     # is too long for that and the degree is odd, only those a point can
     # have.  For odd d, F(a, b) = b (c_d a^d + b (...)), so with gcd(a, b) = 1
@@ -131,24 +143,19 @@ def brute_points(c, H, dl, du, ivs, want_inf):
         bs = sorted(e*m*m for e, lo, hi in ms for m in range(lo, hi + 1))
         global rule_used
         rule_used += 1
-    # the size of the search
+    # the size of the search, estimated in floating point
     total = 0
     for b in bs:
         for lo, up in ivs:
-            total += max(0, min(float(b)*up, float(H)) - max(float(b)*lo, -float(H))) + 1
+            flo = -float(H) if lo is None else max(float(b)*lo, -float(H))
+            fup = float(H) if up is None else min(float(b)*up, float(H))
+            total += max(0, fup - flo) + 1
         if total > MAX_BRUTE: return None
-    Hf = float(H)   # the program compares b*low and b*up with (double)height
     for b in bs:
-        fb = float(b)   # the program computes b*low in double precision
         pw = [b**(D - i) for i in range(D + 1)]   # b^(D-i)
         cb = [c[i]*pw[i] if i <= d else 0 for i in range(D + 1)]
         for lo, up in ivs:
-            if fb*lo <= -Hf: alo = -H
-            elif fb*lo > Hf: break
-            else: alo = math.ceil(fb*lo)
-            if fb*up >= Hf: ahi = H
-            elif fb*up < -Hf: continue
-            else: ahi = math.floor(fb*up)
+            alo, ahi = numerators(b, lo, up)
             for a in range(alo, ahi + 1):
                 if math.gcd(a, b) != 1: continue
                 v = 0

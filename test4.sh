@@ -31,7 +31,8 @@
 #
 # The first part prints points and messages that are the same in 2.2.4 and
 # 3.0.0; the second part looks at the reports of -v, whose texts differ
-# between the versions; the third uses options that 2.2.4 does not have.
+# between the versions; the third uses options that 2.2.4 does not have,
+# and ends with search intervals whose ends 2.2.4 does not take exactly.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -742,3 +743,46 @@ e '1 2 3' 10 -C x
 e '1 2 3' 10 -P x
 e '1 2 3' 10 -Q x
 e '1 2 3' 10 -W x
+
+echo '---- the search intervals, exactly ----'
+# The numerators of an interval [l, u] at the denominator b are the a with
+# l <= a/b <= u, whatever b and the ends: b l and b u rounded to doubles
+# would put a numerator next to an end into both of two adjacent intervals,
+# or into neither of them, or out of the one it is in.  x = 1/3 on
+# y^2 = 9x^2 - 1 lies between the doubles 0.3333333333333333 and
+# 0.33333333333333337, so in neither interval of the first run and in the
+# one interval of each of the next two; x = -47/3 on y^2 = 3x + 48 lies
+# between the ends of the two intervals of the fourth
+t '-1 0 9' 10 -q -u 0.3333333333333333 -l 0.33333333333333337
+t '-1 0 9' 10 -q -u 0.33333333333333337
+t '-1 0 9' 10 -q -l 0.3333333333333333
+t '48 3' 50 -q -l -50 -u -15.666666666666668 -l -15.666666666666666 -u 50
+# The same with denominators above 2^61, on y^2 = x^2 + 1 and two primitive
+# Pythagorean triples (a, b, c).  For (3226670801200005632,
+# 4302220858710230025, 5377779167689769993) a/b lies between the adjacent
+# doubles X0 = 0.7500011987221257 and X1 = 0.7500011987221258, so in
+# neither [X0 - 8 ulps, X0] nor [X1, X1 + 8 ulps], and in
+# [X0 - 8 ulps, X1 + 8 ulps].  For (3226666674000000004,
+# 4302222234444444453, 5377777791955555565) a/b lies 63/b below the end
+# U = 0.7499999995738637 of [U - 8 ulps, U], while b U rounded to a double
+# is a - 4
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221257 -l 0.7500011987221258 -u 0.7500011987221267
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221267
+t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0.7499999995738628 -u 0.7499999995738637
+# An end the Sturm step puts in: 2x^2 - x = x(2x - 1) is positive from 1/2
+# on, and x = 1152921532524134569/2305843065048269134 lies 2/b beyond it,
+# with y = 2(2^30 + 13); the search without the Sturm step agrees
+t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001
+t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001 -s
+# Ends at the limits of a long: 9223372036854775807 is read as the double
+# 2^63, beyond every numerator, so the intervals [2^63, 2^63] and
+# [-2^63, -2^63] hold none and only the points at infinity are printed (the
+# run must end); the numerators from -(2^63 - 1) to -(2^63 - 1024), where
+# the bit arrays hold those with a = 2 mod 4 and the first bit is
+# ceil((-(2^63 - 1) - 2)/4), from a value below the range of a long; and at
+# the height bound 2^53 + 1, which is not a double, a missing last -u still
+# admits x = 2^53 + 1
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854775807
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -9223372036854775807
+t '-3 0 1' 9223372036854775807 -q -dl 1 -du 1 -l -1e30 -u -9223372036854774784
+t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
