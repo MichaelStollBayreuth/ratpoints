@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <errno.h>
 #include <math.h>
 
@@ -290,16 +291,23 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                             /* use Jacobi symbol test */
 
   mpz_init(fff); /* initialize gmp integer */
-  /* read coefficients */
+  /* read coefficients: integers separated by white space (see scan_mpz),
+   * at most RATPOINTS_MAX_DEGREE + 1 of them.  Those beyond go into fff,
+   * so that a list with something in it that is not an integer is refused
+   * as such, however long it is. */
   { char *s = argv[1];
-    long degree = 0;
+    long n = 0; /* the number of integers read */
 
-    while((degree <= RATPOINTS_MAX_DEGREE) && (s = scan_mpz(s, c[degree])))
-    { degree++; }
-    degree--;
-    if(scan_mpz(s, fff)) { error(3); }
-    if(degree <= 0) { error(5); }
-    args->degree = degree;
+    for(;;)
+    { while(isspace((unsigned char)*s)) { s++; }
+      if(*s == 0) { break; }
+      s = scan_mpz(s, (n <= RATPOINTS_MAX_DEGREE) ? c[n] : fff);
+      if(s == NULL) { error(11); }
+      n++;
+    }
+    if(n > RATPOINTS_MAX_DEGREE + 1) { error(3); }
+    if(n <= 1) { error(5); }
+    args->degree = n - 1;
   }
 
   /* read height bound */
@@ -342,6 +350,12 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
             else { error(7); } /* -u -u */
           }
           if(!scan_double(argv[i], &domain[num_inter].up)) { error(7); }
+          /* a first interval with no -l that ends below -height holds no
+           * x = a/b of the search, and it is made [-infinity, u], which is
+           * what a missing first -l stands for, rather than turned around,
+           * which the library would refuse */
+          if(!l_seen && domain[num_inter].up < domain[num_inter].low)
+          { domain[num_inter].low = -HUGE_VAL; }
           if(domain[num_inter].low > domain[num_inter].up) { error(7); }
           i++;
           l_seen = 0;
@@ -603,49 +617,64 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   return(0);
 }
 
-/* Read in a long long long integer as an mpz_t. */
+/* Read the integer that s starts with -- an optional sign and at least one
+ * digit, ended by white space or by the end of s -- into x, and return a
+ * pointer to what follows it; return NULL if s does not start with one.
+ * White space is what isspace() counts as such in the C locale, in which
+ * the program runs: spaces, tabs, line feeds, carriage returns, vertical
+ * tabs and form feeds. */
 char *scan_mpz(char *s, mpz_t x)
 {
-  long neg = 0; /* flag for sign */
+  int neg = 0; /* flag for sign */
 
-  if(s == NULL || *s == 0) { return NULL; }
-  while(*s == ' ') { s++; }
-  if(*s == 0) { return NULL; }
   if(*s == '-') { neg = 1; s++; }
   else if(*s == '+') { s++; }
-  mpz_set_si(tmp2, 0);
+  if(!('0' <= *s && *s <= '9')) { return NULL; }
+  mpz_set_ui(tmp2, 0);
   while('0' <= *s && *s <= '9')
   { mpz_mul_ui(tmp2, tmp2, 10);
-    mpz_add_ui(tmp2, tmp2, (long)(*s - '0'));
+    mpz_add_ui(tmp2, tmp2, (unsigned long)(*s - '0'));
     s++;
   }
+  if(*s != 0 && !isspace((unsigned char)*s)) { return NULL; }
   if(neg) { mpz_neg(tmp2, tmp2); }
   mpz_set(x, tmp2);
   return s;
 }
 
-/* Read the integer that is the whole of s (blanks before it allowed) into
- * x.  Returns 0 if s is not an integer or if the integer does not fit a
- * long. */
+/* Whether nothing but white space follows the number that ends at end:
+ * a number on the command line may have white space before it (strtol and
+ * strtod skip that) and after it, so that the carriage return that a
+ * script with CRLF line ends leaves on the last argument of a line does
+ * no harm. */
+static int only_space_after(const char *end)
+{
+  while(isspace((unsigned char)*end)) { end++; }
+  return(*end == 0);
+}
+
+/* Read the integer that is the whole of s, but for white space before and
+ * after it, into x.  Returns 0 if s is not an integer or if the integer
+ * does not fit a long. */
 int scan_long(char *s, long *x)
 {
   char *end;
 
   errno = 0;
   *x = strtol(s, &end, 10);
-  return(end != s && *end == 0 && errno == 0);
+  return(end != s && errno == 0 && only_space_after(end));
 }
 
-/* Read the real number that is the whole of s (blanks before it allowed)
- * into x.  Returns 0 if s is not a number or if it is a NaN.  An infinity
- * is accepted, since -l -inf and -u inf are interval ends that bound
- * nothing, and a number beyond the range of a double is read as one. */
+/* Read the real number that is the whole of s, but for white space before
+ * and after it, into x.  Returns 0 if s is not a number or if it is a NaN.
+ * An infinity is accepted, since -l -inf and -u inf are interval ends that
+ * bound nothing, and a number beyond the range of a double is read as one. */
 int scan_double(char *s, double *x)
 {
   char *end;
 
   *x = strtod(s, &end);
-  return(end != s && *end == 0 && !isnan(*x));
+  return(end != s && !isnan(*x) && only_space_after(end));
 }
 
 
@@ -785,12 +814,15 @@ void error(long n)
     case 5: printf("\nThe polynomial must have degree at least 1.\n\n"); break;
     case 6: printf("\nWrong syntax for optional arguments:\n\n");
     case 2: printf("\n%s\n%s", RATPOINTS_VERSION, usage_str); break;
-    case 7: printf("\nIncorrect interval arguments (not alternating, ");
-            printf("too many, or not ordered).\n\n");
+    case 7: printf("\nIncorrect interval arguments (not numbers, ");
+            printf("not alternating, too many, or not ordered).\n\n");
             break;
     case 8: printf("\nPolynomial is not square-free.\n\n"); break;
     case 9: printf("\nBug no. 1 - please report!\n\n"); break;
     case 10: printf("\nNot enough memory.\n\n"); break;
+    case 11: printf("\nIncorrect coefficients (not integers separated by ");
+             printf("blanks).\n\n");
+             break;
   }
   fflush(stdout);
   exit(n);

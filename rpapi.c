@@ -240,6 +240,12 @@ int main(void)
   report("degree 0", find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); args.degree = -1;
   report("degree -1", find_points_work(&args, count, NULL));
+  /* beyond RATPOINTS_MAX_DEGREE, refused before anything is sized by it
+   * (and before the coefficients are read, which c[] does not hold) */
+  curve(&args, 2, pyth, 10); args.degree = RATPOINTS_MAX_DEGREE + 1;
+  report("degree RATPOINTS_MAX_DEGREE + 1", find_points_work(&args, count, NULL));
+  curve(&args, 2, pyth, 10); args.degree = LONG_MAX;
+  report("degree LONG_MAX", find_points_work(&args, count, NULL));
   curve(&args, 2, pyth, 10); mpz_set_si(c[1], 0); mpz_set_si(c[2], 0);
   report("degree 2 with c[1] = c[2] = 0 (degree 0 after stripping)",
          find_points_work(&args, count, NULL));
@@ -389,6 +395,39 @@ int main(void)
   curve(&args, 6, sextic, 30); args.num_inter = 1;
   domain[0].low = -0.5; domain[0].up = 0.5;
   report("the same on [-0.5, 0.5]", find_points(&args, show, NULL));
+
+  /* The largest degree, RATPOINTS_MAX_DEGREE (100, divisible by 4):
+   * y^2 = x^100 + 1 has the two points at infinity and (0 : +-1 : 1), and
+   * no other, since a^100 + b^100 = y^2 with ab != 0 would be a solution of
+   * u^4 + v^4 = w^2 in nonzero integers.  A larger degree is refused by
+   * find_points; and given to find_points_init, a larger or a negative one
+   * makes it allocate nothing and find_points_work refuse the search,
+   * whatever degree that is then given (find_points_clear is called as
+   * usual). */
+  { static long big[RATPOINTS_MAX_DEGREE+1];
+    static const long bad[] = {RATPOINTS_MAX_DEGREE + 1, LONG_MAX, -1, LONG_MIN};
+    static const char *const bad_name[] = {"RATPOINTS_MAX_DEGREE + 1", "LONG_MAX",
+                                           "-1", "LONG_MIN"};
+    char what[80];
+    long k;
+
+    big[0] = 1; big[RATPOINTS_MAX_DEGREE] = 1;
+    curve(&args, RATPOINTS_MAX_DEGREE, big, 10);
+    sprintf(what, "find_points: y^2 = x^%d + 1, height 10", RATPOINTS_MAX_DEGREE);
+    report(what, find_points(&args, show, NULL));
+    curve(&args, 2, pyth, 10); args.degree = RATPOINTS_MAX_DEGREE + 1;
+    report("find_points: degree RATPOINTS_MAX_DEGREE + 1", find_points(&args, count, NULL));
+    curve(&args, 2, pyth, 10); args.degree = LONG_MAX;
+    report("find_points: degree LONG_MAX", find_points(&args, count, NULL));
+    for(k = 0; k < 4; k++)
+    { curve(&args, 2, pyth, 10); args.degree = bad[k];
+      find_points_init(&args);
+      args.degree = 2;
+      sprintf(what, "init for degree %s, then degree 2", bad_name[k]);
+      report(what, find_points_work(&args, count, NULL));
+      find_points_clear(&args);
+    }
+  }
 
   /* Threads.  Each search is run on one thread and on three, and the
    * points of the two runs are compared one by one: the library must

@@ -250,11 +250,38 @@ static long num_powers(void)
   return(n);
 }
 
+/* What find_points_clear leaves: nothing held, every pointer null. */
+static void hold_nothing(ratpoints_args *args)
+{
+  args->work = NULL; args->work_length = 0;
+  args->se_buffer = NULL; args->se_next = NULL;
+  args->ba_buffer_na = NULL; args->ba_buffer_primes = 0;
+  args->ba_buffer_arrays = 0; args->pw_buffer = NULL;
+  args->ba_buffer = NULL; args->ba_next = NULL;
+  args->int_buffer = NULL; args->int_next = NULL;
+  args->sieve_list = NULL; args->stage3_list = NULL;
+  args->magics = NULL;
+  args->den_info = NULL; args->divisors = NULL;
+  args->forb_ba = NULL; args->forbidden = NULL;
+  args->forb_words = NULL; args->forb_words_len = 0;
+  args->pool = NULL;
+}
+
 void find_points_init(ratpoints_args *args)
 {
-  long work_len = 3 + (args->degree + 1);
+  long work_len;
+  mpz_t *work;
+
+  /* work[] holds three numbers and one for every coefficient, so the
+   * degree sizes it.  A degree the library does not take, negative or
+   * beyond RATPOINTS_MAX_DEGREE, sizes nothing: nothing is allocated, and
+   * the work_length -1 makes find_points_work return RATPOINTS_BAD_ARGS,
+   * whatever degree it is then given. */
+  if(args->degree < 0 || args->degree > RATPOINTS_MAX_DEGREE)
+  { hold_nothing(args); args->work_length = -1; return; }
+  work_len = 3 + (args->degree + 1);
   /* allocate space for work[] */
-  mpz_t *work = malloc(work_len*sizeof(mpz_t));
+  work = malloc(work_len*sizeof(mpz_t));
 
 #ifdef DEBUG
   printf("\nfind_points: initialize..."); fflush(NULL);
@@ -377,17 +404,7 @@ void find_points_clear(ratpoints_args *args)
   free(args->forb_words);
 
   /* clear pointer in args */
-  args->work = NULL; args->work_length = 0;
-  args->se_buffer = NULL; args->se_next = NULL;
-  args->ba_buffer_na = NULL; args->ba_buffer_primes = 0;
-  args->ba_buffer_arrays = 0; args->pw_buffer = NULL;
-  args->ba_buffer = NULL; args->ba_next = NULL;
-  args->int_buffer = NULL; args->int_next = NULL;
-  args->sieve_list = NULL; args->stage3_list = NULL;
-  args->magics = NULL;
-  args->den_info = NULL; args->divisors = NULL;
-  args->forb_ba = NULL; args->forbidden = NULL;
-  args->forb_words = NULL; args->forb_words_len = 0;
+  hold_nothing(args);
 
 #ifdef DEBUG
   printf("done.\n"); fflush(NULL);
@@ -4434,14 +4451,17 @@ long find_points_work(ratpoints_args *args,
   long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
   long result;
 
-  /* the degree sizes an array of find_points_work_1 before that function
-   * can check anything, so a negative one is refused here */
-  if(args->degree < 0) { return(RATPOINTS_BAD_ARGS); }
   /* sp3 is a working field the caller never sets, and the three _used
    * fields are outputs: they stay 0 when the search ends before it has
    * chosen its primes (no real points, nothing admissible mod 64, ...). */
   args->sp3 = 0;
   args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
+  /* the degree sizes arrays on the stack, of find_points_work_1 before that
+   * function can check anything and of the Sturm step, so one the library
+   * does not take, negative or beyond RATPOINTS_MAX_DEGREE, is refused here
+   * (the degree 0 is refused once leading zero coefficients are dropped) */
+  if(args->degree < 0 || args->degree > RATPOINTS_MAX_DEGREE)
+  { return(RATPOINTS_BAD_ARGS); }
   result = find_points_work_1(args, process, info);
   args->b_low = b_low; args->b_high = b_high;
   args->sp1 = sp1; args->sp2 = sp2;
@@ -4502,7 +4522,10 @@ static long find_points_work_1(ratpoints_args *args,
 #endif
 
   if(c == NULL) return(RATPOINTS_BAD_ARGS);
-  if(work == NULL) return(RATPOINTS_NO_MEMORY); /* see find_points_init */
+  /* no work[]: find_points_init refused its degree (work_length -1) or
+   * could not get its memory */
+  if(work == NULL)
+  { return((args->work_length < 0) ? RATPOINTS_BAD_ARGS : RATPOINTS_NO_MEMORY); }
   if(args->work_length < 3 + degree+1) return(RATPOINTS_WORK_LENGTH_TOO_SMALL);
   /* Eliminate leading zero coefficients */
   { long old_degree = degree;

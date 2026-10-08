@@ -30,13 +30,17 @@
 # for the register widths and the other compile-time switches.
 #
 # The first part prints points and messages that are the same in 2.2.4 and
-# 3.0.0; the second part looks at the reports of -v, whose texts differ
-# between the versions; the third uses options that 2.2.4 does not have,
-# and ends with what earlier versions got wrong: search intervals whose
-# ends they did not take exactly, isolations of the positivity region
-# deeper than 55 steps, the leading coefficient -2^63, the options of the
-# sieve at their extremes, arguments that are not numbers as a whole, out
-# of range or NaN, and -fs under -z.
+# 3.0.0, except that the message on the interval arguments is worded
+# otherwise and that a coefficient list that is not one of integers has a
+# message of its own; the second part looks at the reports of -v, whose
+# texts differ between the versions; the third uses options that 2.2.4
+# does not have, and ends with what earlier versions got wrong: search
+# intervals whose ends they did not take exactly, isolations of the
+# positivity region deeper than 55 steps, the leading coefficient -2^63,
+# the options of the sieve at their extremes, arguments that are not
+# numbers as a whole, out of range or NaN, -fs under -z, coefficient lists
+# that are not integers separated by white space, and the intervals that a
+# missing first -l or last -u leave open.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -873,3 +877,57 @@ t '1 0 1' 10 -q -l -inf -u -1 -l 1 -u inf
 t '1 0 126 0 441' 200 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
 t '-1 0 -1' 50 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
 t '1 0 126 0 441' 200 -q -z -1 -fs '[' -fe ']\n'
+
+echo '---- the coefficients and the numbers, read whole ----'
+tab=$(printf '\t')
+cr=$(printf '\r')
+# The coefficients are integers, each an optional sign and at least one
+# digit, separated by white space, and a list that is anything else is
+# refused with a message of its own rather than read as some other
+# polynomial: a sign that no digit follows is not a zero ('1 2 3 - 4' is
+# not 4x^4 + 3x^2 + 2x + 1, '- 5' not 5x, '1 2 3 -' not a cubic with a
+# zero leading coefficient, '1 0 --1' not -x^3 + 1), a sign does not
+# separate two numbers ('1-1' is not -x + 1, '1+1 0 1' not x^3 + x + 1),
+# and a character that cannot be part of an integer does not end the list
+# ('1 0 1x', '1 0 1.5', '1,0,1').  A list of more than
+# RATPOINTS_MAX_DEGREE + 1 numbers with something else among them is
+# refused for that, not for its length.  Tabs separate the coefficients as
+# blanks do, and white space may stand before and after the list.
+e '1 2 3 - 4' 10
+e '1-1' 10
+e '1+1 0 1' 10
+e '1 0 --1' 10
+e '- 5' 10
+e '1 2 3 -' 10
+e '1 0 1x' 10
+e '1 0 1.5' 10
+e '1,0,1' 10
+s=1; i=0; while [ $i -lt 101 ]; do s="$s 0"; i=$((i+1)); done
+e "$s x" 10
+t "${tab}1${tab}0 $tab 1 " 10 -q
+# A number given as the height bound or as the argument of an option may
+# have white space before and after it, but nothing else: a script with
+# CRLF line ends leaves a carriage return on the last argument of a line
+t '1 0 1' "10$cr" -q -t "1$cr"
+t '1 0 1' " 10 " -q -l " -1$tab" -u "$tab 1 " -dl " 1" -du "4 " -r " 0.5 "
+e '1 0 1' '10 0'
+e '1 2 3' 10 -n '5 5'
+e '1 2 3' 10 -l 0 -u '1 1'
+# A missing first -l stands for -infinity and a missing last -u for
+# +infinity.  The program puts in minus the height bound and the height
+# bound, which give the same numerators, but where that would turn the
+# interval around -- a first -u below minus the height bound, a last -l
+# above it -- the interval holds no x of the search and is [-infinity, u]
+# or [l, +infinity] (the search region -v shows), and only the points at
+# infinity are found: (1 : +-1 : 0) on y^2 = x^2 + 1, (1 : 0 : 0) on
+# y^2 = 3x + 48, there also without the Sturm step, which leaves the
+# infinite end to the sieve.  -u -inf is [-infinity, -infinity], which
+# holds no x at all, and an interval may follow it, here [-5, 5] with all
+# twelve points of height at most 10; a last -l of 10.5 at the height
+# bound 10 leaves (-4 : +-5 : 3) in [-5, -1] and the points at infinity.
+v '1 0 1' 10 -v -u -20
+v '1 0 1' 10 -v -l 20
+t '48 3' 50 -q -u -51 -s
+t '48 3' 50 -q -l 51 -s
+t '1 0 1' 10 -q -u -inf -l -5 -u 5
+t '1 0 1' 10 -q -l -5 -u -1 -l 10.5

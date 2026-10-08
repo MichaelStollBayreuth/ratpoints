@@ -378,7 +378,10 @@ the script prints its arguments, so that a failing test can be found from
 the difference between \texttt{test4.out} and \texttt{testbase4}.  The
 reference was checked independently of the sieve: \texttt{verify-test4.py}
 reads it and, for every invocation that prints points, searches every
-coprime pair~$(a, b)$ in the range by brute force, in arbitrary precision;
+coprime pair~$(a, b)$ in the range by brute force, in arbitrary precision,
+and for every invocation that tests the arguments, it works out from the
+rules for them (Section~\ref{sec:usage}) whether the program has to refuse
+them, and with which exit status and message;
 it can be run again whenever the reference changes (it needs Python~3, and
 PARI/GP for the 19~searches, on two curves, that are too large for it).
 
@@ -586,7 +589,7 @@ The archive contains the following files.
 
 %=========================================================================
 
-\section{How to use \texttt{ratpoints}}
+\section{How to use \texttt{ratpoints}}\label{sec:usage}
 
 \subsection{Basic operation}
 
@@ -600,8 +603,14 @@ The command to search for the points is then
 \verb+> ratpoints '+$a_0$ $a_1$ \dots $a_{n-1}$ $a_n$\verb+' +$H$
 
 The first argument to \texttt{ratpoints} is the list of the coefficients,
-which have to be integers, are separated by spaces, and are listed
-starting with the constant term. There is no bound on the size of the
+which have to be integers, are separated by blanks, and are listed
+starting with the constant term. Each coefficient is an optional sign
+followed by at least one digit and nothing else; the blanks between them,
+and any before the first and after the last, may be any white space:
+spaces, tabs, line feeds, carriage returns, vertical tabs and form feeds.
+The program refuses any other list with an error message, so that, say,
+\verb+'1 0 1.5'+ or \verb+'1 2 - 3'+ is not read as some other
+polynomial. There is no bound on the size of the
 coefficients; they are read as multi-precision integers.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
@@ -619,11 +628,14 @@ the options and option-argument pairs is largely arbitrary.
 The exceptions are options with opposite effect, where the last one given counts,
 and the specification of the search intervals, which must be given in increasing order.
 Where an option takes a number, its argument must be that number and nothing
-else: an integer between~$-2^{63}$ and~$2^{63}-1$ (the range of a
+else, but for white space before and after it (so that a script with DOS
+line ends, which leave a carriage return on the last argument of a line,
+still works): an integer between~$-2^{63}$ and~$2^{63}-1$ (the range of a
 \texttt{long}) where the option takes an integer, and where it takes a real
 number, one that may be infinite (\verb+inf+, \verb+-inf+) but is not NaN. The
 program refuses any other argument with an error message, as it does a height
-bound that is not an integer from~$1$ to~$2^{63}-1$.
+bound that is not an integer from~$1$ to~$2^{63}-1$ (with the same white
+space allowed).
 
 \subsection{Early abort}
 
@@ -980,8 +992,10 @@ To prevent the reversal, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
 in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
-degree or the height bound to be nonpositive; in this case the function
-returns the value \texttt{RATPOINTS\_BAD\_ARGS}.
+degree to be nonpositive or larger than \texttt{RATPOINTS\_MAX\_DEGREE}
+(defined in \texttt{ratpoints.h}, $100$ by default), or for the height
+bound to be nonpositive; in this case the function returns the value
+\texttt{RATPOINTS\_BAD\_ARGS}.
 
 The field \texttt{domain} must contain a pointer to an array of
 \texttt{ratpoints\_interval} structures of length at least \texttt{num\_inter}
@@ -1284,6 +1298,15 @@ else changes from curve to curve) need to be set; the other input fields
 keep their values across calls. \texttt{rptest.c} with
 the \verb+-O+~option does exactly this, and \texttt{make test1once} checks
 that the points found are the same as with the fields set once per curve.
+
+\texttt{find\_points\_init} sizes part of the memory by the degree, so the
+searches can be of that degree or a smaller one (a larger one makes
+\texttt{find\_points\_work} return
+\texttt{RATPOINTS\_WORK\_LENGTH\_TOO\_SMALL}). Given a degree that is
+negative or larger than \texttt{RATPOINTS\_MAX\_DEGREE}, it allocates
+nothing, and \texttt{find\_points\_work} then returns
+\texttt{RATPOINTS\_BAD\_ARGS}, whatever the degree it is given
+(\texttt{find\_points\_clear} can be called as usual).
 
 Searches on different \texttt{ratpoints\_args} structures are independent
 of each other: the library keeps no state outside the structure (its
@@ -1715,7 +1738,9 @@ offset from the run length it is scaled by.
 
 Should you prefer to do it by hand, the constants can be given for a single
 run with \verb+-r+, \verb+-R+, \verb+-U+, \verb+-C+ and \verb+-Q+, which
-\texttt{ratpoints} and \texttt{rptest} both accept, and hard-coded by
+\texttt{ratpoints} and \texttt{rptest} both accept (\texttt{rptest} reads
+the numbers of its options by the same rules, and ends at once, printing
+nothing, on one it cannot read), and hard-coded by
 changing the definitions in \texttt{ratpoints.h} (followed by \texttt{make
 distclean all test}). \texttt{rptest -z -T} prints the CPU time of a run and
 nothing else, which is what \texttt{tune.sh} uses; \verb+-h+~$H$ changes its
