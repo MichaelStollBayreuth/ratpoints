@@ -38,7 +38,13 @@
  *            the polynomial                                              *
  * + degree - the degree of the polynomial                                *
  * + iter   - the number of iteration steps in the refinement of the      *
- *            intervals                                                   *
+ *            intervals.  The caller keeps it at most 55, which is        *
+ *            DBL_MANT_DIG + 2 (find_points_work_1 clamps args->sturm     *
+ *            there), and this function relies on that: up to that depth  *
+ *            every finite end of an interval it makes is a double        *
+ *            exactly (see iterate() below); deeper, an end could be      *
+ *            rounded past a root of the polynomial, and the points       *
+ *            between the two would be lost.                              *
  * + ivlist - points to an array of intervals giving the current search   *
  *            domain                                                      *
  * + num_iv - the number of intervals in ivlist, must be > 0              *

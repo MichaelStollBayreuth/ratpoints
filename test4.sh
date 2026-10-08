@@ -9,9 +9,9 @@
 # admissible numerator modulo 64, curves with and without forbidden
 # divisors of the denominator, every command-line option, restricted
 # denominator ranges and search intervals, height bounds from 1 to 2^63 - 1,
-# and every error the program reports.  It runs in a few seconds; the
-# heights are small, and the large ones come with a narrow search interval
-# and a denominator range of one.
+# and every error the program reports about its input.  It runs in a few
+# seconds; the heights are small, and the large ones come with a narrow
+# search interval and a denominator range of one.
 #
 # The reference was checked independently: verify-test4.py reads testbase4,
 # and for every invocation whose output is a list of points it searches all
@@ -34,14 +34,15 @@
 # otherwise and that a coefficient list that is not one of integers has a
 # message of its own; the second part looks at the reports of -v, whose
 # texts differ between the versions; the third uses options that 2.2.4
-# does not have, and ends with what earlier versions got wrong: search
-# intervals whose ends they did not take exactly, isolations of the
-# positivity region deeper than 55 steps, the leading coefficient -2^63,
-# the options of the sieve at their extremes, arguments that are not
-# numbers as a whole, out of range or NaN, -fs under -z, coefficient lists
-# that are not integers separated by white space, the intervals that a
-# missing first -l or last -u leave open, and -1 in a search of a single
-# block.
+# does not have, and ends with a block each on search intervals whose ends
+# are taken exactly, the isolation of the positivity region deeper than 55
+# steps, a Sturm sequence whose values take two limbs, the leading
+# coefficient -2^63, the options of the sieve at their extremes, arguments
+# that are not numbers as a whole, out of range or NaN, -fs and -fe under
+# -z, the coefficients and the numbers read whole (coefficient lists that
+# are not integers separated by white space, white space around a number,
+# and the intervals that a missing first -l or last -u leave open), and -1
+# in a search of a single block.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -801,6 +802,8 @@ t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
 # [2^-1074, 1] (4.9e-324 is read as 2^-1074), which hold x = -3/4 and 3/4
 t '1 0 1' 10 -q -l -1e-300 -u 1e-300
 t '1 0 1' 10 -q -l -1 -u -4.9e-324 -l 4.9e-324 -u 1
+
+echo '---- the isolation of the positivity region deeper than 55 steps ----'
 # the isolation of the positivity region at a depth beyond 55, which is
 # taken as 55 (and -v reports 55): up to that depth the ends of its
 # intervals, n/2^e, are exact as doubles.  1 - 103x is positive up to its
@@ -811,11 +814,15 @@ t '1 0 1' 10 -q -l -1 -u -4.9e-324 -l 4.9e-324 -u 1
 t '1 -103' 200 -q -S 62
 t '15 -13' 30 -q -S 56
 f "grep 'iterations for'" '1 -103' 200 -v -S 62
+
+echo '---- a Sturm sequence whose values take two limbs ----'
 # the Sturm sequence of f = -(10^30 + 57)(3x - 2)(13x - 15)(7x + 5), whose
 # coefficients and values take two limbs: its signs are compared with each
 # other, so they must come out as -1, 0 and 1, and the points (2 : 0 : 3),
 # (-5 : 0 : 7) and (15 : 0 : 13) lie on the ends of the positivity region
 t '-150000000000000000000000000008550 145000000000000000000000000008265 302000000000000000000000000017214 -273000000000000000000000000015561' 30 -q
+
+echo '---- the leading coefficient -2^63 ----'
 # the leading coefficient -2^63, the most negative long, in the Jacobi
 # symbol test on denominators beyond 2^32, where jacobi1 computes it:
 # y^2 = 1 - 1100690047 x - 2^63 x^2 has the point x = 1/4294968331, and the
@@ -826,6 +833,8 @@ t '-150000000000000000000000000008550 145000000000000000000000000008265 30200000
 # reduction first
 t '1 -1100690047 -9223372036854775808' 4294968331 -q -dl 4294968331 -du 4294968331 -l -1e-9 -u 1e-9
 t '1 0 -9223372036854775808' 1152921504606846980 -q -dl 1152921504606846977 -du 1152921504606846980 -l 0 -u 1e-17
+
+echo '---- the options of the sieve at their extremes ----'
 # the options of the rules that choose the sieving primes at the extremes
 # of what the command line accepts, which change how the moduli are chosen
 # and never the points: the largest long as the offset of the second
@@ -833,10 +842,13 @@ t '1 0 -9223372036854775808' 1152921504606846980 -q -dl 1152921504606846977 -du 
 # 2^63 (-U 1e-300); as the number of moduli of the first stage when the
 # second is chosen, which the rule that looks at further primes adds the
 # offset to; and as the number of third-stage primes.  Then the largest and
-# the smallest positive double for each of the real-valued options, and two
-# of the windows at the height bound 2^63 - 1 above, the first ending at the
-# top of the range (seven points and the one at infinity), with the largest
-# values again
+# the smallest positive double for each of the real-valued options.  Then,
+# with the largest values again, two of the searches at the height bound
+# 2^63 - 1 in the block on large height bounds: its window at the top of
+# the range, narrowed to the numerators from 2^63 - 1024 on (fourteen
+# points, (9223372036854769900 + y^2 : +-y : 1) for y = 70, ..., 76, and
+# the one at infinity), and its last eight denominators as they are (no
+# point)
 t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 0
 t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 1e-300
 t '1 0 126 0 441' 200 -q -n 9223372036854775807 -U 0
@@ -845,14 +857,16 @@ t '1 0 126 0 441' 200 -q -r 1.7976931348623157e308 -U 1.7976931348623157e308 -C 
 t '1 0 126 0 441' 200 -q -r 4.9e-324 -U 4.9e-324 -C 4.9e-324 -Q 4.9e-324 -W 4.9e-324
 t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854774784 -u 1e30 -R 9223372036854775807 -U 1e-300 -P 9223372036854775807
 t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18 -n 9223372036854775807 -R 9223372036854775807 -U 0 -P 9223372036854775807
+
+echo '---- arguments that are not numbers, out of range or NaN ----'
 # a number given as the height bound or as the argument of an option has
 # to be the whole argument and to fit its type: an integer between -2^63
 # and 2^63 - 1 (the runs above search up to a height bound of 2^63 - 1),
 # a real number that is not NaN.  So the height bounds 2^63, 10^23 and 1e5
 # are refused, the denominator bounds 2^63 and -2^63 - 1, 3x and 10x where
-# an integer is expected, NaN and 1x as ends of a search interval and NaN
-# as the value of a constant of the sieve; the infinite ends that a missing
-# -l or -u stands for may be given
+# an integer is expected, NaN and 1x as ends of a search interval, and NaN
+# as the value of each real-valued constant of the sieve and 306x as that
+# of -W; the infinite ends that a missing -l or -u stands for may be given
 e '1 0 1' 9223372036854775808 -dl 1 -du 1 -l 0 -u 0
 e '1 0 1' 99999999999999999999999 -dl 1 -du 1 -l 0 -u 0
 e '1 0 1' 1e5
@@ -873,6 +887,8 @@ e '1 2 3' 10 -W nan
 e '1 2 3' 10 -W 306x
 t '1 0 1' 10 -q -l -inf -u inf
 t '1 0 1' 10 -q -l -inf -u -1 -l 1 -u inf
+
+echo '---- -fs and -fe under -z ----'
 # with -z, the strings of -fs and -fe are printed one after the other in
 # place of the points, whether there are points or not, and -fm is not
 t '1 0 126 0 441' 200 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'

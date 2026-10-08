@@ -121,8 +121,10 @@ extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
 #define MAX_DIVISORS 512
  /* Maximal length of array for squarefree divisors of leading coefficient */
 
-#define RP_ARRAY_SIZE_MAX (1L << 20)
- /* The largest array_size the search takes.  Every sieving thread holds a
+#define RP_ARRAY_SIZE_MAX (((1L << 20)/RATPOINTS_CHUNK)*RATPOINTS_CHUNK)
+ /* The largest array_size the search takes: 2^20, or the largest multiple
+  * of RATPOINTS_CHUNK below it when the chunk is not a power of 2, since
+  * array_size is a multiple of the chunk.  Every sieving thread holds a
   * survivors array of that many bit arrays (32 MB at 256 bits), far beyond
   * any cache; a larger one would only ask for more memory, and near the
   * largest height bound for more than there is. */
@@ -494,7 +496,11 @@ static inline long mod(long a, long b)
  **************************************************************************/
 
 static inline int jacobi(long b, mpz_t tmp, const mpz_t lcf)
-{ /* Jacobi symbol (leading coeff/b) */
+{ /* (lcf/b*) for b > 0: the Jacobi symbol of the leading coefficient over
+   * b* = b with the prime factors of 2*lcf taken out, so +-1 -- what the
+   * test on the denominators asks for, not the Kronecker symbol (lcf/b),
+   * which is 0 when b and lcf have a prime in common.  tmp is scratch
+   * space. */
   long f;
 
   /* avoid divisions as far as possible! */
@@ -560,7 +566,8 @@ static inline int jacobi(long b, mpz_t tmp, const mpz_t lcf)
 }
 
 static inline int jacobi1(long b, const long lcf)
-{ /* Jacobi symbol (leading coeff/b) */
+{ /* (lcf/b*) for b > 0, as jacobi() above, for a leading coefficient that
+   * fits a long, LONG_MIN included */
   long f;
   int neg = 0;
 
@@ -4664,7 +4671,9 @@ static long find_points_work_1(ratpoints_args *args,
   { args->array_size = RP_ARRAY_SIZE_MAX; }
   /* make sure that array size is a multiple of RATPOINTS_CHUNK, so that of
    * the blocks a numerator interval is cut into only the last one can end
-   * in a partial chunk (see _ratpoints_sift0) */
+   * in a partial chunk (see _ratpoints_sift0).  The cap above is such a
+   * multiple, so rounding up does not take array_size past it; and capping
+   * first keeps the product within a long when array_size was huge. */
   args->array_size = CEIL(args->array_size, RATPOINTS_CHUNK)*RATPOINTS_CHUNK;
   /* The ends of the intervals the Sturm step keeps are made by halving to
    * this depth, and beyond DBL_MANT_DIG + 2 = 55 they would not all be

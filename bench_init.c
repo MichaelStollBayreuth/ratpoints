@@ -36,15 +36,21 @@
  * pmin and pmax restrict both the check and the benchmark, which is   *
  * useful because the primes                                           *
  * above LONG_LENGTH (CODE_INIT_SIEVE2) dominate the total cost.       *
+ * The rows of the composite moduli (_ratpoints_sieve_init_power and   *
+ * _ratpoints_sieve_init_product in init.c) are not covered here: a    *
+ * library built with -DRP_VERIFY_MODULI checks each of them, as it is *
+ * built, against a direct evaluation of F(a, b).                      *
  *                                                                     *
  * "hot" says where the tables are written.  With hot = 0, the default,*
- * each table goes after the last, as in the library, so a sweep of every*
- * prime writes 5.3 MB and the largest primes measure how fast this    *
- * machine writes to memory rather than how fast a table is built.  With*
+ * each table goes after the last, as in the library, so a sweep of    *
+ * every prime writes 35 MB (with the default PRIME_SIZE 8 and 256-bit *
+ * registers) and the largest primes measure how fast this machine     *
+ * writes to memory rather than how fast a table is built.  With       *
  * hot = 1 each table is written over the previous one and the         *
  * destination stays in L1.  Neither is quite the truth: a real run    *
- * rebuilds the tables for one curve, some tens of kilobytes, and then *
- * reuses them, so it lies between the two and much nearer the hot end.*
+ * builds the tables for one curve and then reuses them -- on the      *
+ * curves of testdata.h some hundreds of kilobytes at the height bound *
+ * 16383 and a few megabytes at 200000 -- so it lies between the two.  *
  * Quote both when judging a change.                                   *
  *                                                                     *
  * Michael Stoll, Sep 6, 2026                                          *
@@ -112,8 +118,12 @@ int main(int argc, char *argv[])
       isfs[i] = (int)((seed >> 40) & 1); }
     inv[0] = 0;
     for(i = 1; i < p; i++) inv[i] = inv_mod_p(p, i);
+    /* sieve_init reads is_f_square and inverses and writes the row's
+     * pointer into sieve[b].  The shifts the sieve reads a row with (the
+     * offset of a sieve_spec, from the numerator class) are not part of
+     * the table. */
     se[pn].init = sieve_init[pn]; se[pn].p = p;
-    se[pn].is_f_square = isfs; se[pn].inverses = inv; se[pn].offset = 0;
+    se[pn].is_f_square = isfs; se[pn].inverses = inv;
   }
 
   /* ---- correctness: every prime, every denominator class ---- */

@@ -185,8 +185,9 @@ static void curve(ratpoints_args *args, long degree, const long *cof,
 
 /* y^2 = x - 9223372036854769900 at the height bound 2^63 - 1, over the
  * window at the top of the range that test4.sh searches as well: the
- * denominator 1 and the numerators from 2^63 - 1024 on, where seven points
- * lie besides the one at infinity */
+ * denominator 1 and the numerators from 2^63 - 1024 on, where fourteen
+ * points lie, (9223372036854769900 + y^2 : +-y : 1) for y = 70, ..., 76,
+ * besides the one at infinity */
 static void top_window(ratpoints_args *args)
 { static const long top[] = {-9223372036854769900L, 1};
 
