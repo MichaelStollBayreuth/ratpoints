@@ -35,6 +35,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <float.h>
+#include <limits.h>
 #include "ratpoints.h"
 
 static mpz_t c[RATPOINTS_MAX_DEGREE+1];
@@ -97,6 +99,63 @@ static void same_points(void)
   nkept[0] = 0; nkept[1] = 0; keep_to = 0;
 }
 
+/* whether the run kept second found what the one kept first did, point by
+ * point and in order; the second is emptied for the next run, the first
+ * stays */
+static int same_as_first(void)
+{ long n, same = (nkept[0] == nkept[1]);
+
+  for(n = 0; same && n < nkept[0]; n++)
+  { same = (kept[0][n].a == kept[1][n].a && kept[0][n].b == kept[1][n].b
+              && mpz_cmp(kept[0][n].y, kept[1][n].y) == 0);
+  }
+  for(n = 0; n < nkept[1]; n++) { mpz_clear(kept[1][n].y); }
+  nkept[1] = 0; seen = 0;
+  return(same);
+}
+
+/* the tuning fields, by number: those of type double and those of type
+ * long (sturm and num_threads have tests of their own) */
+static const char *const dfields[] = {"survivors_per_word", "sp2_u0",
+                                      "cost_table", "sp3_per_denom",
+                                      "check_cost"};
+#define NDFIELDS 5
+static void set_dfield(ratpoints_args *args, long f, double v)
+{ switch(f)
+  { case 0: args->survivors_per_word = v; break;
+    case 1: args->sp2_u0 = v; break;
+    case 2: args->cost_table = v; break;
+    case 3: args->sp3_per_denom = v; break;
+    case 4: args->check_cost = v; break;
+  }
+}
+static const char *const lfields[] = {"sp1", "sp2", "sp2_extra", "sp3_extra",
+                                      "adapt", "array_size", "num_primes",
+                                      "max_forbidden"};
+#define NLFIELDS 8
+static void set_lfield(ratpoints_args *args, long f, long v)
+{ switch(f)
+  { case 0: args->sp1 = v; break;
+    case 1: args->sp2 = v; break;
+    case 2: args->sp2_extra = v; break;
+    case 3: args->sp3_extra = v; break;
+    case 4: args->adapt = v; break;
+    case 5: args->array_size = v; break;
+    case 6: args->num_primes = v; break;
+    case 7: args->max_forbidden = v; break;
+  }
+}
+
+/* nearly every one at once: those of type double at v, those of type long
+ * at LONG_MAX but for sp2 and num_primes, which stay with the library */
+static void all_extreme(ratpoints_args *args, double v)
+{ long f;
+
+  for(f = 0; f < NDFIELDS; f++) { set_dfield(args, f, v); }
+  for(f = 0; f < NLFIELDS; f++) { set_lfield(args, f, LONG_MAX); }
+  args->sp2 = -1; args->num_primes = -1;
+}
+
 /* set the coefficients from a list of longs and the input fields to what
  * main.c starts from */
 static void curve(ratpoints_args *args, long degree, const long *cof,
@@ -115,6 +174,18 @@ static void curve(ratpoints_args *args, long degree, const long *cof,
   args->num_primes = -1; args->max_forbidden = -1;
   args->num_threads = 1;
   args->flags = 0;
+}
+
+/* y^2 = x - 9223372036854769900 at the height bound 2^63 - 1, over the
+ * window at the top of the range that test4.sh searches as well: the
+ * denominator 1 and the numerators from 2^63 - 1024 on, where seven points
+ * lie besides the one at infinity */
+static void top_window(ratpoints_args *args)
+{ static const long top[] = {-9223372036854769900L, 1};
+
+  curve(args, 1, top, LONG_MAX);
+  args->b_high = 1; args->num_inter = 1;
+  domain[0].low = 9223372036854774784.0; domain[0].up = 1e30;
 }
 
 static void report(const char *what, long ret)
@@ -332,6 +403,97 @@ int main(void)
   curve(&args, 6, sextic, 3000); args.num_threads = 4;
   report("find_points on four threads (the pool made and freed inside)",
          find_points(&args, count, NULL));
+
+  /* The tuning fields at the extremes of their range: each of type double
+   * at NaN of either sign, at the infinities, at the largest double and at
+   * the least positive one, each of type long at LONG_MAX and LONG_MIN, and
+   * then several at once.  They decide how the search goes about it, never
+   * what it finds, so every search has to deliver the points of the search
+   * with the defaults, in the same order.  The leading coefficient of the
+   * curve is not a square, so that the tests on the denominators are in
+   * play.  Then the window at the top of the largest height bound that
+   * test4.sh searches, where the height alone would let array_size be 2^58
+   * bit arrays. */
+  { static const long quad[] = {5, 3, 7};       /* y^2 = 7x^2 + 3x + 5 */
+    static const double dval[] = {NAN, -NAN, INFINITY, -INFINITY, DBL_MAX,
+                                  4.9406564584124654e-324};
+    static const long lval[] = {LONG_MAX, LONG_MIN};
+    long f, i;
+
+    curve(&args, 2, quad, 1000);
+    keep_to = 0; report("y^2 = 7x^2 + 3x + 5, height 1000, the defaults",
+                        find_points(&args, keep, NULL));
+    keep_to = 1;
+    printf("  the fields of type double at NaN, -NaN, inf, -inf, the largest"
+           " and the least\n  positive double, those of type long at"
+           " LONG_MAX and LONG_MIN:\n");
+    for(f = 0; f < NDFIELDS; f++)
+    { long bad = -1;
+
+      for(i = 0; i < 6; i++)
+      { curve(&args, 2, quad, 1000); set_dfield(&args, f, dval[i]);
+        find_points(&args, keep, NULL);
+        if(!same_as_first() && bad < 0) { bad = i; }
+      }
+      if(bad < 0) { printf("    %-40s the same points\n", dfields[f]); }
+      else { printf("    %-40s DIFFERENT at %g\n", dfields[f], dval[bad]); }
+    }
+    for(f = 0; f < NLFIELDS; f++)
+    { long bad = -1;
+
+      for(i = 0; i < 2; i++)
+      { curve(&args, 2, quad, 1000); set_lfield(&args, f, lval[i]);
+        find_points(&args, keep, NULL);
+        if(!same_as_first() && bad < 0) { bad = i; }
+      }
+      if(bad < 0) { printf("    %-40s the same points\n", lfields[f]); }
+      else { printf("    %-40s DIFFERENT at %ld\n", lfields[f], lval[bad]); }
+    }
+    /* the offset of the second stage at its largest, flat and scaled by a
+     * run length so short that it stays near 2^63, and the number of
+     * first-stage moduli at its largest, which the rule that looks at
+     * further primes adds that offset to */
+    curve(&args, 2, quad, 1000); args.sp2_extra = LONG_MAX; args.sp2_u0 = 0.0;
+    find_points(&args, keep, NULL);
+    printf("    %-40s %s\n", "sp2_extra LONG_MAX, sp2_u0 0",
+           same_as_first() ? "the same points" : "DIFFERENT");
+    curve(&args, 2, quad, 1000); args.sp2_extra = LONG_MAX; args.sp2_u0 = 1e-300;
+    find_points(&args, keep, NULL);
+    printf("    %-40s %s\n", "sp2_extra LONG_MAX, sp2_u0 1e-300",
+           same_as_first() ? "the same points" : "DIFFERENT");
+    curve(&args, 2, quad, 1000); args.sp1 = LONG_MAX; args.sp2_u0 = 0.0;
+    find_points(&args, keep, NULL);
+    printf("    %-40s %s\n", "sp1 LONG_MAX, sp2_u0 0",
+           same_as_first() ? "the same points" : "DIFFERENT");
+    /* nearly every field at once: the doubles at NaN, then at inf, and the
+     * longs at LONG_MAX but for sp2 and num_primes, which are left to the
+     * library, so that the second stage is chosen and the rule that looks
+     * at further primes is in play */
+    for(i = 0; i < 4; i += 2)
+    { curve(&args, 2, quad, 1000); all_extreme(&args, dval[i]);
+      find_points(&args, keep, NULL);
+      printf("    %-40s %s\n", (i == 0) ? "all but sp2, num_primes; doubles NaN"
+                                        : "all but sp2, num_primes; doubles inf",
+             same_as_first() ? "the same points" : "DIFFERENT");
+    }
+    for(n = 0; n < nkept[0]; n++) { mpz_clear(kept[0][n].y); }
+
+    top_window(&args);
+    keep_to = 0; nkept[0] = 0;
+    report("y^2 = x - 9223372036854769900, height 2^63 - 1",
+           find_points(&args, keep, NULL));
+    keep_to = 1;
+    top_window(&args); args.array_size = LONG_MAX;
+    find_points(&args, keep, NULL);
+    printf("    %-40s %s\n", "array_size LONG_MAX",
+           same_as_first() ? "the same points" : "DIFFERENT");
+    top_window(&args); all_extreme(&args, INFINITY);
+    find_points(&args, keep, NULL);
+    printf("    %-40s %s\n", "all but sp2, num_primes; doubles inf",
+           same_as_first() ? "the same points" : "DIFFERENT");
+    for(n = 0; n < nkept[0]; n++) { mpz_clear(kept[0][n].y); }
+    nkept[0] = 0; keep_to = 0;
+  }
 
   for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
   return(0);

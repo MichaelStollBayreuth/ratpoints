@@ -121,6 +121,12 @@ extern unsigned long long _rp_sift_cycles, _rp_sift_calls;
 #define MAX_DIVISORS 512
  /* Maximal length of array for squarefree divisors of leading coefficient */
 
+#define RP_ARRAY_SIZE_MAX (1L << 20)
+ /* The largest array_size the search takes.  Every sieving thread holds a
+  * survivors array of that many bit arrays (32 MB at 256 bits), far beyond
+  * any cache; a larger one would only ask for more memory, and near the
+  * largest height bound for more than there is. */
+
 
 extern ratpoints_init_fun sieve_init[RATPOINTS_NUM_PRIMES];
 
@@ -1566,13 +1572,17 @@ static long primes_for_phase_1(entry *prec, long pnp,
  * paid for once -- its sieve table, and its entry in bp_list -- and then used
  * for the whole run, so how many are worth having depends on how long the
  * run is; see RATPOINTS_SP2_U0 in ratpoints.h .  With u0 = 0 this is a flat
- * offset. */
+ * offset.  An offset as large as the pool of candidates (prec in
+ * sieving_info) already takes all of them, so the result stops there: a
+ * huge extra (-R) then overflows neither the conversion to a long nor the
+ * sums the caller forms with it. */
 static long phase_2_offset(long extra, double u0, double u_words)
-{ double e;
+{ const long most = RATPOINTS_NUM_PRIMES + RP_MAX_MODULI;
+  double e;
 
-  if(u0 <= 0.0 || u_words <= 0.0) { return(extra); }
+  if(u0 <= 0.0 || u_words <= 0.0) { return((extra < most) ? extra : most); }
   e = (double)extra/(1.0 + u0/u_words);
-  return((long)(e + 0.5));
+  return((e < (double)most) ? (long)(e + 0.5) : most);
 }
 
 /* u modulo p for a full-width u, by Barrett reduction.  With
@@ -1811,13 +1821,16 @@ static double numerators_for(const ratpoints_args *args, double b, double H,
 static void clipped_padding(const rp_num_class *cl, long H,
                             double *pad_lo, double *pad_hi)
 { long k = cl->k, a0 = cl->a0;
-  long lo_bit = (-H - a0 + (1L << k) - 1) >> k;
-  long hi_bit = ((H - a0) >> k) + 1;
+  /* the first bit, ceil((-H - a0)/2^k) = -floor((H + a0)/2^k), and minus
+   * the one past the last, -(floor((H - a0)/2^k) + 1), in forms that do not
+   * overflow for any H up to LONG_MAX (0 <= a0 < 2^k) */
+  long lo_bit = -(((H - (1L << k) + a0) >> k) + 1);
+  long hi_neg = -((H - a0) >> k) - 1;
 
   /* x & (RBA_LENGTH - 1) is x mod RBA_LENGTH, non-negative, for negative
    * x as well (two's complement) */
   *pad_lo += (double)(lo_bit & (RBA_LENGTH - 1));
-  *pad_hi += (double)((-hi_bit) & (RBA_LENGTH - 1));
+  *pad_hi += (double)(hi_neg & (RBA_LENGTH - 1));
 }
 
 /* How big the run is: the number of denominators that will actually be
@@ -2640,6 +2653,9 @@ static long sieving_info(ratpoints_args *args,
       s1 = (args->sp1 >= 0) ? args->sp1
                             : primes_for_phase_1(prec, pnp, bpw_swept,
                                                  target, sp2_extra);
+      /* a given sp1 beyond the primes there are asks for all of them; it is
+       * taken as that, so that the sum cannot overflow */
+      if(s1 > RATPOINTS_NUM_PRIMES) { s1 = RATPOINTS_NUM_PRIMES; }
       want = (args->sp2 >= 0) ? args->sp2 : s1 + sp2_extra;
       if(pnp - n_weak < want) { pn_lim++; }
     }
@@ -2860,15 +2876,17 @@ static long sieving_info(ratpoints_args *args,
    * been looked at with a smaller denominator, so it passes every prime.
    */
   { long sp3 = args->sp2;
-    long sp3_want = (args->sp3_extra >= 0) ? args->sp2 + args->sp3_extra
-                                           : RATPOINTS_NUM_PRIMES;
+    /* every prime there is, unless the caller fixed the number; sp3_extra
+     * is compared with the primes left before it is added, so that a huge
+     * one cannot overflow */
+    long sp3_want = (args->sp3_extra >= 0
+                       && args->sp3_extra < RATPOINTS_NUM_PRIMES - args->sp2)
+                      ? args->sp2 + args->sp3_extra : RATPOINTS_NUM_PRIMES;
     double per_denom = ((args->sp3_per_denom >= 0.0) ? args->sp3_per_denom
                                                      : RATPOINTS_SP3_PER_DENOM)
                         /args->check_rel;
     double per_surv = RATPOINTS_SP3_PER_SURVIVOR/args->check_rel;
     double S;
-
-    if(sp3_want > RATPOINTS_NUM_PRIMES) { sp3_want = RATPOINTS_NUM_PRIMES; }
 
     /* The average number of numerators a denominator has to consider.  The
      * run shape already has the total in words, so this is just the mean per
@@ -4342,6 +4360,8 @@ static long find_points_work_1(ratpoints_args *args,
   { long s = 2*CEIL(height, LONG_LENGTH);
     if(args->array_size > s) { args->array_size = s; }
   }
+  if(args->array_size > RP_ARRAY_SIZE_MAX)
+  { args->array_size = RP_ARRAY_SIZE_MAX; }
   /* make sure that array size is a multiple of RATPOINTS_CHUNK, so that of
    * the blocks a numerator interval is cut into only the last one can end
    * in a partial chunk (see _ratpoints_sift0) */

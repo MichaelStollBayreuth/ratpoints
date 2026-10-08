@@ -811,3 +811,22 @@ t '-150000000000000000000000000008550 145000000000000000000000000008265 30200000
 # reduction first
 t '1 -1100690047 -9223372036854775808' 4294968331 -q -dl 4294968331 -du 4294968331 -l -1e-9 -u 1e-9
 t '1 0 -9223372036854775808' 1152921504606846980 -q -dl 1152921504606846977 -du 1152921504606846980 -l 0 -u 1e-17
+# the options of the rules that choose the sieving primes at the extremes
+# of what the command line accepts, which change how the moduli are chosen
+# and never the points: the largest long as the offset of the second
+# stage, flat (-U 0) and scaled by a run length so short that it stays near
+# 2^63 (-U 1e-300); as the number of moduli of the first stage when the
+# second is chosen, which the rule that looks at further primes adds the
+# offset to; and as the number of third-stage primes.  Then the largest and
+# the smallest positive double for each of the real-valued options, and two
+# of the windows at the height bound 2^63 - 1 above, the first ending at the
+# top of the range (seven points and the one at infinity), with the largest
+# values again
+t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 0
+t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 1e-300
+t '1 0 126 0 441' 200 -q -n 9223372036854775807 -U 0
+t '1 0 126 0 441' 200 -q -P 9223372036854775807
+t '1 0 126 0 441' 200 -q -r 1.7976931348623157e308 -U 1.7976931348623157e308 -C 1.7976931348623157e308 -Q 1.7976931348623157e308 -W 1.7976931348623157e308
+t '1 0 126 0 441' 200 -q -r 4.9e-324 -U 4.9e-324 -C 4.9e-324 -Q 4.9e-324 -W 4.9e-324
+t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854774784 -u 1e30 -R 9223372036854775807 -U 1e-300 -P 9223372036854775807
+t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18 -n 9223372036854775807 -R 9223372036854775807 -U 0 -P 9223372036854775807

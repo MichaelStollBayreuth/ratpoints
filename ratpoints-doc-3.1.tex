@@ -1052,9 +1052,11 @@ is at most~$55$; a larger value counts as~$55$. The field~\texttt{array\_size} s
 (in bit arrays; a bit array
 contains 64, 128, 256 or~512 bits, depending on the configuration) of the
 array that is used in the first sieving stage. If non-positive, it is
-set to a default value. The various default values are defined at the
-beginning of the header file~\texttt{ratpoints.h}, where also the maximal
-degree of the polynomial is set.
+set to a default value, and a value above~$2^{20}$ is reduced to~$2^{20}$:
+every sieving thread allocates an array of that many bit arrays. The various
+default values are defined at the beginning of the header
+file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial is
+set.
 
 \texttt{num\_threads} says how many threads sieve (option~\verb+-t+,
 Section~\ref{sec:threads}): $1$ or~$0$, the calling thread alone; $n \ge 2$,

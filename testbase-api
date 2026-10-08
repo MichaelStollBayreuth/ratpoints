@@ -76,3 +76,27 @@ two threads after the pool of three                      2852  (2852 seen)
 and one thread after that                                2852  (2852 seen)
   the two runs: 2852 and 2852 points, the same in the same order
 find_points on four threads (the pool made and freed inside)    8  (8 seen)
+y^2 = 7x^2 + 3x + 5, height 1000, the defaults            884  (884 seen)
+  the fields of type double at NaN, -NaN, inf, -inf, the largest and the least
+  positive double, those of type long at LONG_MAX and LONG_MIN:
+    survivors_per_word                       the same points
+    sp2_u0                                   the same points
+    cost_table                               the same points
+    sp3_per_denom                            the same points
+    check_cost                               the same points
+    sp1                                      the same points
+    sp2                                      the same points
+    sp2_extra                                the same points
+    sp3_extra                                the same points
+    adapt                                    the same points
+    array_size                               the same points
+    num_primes                               the same points
+    max_forbidden                            the same points
+    sp2_extra LONG_MAX, sp2_u0 0             the same points
+    sp2_extra LONG_MAX, sp2_u0 1e-300        the same points
+    sp1 LONG_MAX, sp2_u0 0                   the same points
+    all but sp2, num_primes; doubles NaN     the same points
+    all but sp2, num_primes; doubles inf     the same points
+y^2 = x - 9223372036854769900, height 2^63 - 1             15  (15 seen)
+    array_size LONG_MAX                      the same points
+    all but sp2, num_primes; doubles inf     the same points
