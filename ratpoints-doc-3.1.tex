@@ -858,9 +858,11 @@ steps in the isolation of the real components to~$S$. This part of the
 program computes a Sturm sequence for the polynomial and uses it in order
 to find a union of intervals that contains the intervals of positivity
 of the polynomial. This is done by a successive subdivision of the
-interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth;
-a depth above~$55$ counts as~$55$, the largest at which the ends of the
-intervals are still exact in double precision.
+interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth.
+It is at most~$55$, whatever is asked for: up to that depth the ends of
+the intervals, fractions with a power of~$2$ as denominator, are exact as
+double-precision numbers, as they must be for the union to contain the
+intervals of positivity.
 $S$ can be omitted; then it is given a default value. The option
 \verb+-s+ skips the Sturm sequence computation completely. This also has
 the effect of removing most of the check for squarefreeness.
@@ -1045,7 +1047,8 @@ Similar statements are true for~\texttt{num\_primes} (option~\verb+-p+),
 \texttt{sturm} (options \verb+-s+, \verb+-S+) and~\texttt{max\_forbidden}
 (option~\verb+-F+). Note that a non-negative \texttt{num\_primes} is a hard
 limit: only when it is negative does the program look at further primes of
-its own accord for a curve that needs them. The field~\texttt{array\_size} specifies the maximal size
+its own accord for a curve that needs them. Like~\verb+-S+, \texttt{sturm}
+is at most~$55$; a larger value counts as~$55$. The field~\texttt{array\_size} specifies the maximal size
 (in bit arrays; a bit array
 contains 64, 128, 256 or~512 bits, depending on the configuration) of the
 array that is used in the first sieving stage. If non-positive, it is

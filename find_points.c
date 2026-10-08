@@ -4340,10 +4340,10 @@ static long find_points_work_1(ratpoints_args *args,
    * in a partial chunk (see _ratpoints_sift0) */
   args->array_size = CEIL(args->array_size, RATPOINTS_CHUNK)*RATPOINTS_CHUNK;
   /* The ends of the intervals the Sturm step keeps are made by halving to
-   * this depth and have at most depth - 2 significant bits, so up to 55
-   * they are doubles (53 bits) exactly; beyond, the conversion would round
-   * them, possibly inward, and a point next to an end could be lost. */
-  if(args->sturm > 55) { args->sturm = 55; }
+   * this depth, and beyond DBL_MANT_DIG + 2 = 55 they would not all be
+   * doubles (see iterate() in sturm.c): the conversion would round them,
+   * possibly inward, and a point next to an end could be lost. */
+  if(args->sturm > DBL_MANT_DIG + 2) { args->sturm = DBL_MANT_DIG + 2; }
 
   /* Don't reverse if intervals are specified or limits for the denominator
      are given */

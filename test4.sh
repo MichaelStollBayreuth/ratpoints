@@ -786,3 +786,18 @@ t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854775807
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -9223372036854775807
 t '-3 0 1' 9223372036854775807 -q -dl 1 -du 1 -l -1e30 -u -9223372036854774784
 t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
+# the isolation of the positivity region at a depth beyond 55, which is
+# taken as 55 (and -v reports 55): up to that depth the ends of its
+# intervals, n/2^e, are exact as doubles.  1 - 103x is positive up to its
+# root 1/103, where the point (1 : 0 : 103) lies, and at depth 62 the end
+# next to it would have a numerator of 54 bits over 2^60; at depth 56 the
+# end next to 15/13, the root of 15 - 13x, would have one over 2^53.  The
+# points are those -s finds
+t '1 -103' 200 -q -S 62
+t '15 -13' 30 -q -S 56
+f "grep 'iterations for'" '1 -103' 200 -v -S 62
+# the Sturm sequence of f = -(10^30 + 57)(3x - 2)(13x - 15)(7x + 5), whose
+# coefficients and values take two limbs: its signs are compared with each
+# other, so they must come out as -1, 0 and 1, and the points (2 : 0 : 3),
+# (-5 : 0 : 7) and (15 : 0 : 13) lie on the ends of the positivity region
+t '-150000000000000000000000000008550 145000000000000000000000000008265 302000000000000000000000000017214 -273000000000000000000000000015561' 30 -q

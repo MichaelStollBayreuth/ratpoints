@@ -68,7 +68,9 @@ static long eval_sign(ratpoints_args *args, mpz_t *cofs, long degree,
     mpz_mul_2exp(work[1], cofs[n], e);
     mpz_add(work[0], work[0], work[1]);
   }
-  s = mpz_cmp_si(work[0], 0);
+  /* -1, 0 or 1, since the callers compare signs with each other (the
+   * function mpz_cmp_si may return any value of the right sign) */
+  s = mpz_sgn(work[0]);
   return(s);
 }
 
@@ -110,7 +112,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
     { mpz_gcd(work[2], sturm[k-1][d1], sturm[k][d2]);
       mpz_fdiv_q(work[0], sturm[k-1][d1], work[2]);
       mpz_fdiv_q(work[1], sturm[k][d2], work[2]);
-      if(mpz_cmp_si(work[0], 0) < 0)
+      if(mpz_sgn(work[0]) < 0)
       { mpz_neg(work[0], work[0]); mpz_neg(work[1], work[1]); }
       /* sturm[k] = work[0] * sturm[k] - work[1] * x^(d2-d1) * sturm[k-1] */
       for(n = 0; n <= d1; n++)
@@ -121,7 +123,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       { mpz_mul(sturm[k][n], sturm[k][n], work[0]); }
       d2--;
       /* d2 reaches -1 when the remainder is zero: not squarefree */
-      while(d2 >= 0 && mpz_cmp_si(sturm[k][d2], 0) == 0) { d2--; }
+      while(d2 >= 0 && mpz_sgn(sturm[k][d2]) == 0) { d2--; }
       if(d2 < 0)  /* not squarefree */
       { for(n = 0; n <= degree; n++)
         { for(m = 0; m <= degree; m++)
@@ -154,8 +156,8 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
   /* compute number of real zeros */
   for(n = 0; n < k; n++)
   { long d1 = sturm_degs[n], d2 = sturm_degs[n+1];
-    int s1 = mpz_cmp_si(sturm[n][d1], 0),
-        s2 = mpz_cmp_si(sturm[n+1][d2], 0);
+    int s1 = mpz_sgn(sturm[n][d1]),
+        s2 = mpz_sgn(sturm[n+1][d2]);
 
     if(s1 != s2) { count1++; }
     if(d1 & 1) { s1 = -s1; }
@@ -163,7 +165,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
     if(s1 != s2) { count2++; }
   }
 
-  if(count2 == count1 && mpz_cmp_si(cofs[0], 0) < 0)
+  if(count2 == count1 && mpz_sgn(cofs[0]) < 0)
   { /* no real roots, negative constant term ==> no points */
     for(n = 0; n <= degree; n++)
     { for(m = 0; m <= degree; m++)
@@ -180,7 +182,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
     long max = (long)(((unsigned long)(-1))>>1);
     long min = -max;
     long num_intervals;
-    long slcf = mpz_cmp_si(cofs[degree], 0);
+    long slcf = mpz_sgn(cofs[degree]);
 
     /* recursive helper function */
     void iterate(long nl, long nr, long del, long der, long cleft, long cright,
@@ -195,10 +197,14 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       /* we have to add/extend an interval if we either know that
          the polynomial is positive on the interval (first condition)
          or the maximal iteration depth has been reached (second condition) */
-      { /* nl/2^del and nr/2^der, scaled by ldexp rather than by dividing by
-         * a shifted 1: exact, no division, and defined for every depth
-         * (args->sturm may be as large as LONG_LENGTH-2, and an int shift
-         * is undefined past a depth of 31). */
+      { /* l and u are nl/2^del and nr/2^der exactly, as they must be for the
+         * intervals to contain every x with f(x) >= 0.  A finite end at depth
+         * d is 0, +-2^k or n/2^e with |n| <= 2^(d-2): true of +-[0,1] at
+         * depth 2 and +-[2^j,2^(j+1)] at depth j+3, and halving at most
+         * doubles the numerators over a common denominator; so n is a double
+         * up to the depth DBL_MANT_DIG + 2 at which find_points.c clamps
+         * args->sturm.  The ends at infinity, +-LONG_MAX, become +-2^63,
+         * beyond every x = a/b with |a| <= LONG_MAX. */
         double l = ldexp((double)nl, -(int)del);
         double u = ldexp((double)nr, -(int)der);
 
