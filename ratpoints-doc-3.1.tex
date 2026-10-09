@@ -453,8 +453,6 @@ blocks into which the loop over the denominators is cut
 since the output must not depend on where the blocks end either.
 About a minute.
 
-\vfill\pagebreak % manual formatting
-
 \begin{verbatim}
 > make tsan
 \end{verbatim}
@@ -498,6 +496,8 @@ they print without failures, or the first lines of that and then ``Not
 enough memory.'', with exit status~10. A crash, or a run that has not ended
 after a minute, fails the test. The memory of the gmp integers is gmp's and
 is left alone. Half a minute.
+
+\vfill\pagebreak % manual formatting
 
 \begin{verbatim}
 > make timing
