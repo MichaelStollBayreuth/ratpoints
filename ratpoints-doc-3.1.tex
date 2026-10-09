@@ -38,7 +38,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{3.1.0} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{3.1.1} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -64,7 +64,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{September 24, 2026}
+\date{October 9, 2026}
 
 \maketitle
 
@@ -145,7 +145,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-3.1.0.tar.gz
+> tar xzf ratpoints-3.1.1.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -158,7 +158,7 @@ repository mentioned above into a directory of your choice (and replace
 Do
 
 \begin{verbatim}
-> cd ratpoints-3.1.0
+> cd ratpoints-3.1.1
 > make all
 \end{verbatim}
 
@@ -2139,9 +2139,10 @@ several threads.
         (Section~\ref{sec:tests}).
 \end{itemize}
 
-\textbf{Since version 3.1.0} (in the repository, to appear in the next
-release): fixes of bugs that a review of the code turned up, most of them at
-the extremes of the input, and a new value of one tuning constant.
+\textbf{Version 3.1.1} was released October 9, 2026. It fixes bugs that a
+review of the code turned up while a verified version in Lean was being
+prepared, most of them at the extremes of the input, and gives one tuning
+constant a new value.
 \begin{itemize}
   \item \emph{The search intervals are taken exactly.} The library takes each
         end as the double it is given and searches exactly the numerators~$a$

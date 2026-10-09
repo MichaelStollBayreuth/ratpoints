@@ -9,7 +9,33 @@ The program is distributed under the GNU GPL, version 2 (or later).
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.1.pdf).
 
-The current version is **ratpoints-3.1.0** from September 24, 2026. New in it:
+The current version is **ratpoints-3.1.1** from October 9, 2026. It fixes bugs
+that a review of the code turned up while a verified version in Lean was being
+prepared, most of them at the extremes of the input:
+
+* **Search intervals are taken exactly.** The library takes each end as the
+  double it is given, and the program each end as the number written
+  (`-l 1.6` means 8/5). Before, two adjacent intervals could report a point
+  twice, a point next to an end could be lost above 2^53, and some ends made
+  the search run forever.
+* **The input is checked.** The library refuses search intervals that are
+  not increasing and disjoint, and a degree above `RATPOINTS_MAX_DEGREE`; the
+  program refuses numbers that do not fit and malformed coefficient lists
+  (`'1 2 3 - 4'` used to search another curve).
+* **Fixes at the extremes.** A stop by the callback or by `-1` takes effect at
+  once on several threads; the depth of the Sturm step is at most 55 (deeper,
+  points could be lost); a leading coefficient of -2^63 no longer hangs the
+  search; running out of memory returns `RATPOINTS_NO_MEMORY` (the program
+  prints "Not enough memory.") instead of crashing; and there is no signed
+  overflow at the extremes of the height bound and of the tuning options.
+* The compiled-in threshold of the first sieving stage is 0.002 instead of
+  0.003, which two faster machines found best.
+* `make sanitize` and `make testalloc` run the tests under the sanitizers and
+  with failing allocations, and `make test` also checks the sieve tables.
+
+Programs using the library need not be recompiled.
+
+Version 3.1.0 from September 24, 2026, added threads:
 
 * **The sieve can run on several threads.** `ratpoints ... -t n` sieves on
   n threads (`-t 0`: as many as the machine has processors), and programs
@@ -112,7 +138,8 @@ my machine allows) were made by Claude Code (Anthropic),
 in multiple sessions supervised by myself.
 
 The same holds for the improvements of version 3.0.0 over 2.2.4 described above,
-for the test suite and for the threads of version 3.1.0: they were worked out,
+for the test suite, for the threads of version 3.1.0 and for the fixes of
+version 3.1.1: they were worked out,
 implemented and measured by Claude Code in many such sessions, with the
 decisions taken by myself.
 
