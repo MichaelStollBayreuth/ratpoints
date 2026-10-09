@@ -430,7 +430,7 @@ and~\texttt{timing}, which add nothing but minutes) and prints,
 for each source file, the lines executed
 and the branches taken at least once (\texttt{coverage.sh}); the
 annotated sources are left in that directory.
-When this was written the tests executed $99.5\%$ of the lines
+When this was written the tests executed $99.4\%$ of the lines
 of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c},
 $97\%$ of~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is
 guards against states no caller can produce, the paths that a failure to
@@ -2127,14 +2127,88 @@ several threads.
 \end{itemize}
 
 \textbf{Since version 3.1.0} (in the repository, to appear in the next
-release): the compiled-in threshold \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
-is $0.002$ instead of $0.003$, which two faster machines found best and
-which costs nothing on the author's laptop; on an Intel i7-13700K it makes
-the random test curves $4.6\%$ faster at $16383$ and $2.2\%$ at
-$2\cdot10^5$ and changes nothing on the point-rich ones
-(Section~\ref{sec:retune}), and the ladder of \texttt{tune.sh} brackets the
-new value. The manual now says that one thread per physical core beats one
-per hardware thread (Section~\ref{sec:threads}).
+release): fixes of bugs that a review of the code turned up, most of them at
+the extremes of the input, and a new value of one tuning constant.
+\begin{itemize}
+  \item \emph{The search intervals are taken exactly.} The library takes each
+        end as the double it is given and searches exactly the numerators~$a$
+        with $l \le a/b \le u$; the program takes each end as the number
+        written, so that \verb+-l 1.6+ means $8/5$, gives the library the
+        double on the outer side of it, and drops the points outside the given
+        intervals before it prints them (Section~\ref{sec:usage}). The bounds
+        used to be products rounded to doubles: two adjacent intervals could
+        report a point twice that lay in neither (\texttt{ratpoints '-1 0 9'
+        10 -u 0.3333333333333333 -l 0.33333333333333337} printed $(1:0:3)$
+        twice), above~$2^{53}$ a point next to an end, the caller's or the
+        Sturm step's, could be cut off, an end that rounded to~$2^{63}$ made
+        the run endless, and a NaN end made it endless or searched the whole
+        box.
+  \item \emph{The input is checked.} The library returns
+        \texttt{RATPOINTS\_BAD\_ARGS} for search intervals that are not as
+        Section~\ref{sec:library} requires (no end NaN, $l \le u$, increasing
+        and disjoint) --- overlapping ones used to give duplicates, unsorted
+        ones to lose points --- and for a degree above
+        \texttt{RATPOINTS\_MAX\_DEGREE}, which used to overflow or crash. The
+        program reads every number whole and refuses what does not fit: a
+        height bound of $10^{23}$ used to be taken as $2^{63}-1$, and
+        \texttt{1e5} as~$1$; the coefficients must be integers separated by
+        blanks (\texttt{'1 2 3 - 4'} searched $y^2 = 4x^4 + 3x^2 + 2x + 1$),
+        with a message of their own and exit status~$11$. A first \verb+-u+
+        below the search box with no \verb+-l+ before it is the interval
+        $]{-\infty}, u]$, as a last \verb+-l+ above it with no \verb+-u+ is
+        $[l, \infty[$, instead of an error.
+  \item \emph{The Sturm step.} Its depth (\verb+-S+, the field
+        \texttt{sturm}) counts at most~$55$, the largest at which the ends of
+        the intervals it finds are doubles exactly; at the depths $56$
+        to~$62$ rounded ends lost points (\texttt{ratpoints '1 -103' 200 -S
+        62} missed $(1:0:103)$). Its sign tests use \texttt{mpz\_sgn} instead
+        of relying on \texttt{gmp.h} to turn \texttt{mpz\_cmp\_si(x, 0)} into
+        it.
+  \item \emph{A leading coefficient of $-2^{63}$} made the Jacobi symbol test
+        negate it as a \texttt{long}; such a search hung once the
+        denominators passed~$2^{32}$.
+  \item \emph{Threads.} A stop by \texttt{*quit} or \verb+-1+ takes effect at
+        once on several threads, as it does on one; it used to wait until the
+        whole block was sieved, so that a search of at most 16~steps at a huge
+        height did not return with \verb+-t+. A stop in the block where a
+        revision of the moduli takes effect reports the same
+        \texttt{sp2\_used} and \texttt{sp3\_used} on several threads as on
+        one, and a sieving thread's failed allocation after the stop no longer
+        fails a search that one thread completes.
+  \item \emph{Memory.} When memory runs out, \texttt{find\_points} returns
+        \texttt{RATPOINTS\_NO\_MEMORY} instead of crashing, and the program
+        prints ``Not enough memory.''\ with exit status~$10$ (\texttt{gmp}'s
+        own allocations excepted). Any number of search
+        intervals can be given to the library (a few hundred thousand used to
+        overflow the stack), and \texttt{array\_size} is capped at~$2^{20}$.
+  \item \emph{Undefined behaviour.} Signed overflow at the extremes of the
+        height bound and of the tuning fields of \texttt{ratpoints\_args} is
+        gone, and for odd degree the set-up of the denominator loop no longer
+        reads uninitialized memory (which changed no point).
+  \item \emph{Output.} With \verb+-z+, the \verb+-fs+ string is printed in
+        every run, in place of the points, as the \verb+-fe+ string always
+        was. The manual used to call the default interval open; it is the
+        closed $[-\texttt{height}, \texttt{height}]$.
+  \item \emph{Tests.} \texttt{make sanitize} runs \texttt{test4} and the
+        library tests under AddressSanitizer and UndefinedBehaviorSanitizer,
+        \texttt{make testalloc} makes the allocations of a search fail one by
+        one, \texttt{make test4configs} gains a build without 128-bit
+        integers, and the regression invocations for all of the above are at
+        the end of \texttt{test4.sh}, where \texttt{verify-test4.py} checks
+        them by brute force (Section~\ref{sec:tests}). \texttt{bench\_init}
+        builds and checks the sieve tables again.
+  \item \emph{Tuning.} The compiled-in threshold
+        \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD} is $0.002$ instead of
+        $0.003$, which two faster machines found best and which costs nothing
+        on the author's laptop; on an Intel i7-13700K it makes the random test
+        curves $4.6\%$ faster at $16383$ and $2.2\%$ at $2\cdot10^5$ and
+        changes nothing on the point-rich ones (Section~\ref{sec:retune}), and
+        the ladder of \texttt{tune.sh} brackets the new value. The manual now
+        says that one thread per physical core beats one per hardware thread
+        (Section~\ref{sec:threads}).
+\end{itemize}
+Programs using the library need not be recompiled, and the running time is
+that of 3.1.0 within the accuracy of the measurements.
 
 %=========================================================================
 
