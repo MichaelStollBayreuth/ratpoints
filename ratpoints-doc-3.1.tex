@@ -48,6 +48,13 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% No page break between a verbatim block and the paragraph after it: the
+% command lines of Section 4 stay with their descriptions.
+\makeatletter
+\let\rp@verbatim\verbatim
+\def\verbatim{\@endparpenalty\@M\rp@verbatim}
+\makeatother
+
 \begin{document}
 
 \title{Documentation for the ratpoints program}
@@ -446,8 +453,6 @@ create a thread or to get memory would take (\texttt{make testalloc} below
 takes those of memory), arms that other compile-time settings reach
 (\texttt{test4configs} runs those builds, but this measures one), and a few
 conditions the arithmetic makes impossible.
-
-\vfill\pagebreak % manual formatting
 
 \begin{verbatim}
 > make testthreads
