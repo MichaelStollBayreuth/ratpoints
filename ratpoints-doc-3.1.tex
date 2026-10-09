@@ -765,10 +765,29 @@ The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
 to~$+\infty$. The number $k$ of intervals is bounded by
 \texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
-The ends are read as double-precision numbers (one that is not a double,
-such as~$2^{53}+1$, is rounded to the nearest double), and a point is
-searched for when its $x$-coordinate lies exactly in one of the intervals
-so read.
+The ends are taken exactly as the numbers given, whether or not they are
+double-precision numbers: \verb+-l 1.6+ means~$8/5$, which no double is
+(the double nearest to it is a little larger), and
+\verb+-u 9007199254740993+ means~$2^{53}+1$. An end may be written as an
+integer or a decimal fraction, with or without an exponent (\verb+-3+,
+\verb+16e-1+, \verb+.5+, \verb+2.+), as a hexadecimal floating-point
+number, which stands for the fraction with a power of~$2$ as denominator
+that it denotes (\verb+0x1.8p3+ is~$12$), or as \verb+-inf+ or \verb+inf+.
+A number beyond the range of a double counts as an infinite end, and one
+other than~$0$ too small for a double as plus or minus half the smallest
+positive double; either lies on the same side of every $x$-coordinate of
+the search as the number itself. The intervals must come in increasing
+order with these ends, $l_i \le u_i < l_{i+1}$:
+\verb+-u 0.33333333333333333 -l 0.33333333333333334+ is accepted, as the
+two ends lie on either side of~$1/3$, although one double is the nearest
+to both, and the other way round it is refused. A point is searched for
+when its $x$-coordinate lies in one of these intervals. The library takes
+the ends of the intervals it is given exactly as the doubles they are
+(Section~\ref{sec:library}); so the program gives it, for each end, the
+double next to it on the outer side (two intervals whose doubles meet
+become one), and it neither prints nor counts the points the library
+finds outside the intervals of the command line: \verb+-1+ prints the
+first point inside them.
 
 \subsection{Using several threads}\label{sec:threads}
 
@@ -1070,8 +1089,11 @@ of the next (so two intervals that meet in an end must be given as one).
 An end may be infinite, but not NaN; intervals that break these rules make
 the call return \texttt{RATPOINTS\_BAD\_ARGS}. The ends are taken exactly:
 the search takes the $x = a/b$ with $\texttt{low} \le x \le \texttt{up}$ for
-one of the intervals. There may be any number of intervals (the search
-keeps its copies of them on the heap, not on the stack).
+one of the intervals. For an end that is not a double, such as~$8/5$, the
+program \texttt{ratpoints} passes the double next to it on the outer side
+and drops in its callback the points beyond the end itself
+(Section~\ref{sec:usage}). There may be any number of intervals (the
+search keeps its copies of them on the heap, not on the stack).
 Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least

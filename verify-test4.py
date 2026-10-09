@@ -9,7 +9,9 @@ invocation whose output is a list of points, the points are compared with
 a brute-force search: every pair (a, b) with gcd(a, b) = 1 in the
 denominator range and the search intervals of the command line, within
 the height bound, is tested for F(a, b) = sum c_i a^i b^(D-i) being a
-square, in arbitrary precision and without any sieve.  The same holds
+square, in arbitrary precision and without any sieve.  The ends of the
+intervals are the numbers given, taken exactly as rational numbers (1.6
+is 8/5), as the program takes them (see c_end).  The same holds
 for the x-coordinates -x and -y print, for the single point of -1 and for
 the count -z reports.  A search too large for that (the two curves at
 heights 30000 to 100000 in the third part) is checked against PARI/GP's
@@ -32,7 +34,8 @@ decided by the rules of main.c, which parse_args follows: the coefficients
 are integers separated by white space, at most RATPOINTS_MAX_DEGREE + 1 of
 them; a number is the whole argument but for white space around it, an
 integer within the range of a long or a real number that is not NaN; and
-the search intervals alternate, are ordered and are not too many.  An
+the search intervals alternate, are ordered by their ends as the numbers
+they are and are not too many.  An
 invocation that reports an exit status must report the one these rules
 give, with its message, and one they refuse must report it; one they
 accept may end with the message for a polynomial that is not squarefree,
@@ -83,7 +86,39 @@ def c_double(s):
     number as a whole or if it is a NaN"""
     if not REAL.fullmatch(s): return None
     t = s.strip(WS)
-    return float.fromhex(t) if t.lstrip('+-')[:2] in ('0x', '0X') else float(t)
+    if t.lstrip('+-')[:2] in ('0x', '0X'):
+        try: return float.fromhex(t)
+        except OverflowError: return -math.inf if t.startswith('-') else math.inf
+    return float(t)
+
+HALF_TINY = Fraction(1, 2**1075)   # half the least positive double
+
+def c_end(s):
+    """main.c's scan_end: the number s denotes as the end of a search
+    interval, exactly -- a decimal number m 10^k as the rational number it
+    is (1.6 is 8/5), a hexadecimal one m 2^k as the dyadic one (which
+    float.fromhex would round to a double when it has more digits than a
+    double holds) -- or an infinity, which a number that strtod reads as one
+    (beyond the range of a double) also is; a number other than 0 that
+    strtod reads as 0 is taken as plus or minus half the least positive
+    double.  None if s is not a number as a whole or if it is a NaN"""
+    x = c_double(s)
+    if x is None or math.isinf(x): return x
+    t = s.strip(WS)
+    sign = -1 if t.startswith('-') else 1
+    t = t.lstrip('+-')
+    if t[:2] in ('0x', '0X'):
+        base, m = 16, re.fullmatch(r'0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?(?:[pP]([+-]?[0-9]+))?', t)
+    else:
+        base, m = 10, re.fullmatch(r'([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?', t)
+    frac = m[2] or ''
+    digits = int(m[1] + frac, base)
+    # the exponent is looked at only when strtod has found a double other
+    # than 0 for the number, so that it is not too large to compute with
+    if digits == 0: return Fraction(0)
+    if x == 0: return sign*HALF_TINY
+    if base == 16: return sign*digits*Fraction(2)**(int(m[3] or 0) - 4*len(frac))
+    return sign*digits*Fraction(10)**(int(m[3] or 0) - len(frac))
 
 def coefficients(s):
     """main.c's reading of the coefficient list: integers, each an optional
@@ -119,7 +154,7 @@ def parse_args(args):
             i += 1
             if k == 'l':
                 if l_seen or len(o['ivs']) == MAX_DEGREE: o['exit'] = 7; return o
-                low = c_double(args[i])
+                low = c_end(args[i])
                 if low is None: o['exit'] = 7; return o
                 if o['ivs'] and o['ivs'][-1][1] >= low: o['exit'] = 7; return o
                 l_seen = True
@@ -127,7 +162,7 @@ def parse_args(args):
                 if not l_seen:
                     if o['ivs']: o['exit'] = 7; return o
                     low = None   # no bound below: the height bound or -infinity
-                up = c_double(args[i])
+                up = c_end(args[i])
                 if up is None or (low is not None and low > up): o['exit'] = 7; return o
                 o['ivs'].append((low, up)); l_seen = False
         elif k in ('p', 'F', 't', 'n', 'N', 'R', 'A', 'P') or (k == 'd' and k2 in ('l', 'u')):
@@ -212,10 +247,11 @@ def brute_points(c, H, dl, du, ivs, want_inf):
             if r >= 0 and r*r == c[d]: pts[(1, 0)] = {r, -r}
     b_low, b_high = denominators(H, dl, du)
     # the search region: the intervals of the command line, closed, their
-    # ends the doubles it reads, taken exactly; a missing first -l or last
-    # -u, or no interval at all, is no bound (the program puts in the height
-    # bound rounded outward, which holds every a/b with |a| <= H, or an
-    # infinite end where that would turn the interval around)
+    # ends the numbers given, taken exactly (see c_end); a missing first -l
+    # or last -u, or no interval at all, is no bound (the program gives the
+    # library the height bound rounded outward, which holds every a/b with
+    # |a| <= H, or an infinite end where that would turn the interval
+    # around)
     if not ivs: ivs = [(None, None)]
     # the denominators to try: every one in the range -- or, when the range
     # is too long for that and the degree is odd, only those a point can

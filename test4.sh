@@ -42,8 +42,9 @@
 # that are not numbers as a whole, out of range or NaN, -fs and -fe under
 # -z, the coefficients and the numbers read whole (coefficient lists that
 # are not integers separated by white space, white space around a number,
-# and the intervals that a missing first -l or last -u leave open), and -1
-# in a search of a single block.
+# and the intervals that a missing first -l or last -u leave open), -1 in
+# a search of a single block, and ends of the search intervals that are
+# not doubles, which are taken as the numbers they are.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -760,23 +761,32 @@ echo '---- the search intervals, exactly ----'
 # l <= a/b <= u, whatever b and the ends: b l and b u rounded to doubles
 # would put a numerator next to an end into both of two adjacent intervals,
 # or into neither of them, or out of the one it is in.  x = 1/3 on
-# y^2 = 9x^2 - 1 lies between the doubles 0.3333333333333333 and
-# 0.33333333333333337, so in neither interval of the first run and in the
-# one interval of each of the next two; x = -47/3 on y^2 = 3x + 48 lies
-# between the ends of the two intervals of the fourth
+# y^2 = 9x^2 - 1 lies between 0.3333333333333333 and 0.33333333333333337,
+# so in neither interval of the first run and in the one interval of each
+# of the next two; x = -47/3 on y^2 = 3x + 48 lies between the ends of the
+# two intervals of the fourth.  The ends are taken as the numbers they are,
+# and the library is given the doubles next to them on the outer side: for
+# the fourth run the two doubles on either side of -47/3, for the first one
+# the same double twice, the one nearest to 1/3, so that the library is
+# given one interval (see the last block, which also gives it the doubles
+# on either side of 1/3)
 t '-1 0 9' 10 -q -u 0.3333333333333333 -l 0.33333333333333337
 t '-1 0 9' 10 -q -u 0.33333333333333337
 t '-1 0 9' 10 -q -l 0.3333333333333333
 t '48 3' 50 -q -l -50 -u -15.666666666666668 -l -15.666666666666666 -u 50
 # The same with denominators above 2^61, on y^2 = x^2 + 1 and two primitive
 # Pythagorean triples (a, b, c).  For (3226670801200005632,
-# 4302220858710230025, 5377779167689769993) a/b lies between the adjacent
-# doubles X0 = 0.7500011987221257 and X1 = 0.7500011987221258, so in
-# neither [X0 - 8 ulps, X0] nor [X1, X1 + 8 ulps], and in
-# [X0 - 8 ulps, X1 + 8 ulps].  For (3226666674000000004,
-# 4302222234444444453, 5377777791955555565) a/b lies about 63/b below the
-# end U = 0.7499999995738637 of [U - 8 ulps, U], while b U rounded to a
-# double is a - 4
+# 4302220858710230025, 5377779167689769993) a/b lies between
+# 0.7500011987221257 and 0.7500011987221258, so in neither interval of the
+# first run and in the one of the second; for (3226666674000000004,
+# 4302222234444444453, 5377777791955555565) a/b lies about 271/b below the
+# upper end 0.7499999995738637 of the third.  The ends are the shortest
+# decimal numbers that strtod reads as the doubles X0 - 8 ulps, X0,
+# X1 = X0 + 1 ulp, X1 + 8 ulps and U - 8 ulps, U, where a/b lies between X0
+# and X1 and about 63/b below U, while b U rounded to a double is a - 4.
+# Taken as the numbers they are, they give the library the doubles next to
+# them on the outer side, which for the first run is one interval; the last
+# block gives it the doubles X0, X1 and U themselves
 t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221257 -l 0.7500011987221258 -u 0.7500011987221267
 t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221267
 t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0.7499999995738628 -u 0.7499999995738637
@@ -785,10 +795,13 @@ t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453
 # with y = 2(2^30 + 13); the search without the Sturm step agrees
 t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001
 t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001 -s
-# Ends at the limits of a long: 9223372036854775807 is read as the double
-# 2^63, beyond every numerator, so the intervals [2^63, 2^63] and
-# [-2^63, -2^63] hold none and only the points at infinity are printed (the
-# run must end); the numerators from -(2^63 - 1) to -(2^63 - 1024), where
+# Ends at the limits of a long: 9223372036854775807 is 2^63 - 1, and the
+# library is given the double below it, 2^63 - 1024, and for the missing -u
+# the height bound rounded up, 2^63, so that it searches the last 1024
+# numerators, which hold no point, and only the points at infinity are
+# printed (the run must end), and the same at the bottom of the range (the
+# last block gives the library [2^63, 2^63] and [-2^63, -2^63], which hold
+# no numerator); the numerators from -(2^63 - 1) to -(2^63 - 1024), where
 # the bit arrays hold those with a = 2 mod 4 and the first bit is
 # ceil((-(2^63 - 1) - 2)/4), from a value below the range of a long; and at
 # the height bound 2^53 + 1, which is not a double, a missing last -u still
@@ -966,3 +979,69 @@ echo '---- a stop at the first point, whatever the threads ----'
 t '1000000000000 1' 1000000000000 -q -du 16 -1 -i
 t '2000000000000000000000000 0 2' 1000000000000 -q -du 16 -1
 t '9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -1 -i
+
+echo '---- the ends of the search intervals, as the numbers they are ----'
+# An end of a search interval is the number it denotes, which is often not
+# a double: 1.6 is 8/5, and the double nearest to it lies above 8/5, while
+# the one nearest to 1.7 lies below 17/10.  The library takes the doubles
+# it is given as they are, and the program gives it the double next to
+# each end on the outer side, so that the library searches a little more
+# than the intervals, and passes over the points the library finds outside
+# them.  y^2 = 10x - 16 has the points x = 8/5 (where y = 0), 13/8 and
+# 17/10 in [1.6, 1.7]; y^2 = 10x - 6 has x = 3/5 and 7/10 at the ends of
+# [0.6, 0.7], and y^2 = 10x has x = 1/10 at the lower end of [0.1, 1].
+# Then [1.6, 1.7] with the ends written with exponents; in hexadecimal, as
+# the doubles nearest to 1.6 and 1.7, which leave out 8/5 and 17/10, and
+# with more digits than a double holds, as numbers just below 8/5 and just
+# above 17/10 (whose nearest doubles are those two again); and with a
+# second interval, [3.2, 6.5], which has x = 16/5 at its lower end and
+# x = 13/2 at its upper one
+t '-16 10' 20 -q -l 1.6 -u 1.7 -i
+t '-6 10' 20 -q -l 0.6 -u 0.7
+t '0 10' 10 -q -l 0.1 -u 1
+t '-16 10' 20 -q -l 16e-1 -u .17E+1 -i
+t '-16 10' 20 -q -l 0x1.999999999999ap0 -u 0x1.b333333333333p0 -i
+t '-16 10' 20 -q -l 0x1.9999999999999999p0 -u 0x1.b333333333333334P0 -i
+t '-16 10' 20 -q -l 1.6 -u 1.7 -l 3.2 -u 6.5 -i
+# Ends that are not equal, with no double between them: the double outward
+# of 0.3333333333333333 and the one outward of 0.33333333333333337, which
+# lie on either side of 1/3, are both the double nearest to 1/3, and as the
+# library refuses intervals that meet, it is given one interval, [-10, 10]
+# (the search intervals the program reports at the end, here without the
+# Sturm step), while the program drops x = 1/3.  0.33333333333333333 and
+# 0.33333333333333334 also lie on either side of 1/3 and have one nearest
+# double: they are in order as the upper end of an interval and the lower
+# end of the next, and not the other way round
+m '-1 0 9' 10 -s -u 0.3333333333333333 -l 0.33333333333333337
+t '-1 0 9' 10 -q -u 0.33333333333333333 -l 0.33333333333333334
+e '-1 0 9' 10 -q -l 0.33333333333333334 -u 0.33333333333333333
+# The first point the library finds may lie outside the search region:
+# 0.33333333333333334 lies above 1/3 and the double below it below 1/3, so
+# that the library finds (1 : 0 : 3) first.  The point is passed over as if
+# it had not been found: with -i, -1 prints (5 : 12 : 9) and stops there,
+# and -z -1 counts that one point, while -z alone counts the four points of
+# the region, two of them at infinity; -x (with every prime of the table
+# sieving) and -y print (1 : 0) and (5 : 9), and the strings of -fs and -fm
+# go before and between the two points printed
+t '-1 0 9' 10 -q -1 -i -l 0.33333333333333334
+f 'grep found' '-1 0 9' 10 -z -l 0.33333333333333334
+f 'grep found' '-1 0 9' 10 -z -1 -i -l 0.33333333333333334
+t '-1 0 9' 10 -q -x -n 15 -N 30 -p 30 -l 0.33333333333333334
+t '-1 0 9' 10 -q -y -l 0.33333333333333334
+t '-1 0 9' 10 -q -i -l 0.33333333333333334 -fs '[' -fm ', ' -fe ']\n' -f '(%x : %y : %z)'
+# A number too small for a double is not 0: x = 0 on y^2 = x^2 + 1 lies in
+# neither [1e-400, 1] nor [-1, -1e-400]
+t '1 0 1' 10 -q -l 1e-400 -u 1
+t '1 0 1' 10 -q -l -1 -u -1e-400
+# The runs of the block on the search intervals, exactly, whose ends are
+# doubles written in decimal, with the doubles given in hexadecimal, so
+# that the library is given them as they are: the two doubles on either
+# side of 1/3, where it searches two intervals and does not find x = 1/3;
+# X0 - 8 ulps, X0, X1 and X1 + 8 ulps at the denominator
+# 4302220858710230025, and U - 8 ulps and U at 4302222234444444453, where
+# b U rounded to a double is a - 4; and 2^63
+t '-1 0 9' 10 -q -u 0x1.5555555555555p-2 -l 0x1.5555555555556p-2
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0x1.80002838f1d45p-1 -u 0x1.80002838f1d4dp-1 -l 0x1.80002838f1d4ep-1 -u 0x1.80002838f1d56p-1
+t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0x1.7ffffffc56ea1p-1 -u 0x1.7ffffffc56ea9p-1
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 0x1p63
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -0x1p63

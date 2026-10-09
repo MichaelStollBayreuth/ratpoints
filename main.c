@@ -31,6 +31,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 
 #include "ratpoints.h"
@@ -65,6 +66,14 @@ char *string_after;   /* String to be printed after the points */
 ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
                       /* This contains the intervals representing the search region */
 
+/* An end of a search interval as the command line gives it, exactly: inf is
+ * -1 for -infinity, +1 for +infinity and 0 for the rational number q */
+typedef struct {int inf; mpq_t q;} exact_end;
+
+exact_end ends[2*RATPOINTS_MAX_DEGREE];
+                      /* The ends of the intervals of the command line:
+                         ends[2*i] <= x <= ends[2*i+1] for the i-th */
+
 char *usage_str =
     "Usage: ratpoints 'a_0 a_1 ... a_n' max_height\n"
     "                 [-dl low_den] [-du up_den]\n"
@@ -86,6 +95,8 @@ int read_input(long, char *argv[], ratpoints_args*);
 char *scan_mpz(char*, mpz_t);
 int scan_long(char*, long*);
 int scan_double(char*, double*);
+int scan_end(char*, int, exact_end*, double*);
+void join_intervals(ratpoints_args*);
 void print_poly(mpz_t*, long);
 void print_string(char*);
 void message(long n, long total, ratpoints_args *args);
@@ -98,12 +109,47 @@ void error(long);
 /* structure containing data to be passed to the point-processing function */
 typedef struct {int print_between; int no_output; int one_point;
                 int points_at_infty; int no_y; char *pf;
-                char* string_before; char *string_between;} data;
+                char* string_before; char *string_between;
+                long num_inter; exact_end *ends;} data;
+
+/* The sign of the end e minus x = a/b, for b > 0. */
+static int cmp_end_x(const exact_end *e, long a, long b)
+{
+  if(e->inf) { return(e->inf); }
+  return(mpq_cmp_si(e->q, a, (unsigned long)b));
+}
+
+/* Whether x = a/b, b > 0, lies in one of the n intervals with the ends
+ * e[2*i] <= x <= e[2*i+1], which are increasing and disjoint: the first
+ * interval that does not end below x must hold it, and a binary search
+ * finds that one. */
+static int in_region(long a, long b, const exact_end *e, long n)
+{
+  long lo = 0, hi = n;
+
+  while(lo < hi)
+  { long mid = lo + (hi - lo)/2;
+
+    if(cmp_end_x(&e[2*mid+1], a, b) < 0) { lo = mid + 1; }
+    else { hi = mid; }
+  }
+  return(lo < n && cmp_end_x(&e[2*lo], a, b) <= 0);
+}
 
 int process(long a, long b, const mpz_t y, void *info0, int *quit)
 { data *info = (data *)info0;
   char *fmt = info->pf;
   if(b == 0 && !(info->points_at_infty)) return(0);
+  /* The library searches intervals whose ends are the doubles next to the
+   * ends of the command line, outward (see scan_end and join_intervals), so
+   * it can find a point just beyond an end; such a point is not in the
+   * search region, and it is passed over as if the library had not found
+   * it: it is not counted, and it does not stop the search under -1.  The
+   * points at infinity have no x-coordinate and are reported whatever the
+   * intervals. */
+  if(b != 0 && info->num_inter > 0
+     && !in_region(a, b, info->ends, info->num_inter))
+  { return(0); }
   *quit = info->one_point;
   if(info->no_output) return(1);
   if(info->print_between) { print_string(info->string_between); }
@@ -155,6 +201,8 @@ int main(int argc, char *argv[])
   { long n;
     /* initialize multi-precision integer variables */
     for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_init(c[n]); }
+    /* and the rational ones for the ends of the intervals */
+    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_init(ends[n].q); }
   }
   mpz_init(tmp); mpz_init(tmp2);;
 
@@ -177,7 +225,8 @@ int main(int argc, char *argv[])
 
   /* typedef struct {int print_between; int no_output; int one_point;
                      int points_at_infty; int no_y; char *pf;
-                     char* string_before; char *string_between;} data; */
+                     char* string_before; char *string_between;
+                     long num_inter; exact_end *ends;} data; */
 
   /* initialize data structure to be passed to process... */
   { data *info = malloc(sizeof(data));
@@ -191,6 +240,12 @@ int main(int argc, char *argv[])
     info->string_before   = string_before;
     info->string_between  = string_between;
     info->no_y            = args.flags & (RATPOINTS_NO_CHECK | RATPOINTS_NO_Y);
+    /* process() checks the points against the intervals of the command
+     * line, if there are any; the library is given their ends as doubles,
+     * and two intervals whose doubles meet as one */
+    info->num_inter       = args.num_inter;
+    info->ends            = &ends[0];
+    join_intervals(&args);
 
     /* ...and call find_points */
     total = find_points(&args, process, (void *)info);
@@ -224,6 +279,7 @@ int main(int argc, char *argv[])
   mpz_clear(tmp); mpz_clear(tmp2);
   { long n;
     for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
+    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_clear(ends[n].q); }
   }
   return(0);
 }
@@ -246,6 +302,14 @@ static double height_end(long height)
   if(h < 9223372036854775808.0 && (long)h < height)
   { h = nextafter(h, HUGE_VAL); }
   return(h);
+}
+
+/* The sign of the end e minus the end f; two infinities of one sign are
+ * equal. */
+static int cmp_end(const exact_end *e, const exact_end *f)
+{
+  if(e->inf || f->inf) { return(e->inf - f->inf); }
+  return(mpq_cmp(e->q, f->q));
 }
 
 int read_input(long argc, char *argv[], ratpoints_args *args)
@@ -336,8 +400,13 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           i++;
           if(l_seen) { error(7); } /* -l -l */
           if(num_inter == RATPOINTS_MAX_DEGREE) { error(7); }
-          if(!scan_double(argv[i], &domain[num_inter].low)) { error(7); }
-          if(num_inter > 0 && domain[num_inter-1].up >= domain[num_inter].low)
+          if(!scan_end(argv[i], -1, &ends[2*num_inter],
+                       &domain[num_inter].low))
+          { error(7); }
+          /* the ends are compared as the numbers they are, not as their
+           * doubles */
+          if(num_inter > 0
+             && cmp_end(&ends[2*num_inter-1], &ends[2*num_inter]) >= 0)
           { error(7); }
           i++;
           l_seen = 1;
@@ -346,17 +415,21 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(7); }
           i++;
           if(!l_seen)
-          { if(num_inter == 0) { domain[0].low = -height_end(args->height); }
+          { if(num_inter == 0)
+            { domain[0].low = -height_end(args->height); ends[0].inf = -1; }
             else { error(7); } /* -u -u */
           }
-          if(!scan_double(argv[i], &domain[num_inter].up)) { error(7); }
+          if(!scan_end(argv[i], 1, &ends[2*num_inter+1],
+                       &domain[num_inter].up))
+          { error(7); }
           /* a first interval with no -l that ends below -height holds no
            * x = a/b of the search, and it is made [-infinity, u], which is
            * what a missing first -l stands for, rather than turned around,
            * which the library would refuse */
           if(!l_seen && domain[num_inter].up < domain[num_inter].low)
           { domain[num_inter].low = -HUGE_VAL; }
-          if(domain[num_inter].low > domain[num_inter].up) { error(7); }
+          if(cmp_end(&ends[2*num_inter], &ends[2*num_inter+1]) > 0)
+          { error(7); }
           i++;
           l_seen = 0;
           num_inter++;
@@ -600,6 +673,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   { domain[num_inter].up = height_end(args->height);
     if(domain[num_inter].up < domain[num_inter].low)
     { domain[num_inter].up = HUGE_VAL; }
+    ends[2*num_inter+1].inf = 1;
     num_inter++;
   }
   args->num_inter = num_inter;
@@ -675,6 +749,159 @@ int scan_double(char *s, double *x)
 
   *x = strtod(s, &end);
   return(end != s && !isnan(*x) && only_space_after(end));
+}
+
+/* The double the library is given for the end v of an interval of the
+ * command line, x being the double nearest to v: for dir < 0, a lower end,
+ * the largest double <= v, for dir > 0 the smallest double >= v, so that
+ * the interval the library searches holds the one given.  Since x is the
+ * nearest double, that is x or the double next to it outward; the loop
+ * does not rely on it.  It stops at an infinity, which lies on the safe
+ * side of every number. */
+static double outward(double x, const mpq_t v, int dir)
+{
+  mpq_t t;
+
+  mpq_init(t);
+  while(isfinite(x))
+  { int s;
+
+    mpq_set_d(t, x);
+    s = mpq_cmp(t, v);
+    if((dir < 0) ? (s <= 0) : (s >= 0)) { break; }
+    x = nextafter(x, (dir < 0) ? -HUGE_VAL : HUGE_VAL);
+  }
+  mpq_clear(t);
+  return(x);
+}
+
+/* Read the end of a search interval that s is -- a number as scan_double
+ * reads it, so with white space before and after it, and possibly infinite
+ * -- into e, as the number it denotes: a decimal number, an integer or a
+ * fraction with or without an exponent, as the rational number it is, so
+ * that 1.6 is 8/5, which no double is, and a hexadecimal one as the
+ * fraction with a power of 2 as denominator that it is.  Into d goes the
+ * double the library is given for it (see outward): dir < 0 for a lower
+ * end, dir > 0 for an upper one.  Returns 0 if s is not a number or if it
+ * is a NaN.
+ * Two kinds of number are not taken as they stand.  One beyond the range of
+ * a double, which strtod reads as an infinity, is taken as an infinite end:
+ * it bounds the same x = a/b of the search, which all lie within the range
+ * of a long.  And one that strtod reads as 0 but is not 0, at most half the
+ * least positive double in size, is taken as plus or minus that half: like
+ * the number itself it lies strictly between 0 and every other x of the
+ * search and has the same doubles next to it, while its exponent may be
+ * too large to compute with.  So two ends of one of these kinds count as
+ * equal when they are compared.  Every other number lies within the range
+ * of the doubles, so that its exponent is bounded by that range and the
+ * length of s, and it is computed as it is. */
+int scan_end(char *s, int dir, exact_end *e, double *d)
+{
+  char *digits;
+  double x;    /* the double nearest to the number */
+  int neg = 0, base = 10;
+  long n = 0;  /* the number of digits */
+  long k = 0;  /* the number of them after the point */
+  long ex = 0; /* the exponent, of 10 for base 10, of 2 for base 16 */
+  mpz_t m;
+
+  if(!scan_double(s, &x)) { return(0); }
+  if(isinf(x)) { e->inf = (x > 0) ? 1 : -1; *d = x; return(1); }
+  e->inf = 0;
+  /* strtod has checked the syntax, and the number is finite: an optional
+   * sign, then at least one digit with or without a point among them, after
+   * 0x or 0X for base 16, and then an optional exponent, after e or E for
+   * base 10 and after p or P for base 16, an optional sign and at least one
+   * decimal digit */
+  while(isspace((unsigned char)*s)) { s++; }
+  if(*s == '-') { neg = 1; s++; }
+  else if(*s == '+') { s++; }
+  if(s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { base = 16; s += 2; }
+  digits = malloc(strlen(s) + 1);
+  if(digits == NULL) { error(10); }
+  { int point = 0; /* whether the point has been passed */
+
+    for( ; ; s++)
+    { if(*s == '.') { point = 1; }
+      else if((base == 10) ? isdigit((unsigned char)*s)
+                           : isxdigit((unsigned char)*s))
+      { digits[n++] = *s;
+        if(point) { k++; }
+      }
+      else { break; }
+    }
+  }
+  digits[n] = 0;
+  if(*s == 'e' || *s == 'E' || *s == 'p' || *s == 'P')
+  { int eneg = 0;
+
+    s++;
+    if(*s == '-') { eneg = 1; s++; }
+    else if(*s == '+') { s++; }
+    /* an exponent beyond LONG_MAX/20 stays there, so that nothing
+     * overflows: the number is then beyond the range of the doubles or 0,
+     * and its exponent is not used */
+    for( ; isdigit((unsigned char)*s); s++)
+    { if(ex < LONG_MAX/20) { ex = 10*ex + (*s - '0'); } }
+    if(eneg) { ex = -ex; }
+  }
+  mpz_init(m);
+  mpz_set_str(m, digits, base);
+  free(digits);
+  if(mpz_sgn(m) == 0) { mpq_set_ui(e->q, 0, 1); }
+  else if(x == 0)
+  { mpq_set_d(e->q, nextafter(0.0, 1.0));
+    mpq_div_2exp(e->q, e->q, 1);
+  }
+  else if(base == 16)
+  { long t = ex - 4*k; /* the number is m 2^t */
+
+    mpq_set_z(e->q, m);
+    if(t >= 0) { mpq_mul_2exp(e->q, e->q, (unsigned long)t); }
+    else { mpq_div_2exp(e->q, e->q, (unsigned long)(-t)); }
+  }
+  else
+  { long t = ex - k; /* the number is m 10^t */
+    mpz_t p;
+
+    mpz_init(p);
+    mpz_ui_pow_ui(p, 10, (unsigned long)((t >= 0) ? t : -t));
+    if(t >= 0) { mpz_mul(m, m, p); mpq_set_z(e->q, m); }
+    else
+    { mpq_set_num(e->q, m); mpq_set_den(e->q, p);
+      mpq_canonicalize(e->q);
+    }
+    mpz_clear(p);
+  }
+  if(neg) { mpq_neg(e->q, e->q); }
+  mpz_clear(m);
+  *d = outward(x, e->q, dir);
+  return(1);
+}
+
+/* The library takes the intervals it is given as they stand, ends included,
+ * and wants them increasing and disjoint, each ending below the start of
+ * the next.  The doubles it gets for the ends of the command line lie
+ * outward of them, and those of two intervals may meet or overlap although
+ * the intervals do not: 0.3333333333333333 and 0.33333333333333337 lie on
+ * either side of 1/3, and the double nearest to 1/3 lies outward of both.
+ * Such intervals are given to the library as one, the smallest that holds
+ * them both; it then also searches the x between them, which process()
+ * passes over. */
+void join_intervals(ratpoints_args *args)
+{
+  ratpoints_interval *iv = args->domain;
+  long i, n = 0; /* iv[n] is the interval the next one may be joined to */
+
+  if(args->num_inter <= 0) { return; }
+  for(i = 1; i < args->num_inter; i++)
+  { if(iv[n].up >= iv[i].low)
+    { if(iv[i].low < iv[n].low) { iv[n].low = iv[i].low; }
+      if(iv[i].up > iv[n].up) { iv[n].up = iv[i].up; }
+    }
+    else { n++; iv[n] = iv[i]; }
+  }
+  args->num_inter = n + 1;
 }
 
 
