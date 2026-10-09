@@ -395,7 +395,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
     {
       if(*(argv[i]) != '-') { error(6); }
       switch(argv[i][1])
-      { case 'l': /* lower intevral endpoint */
+      { case 'l': /* lower interval endpoint */
           if(argc == i) error(7);
           i++;
           if(l_seen) { error(7); } /* -l -l */

@@ -97,8 +97,10 @@ of curve and the height bound). Because of this substantial overall
 improvement and the change in the development workflow, I decided to
 increase the major version number from 2 to~3, even though many of
 the optimizations are incremental and there are few really new ideas involved.
-The current version~3.1.0 adds the option to run the sieve on several
+Version~3.1.0 added the option to run the sieve on several
 threads (Sections~\ref{sec:threads} and~\ref{sec:library}).
+The current version~3.1.1 fixes some bugs that were discovered while preparing
+for a verified version in~Lean.
 
 Note that version~2.2.4 is the last one that supports 32-bit architectures;
 versions 3.0.0 and up need a word size of 64~bit.
@@ -292,8 +294,6 @@ message \texttt{Test failed!} will be displayed (on its own on a line) and
 the target fails, so that \texttt{make} exits with an error and names the
 test.
 
-\vfill\pagebreak % manual formatting
-
 \begin{verbatim}
 > make test1once
 \end{verbatim}
@@ -439,6 +439,8 @@ takes those of memory), arms that other compile-time settings reach
 (\texttt{test4configs} runs those builds, but this measures one), and a few
 conditions the arithmetic makes impossible.
 
+\vfill\pagebreak % manual formatting
+
 \begin{verbatim}
 > make testthreads
 \end{verbatim}
@@ -496,8 +498,6 @@ they print without failures, or the first lines of that and then ``Not
 enough memory.'', with exit status~10. A crash, or a run that has not ended
 after a minute, fails the test. The memory of the gmp integers is gmp's and
 is left alone. Half a minute.
-
-\vfill\pagebreak % manual formatting
 
 \begin{verbatim}
 > make timing
