@@ -812,8 +812,13 @@ t '-3 0 1' 9223372036854775807 -q -dl 1 -du 1 -l -1e30 -u -9223372036854774784
 t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
 # Ends below 2^-75 in absolute value, whose binary exponents the search cuts
 # down to one that the product of the denominator and the mantissa can be
-# shifted by: x = 0 lies in [-1e-300, 1e-300] and not in [-1, -2^-1074] or
-# [2^-1074, 1] (4.9e-324 is read as 2^-1074), which hold x = -3/4 and 3/4
+# shifted by: x = 0 lies in [-1e-300, 1e-300] and not in [-1, -4.9e-324] or
+# [4.9e-324, 1], which hold x = -3/4 and 3/4.  The library is given the
+# doubles nearest to -1e-300 and 1e-300, which lie outward of them, and for
+# -4.9e-324 and 4.9e-324, which are smaller in size than the least positive
+# double 2^-1074, -0 and 0, so that it is given one interval, [-1, 1], and
+# the program drops x = 0 (the last block gives the library the ends
+# -2^-1074 and 2^-1074)
 t '1 0 1' 10 -q -l -1e-300 -u 1e-300
 t '1 0 1' 10 -q -l -1 -u -4.9e-324 -l 4.9e-324 -u 1
 
@@ -1039,9 +1044,12 @@ t '1 0 1' 10 -q -l -1 -u -1e-400
 # side of 1/3, where it searches two intervals and does not find x = 1/3;
 # X0 - 8 ulps, X0, X1 and X1 + 8 ulps at the denominator
 # 4302220858710230025, and U - 8 ulps and U at 4302222234444444453, where
-# b U rounded to a double is a - 4; and 2^63
+# b U rounded to a double is a - 4; 2^63; and the doubles next to 0,
+# -2^-1074 and 2^-1074, where it searches two intervals and does not find
+# x = 0
 t '-1 0 9' 10 -q -u 0x1.5555555555555p-2 -l 0x1.5555555555556p-2
 t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0x1.80002838f1d45p-1 -u 0x1.80002838f1d4dp-1 -l 0x1.80002838f1d4ep-1 -u 0x1.80002838f1d56p-1
 t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0x1.7ffffffc56ea1p-1 -u 0x1.7ffffffc56ea9p-1
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 0x1p63
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -0x1p63
+t '1 0 1' 10 -q -l -1 -u -0x1p-1074 -l 0x1p-1074 -u 1
