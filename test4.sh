@@ -1053,3 +1053,11 @@ t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 0x1p63
 t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -0x1p63
 t '1 0 1' 10 -q -l -1 -u -0x1p-1074 -l 0x1p-1074 -u 1
+# The other forms an end may take: a leading plus sign; an exponent beyond
+# every range, which is an infinite end; and a decimal just above the
+# largest double (and its negative), which strtod rounds to that double:
+# the library is given the infinity beyond it
+t '-16 10' 20 -q -i -l +1.6 -u +.17E+1
+t '-16 10' 20 -q -i -l 1.6 -u 1e99999999999999999999
+m '-16 10' 20 -i -l 1.6 -u 1.7976931348623158e308
+t '-16 10' 20 -q -i -l -1.7976931348623158e308 -u 1.7

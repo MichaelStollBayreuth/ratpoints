@@ -96,10 +96,11 @@ nomem() {
   head -n $((l - 3)) "$1" > "$1.head"; head -n $((l - 3)) "$2" > "$1.refhead"
   cmp -s "$1.head" "$1.refhead"
 }
-# the program's own allocations (the strings of -f, -fs, -fm and -fe, and
-# what it hands to the callback), and then the library's, on one thread;
-# the banner and the report of a run without -q; on three threads, also
-# with a stop at the first point
+# the program's own allocations (the strings of -f, -fs, -fm and -fe, the
+# digits of an interval end it reads exactly, and what it hands to the
+# callback), and then the library's, on one thread; the banner and the
+# report of a run without -q; on three threads, also with a stop at the
+# first point
 stopped=0
 prog strings '1 0 1' 300 -q -f '%x %y %z\n' -fs 'start\n' -fm '' -fe 'end\n'
 prog banner '5 3 7' 70000 -dl 66000 -du 66100 -l 0 -u 0.01

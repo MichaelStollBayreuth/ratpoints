@@ -12235,3 +12235,80 @@ exit 7
 (-3 : -5 : 4)
 (3 : 5 : 4)
 (3 : -5 : 4)
+# <-16 10> <20> <-q> <-i> <-l> <+1.6> <-u> <+.17E+1>
+(13 : 4 : 8)
+(13 : -4 : 8)
+(8 : 0 : 5)
+(17 : 10 : 10)
+(17 : -10 : 10)
+# <-16 10> <20> <-q> <-i> <-l> <1.6> <-u> <1e99999999999999999999>
+(2 : 2 : 1)
+(2 : -2 : 1)
+(8 : 8 : 1)
+(8 : -8 : 1)
+(16 : 12 : 1)
+(16 : -12 : 1)
+(16 : 12 : 9)
+(16 : -12 : 9)
+(5 : 6 : 2)
+(5 : -6 : 2)
+(13 : 14 : 2)
+(13 : -14 : 2)
+(13 : 4 : 8)
+(13 : -4 : 8)
+(8 : 0 : 5)
+(16 : 20 : 5)
+(16 : -20 : 5)
+(17 : 10 : 10)
+(17 : -10 : 10)
+# <-16 10> <20> <-i> <-l> <1.6> <-u> <1.7976931348623158e308>
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+
+Curve equation is  y^2 = 10 x - 16
+
+max. Height = 20
+
+Search region:
+  [1.600000, inf]
+(2 : 2 : 1)
+(2 : -2 : 1)
+(8 : 8 : 1)
+(8 : -8 : 1)
+(16 : 12 : 1)
+(16 : -12 : 1)
+(16 : 12 : 9)
+(16 : -12 : 9)
+(5 : 6 : 2)
+(5 : -6 : 2)
+(13 : 14 : 2)
+(13 : -14 : 2)
+(13 : 4 : 8)
+(13 : -4 : 8)
+(8 : 0 : 5)
+(16 : 20 : 5)
+(16 : -20 : 5)
+(17 : 10 : 10)
+(17 : -10 : 10)
+
+
+(Reversed) polynomial has odd degree:
+  could restrict denominators essentially to squares.
+Search intervals:
+[1.600000, 9223372036854775808.000000]
+
+19 rational points found.
+
+# <-16 10> <20> <-q> <-i> <-l> <-1.7976931348623158e308> <-u> <1.7>
+(13 : 4 : 8)
+(13 : -4 : 8)
+(8 : 0 : 5)
+(17 : 10 : 10)
+(17 : -10 : 10)
