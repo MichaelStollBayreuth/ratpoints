@@ -1399,8 +1399,8 @@ searches can be of that degree or a smaller one (a larger one makes
 \texttt{find\_points\_work} return
 \texttt{RATPOINTS\_WORK\_LENGTH\_TOO\_SMALL}). Given a degree that is
 negative or larger than \texttt{RATPOINTS\_MAX\_DEGREE}, it allocates
-nothing, and \texttt{find\_points\_work} then returns
-\texttt{RATPOINTS\_BAD\_ARGS}, whatever the degree it is given
+nothing, and the calls of \texttt{find\_points\_work} that follow return
+\texttt{RATPOINTS\_BAD\_ARGS}, whatever the degree they are given
 (\texttt{find\_points\_clear} can be called as usual).
 
 Searches on different \texttt{ratpoints\_args} structures are independent
