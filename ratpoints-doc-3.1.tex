@@ -358,7 +358,9 @@ expected.
 runs the invocations of \texttt{ratpoints} collected in \texttt{test3.sh}
 (which check that the bugs fixed in version~2.2.4, and those found while
 version~3.0.0 was being developed, stay fixed) and
-compares the output against \texttt{testbase3}.
+compares the output against \texttt{testbase3}. The invocations that check
+the bugs fixed since then are at the end of \texttt{test4.sh}, where
+\texttt{verify-test4.py} checks the points they print by brute force.
 
 \begin{verbatim}
 > make test4
@@ -372,7 +374,9 @@ curves with no points modulo some prime or no admissible numerator modulo~$64$,
 forbidden divisors of every kind, every option, restricted denominator
 ranges and search intervals, height bounds from $1$ to~$2^{63}-1$ (those come
 with a denominator range of one and a narrow search interval, so that the
-run stays short), and every error message.  The output is compared against
+run stays short), and every error message the program can give but the one
+on a lack of memory, which \texttt{make testalloc} below provokes; it ends
+with the regression tests mentioned above.  The output is compared against
 \texttt{testbase4}; the whole test takes about a second.  Before each invocation
 the script prints its arguments, so that a failing test can be found from
 the difference between \texttt{test4.out} and \texttt{testbase4}.  The
@@ -430,9 +434,10 @@ When this was written the tests executed $99.5\%$ of the lines
 of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c},
 $97\%$ of~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is
 guards against states no caller can produce, the paths that a failure to
-create a thread or to get memory would take, arms that other compile-time
-settings reach (\texttt{test4configs} runs those builds, but this measures
-one), and a few conditions the arithmetic makes impossible.
+create a thread or to get memory would take (\texttt{make testalloc} below
+takes those of memory), arms that other compile-time settings reach
+(\texttt{test4configs} runs those builds, but this measures one), and a few
+conditions the arithmetic makes impossible.
 
 \begin{verbatim}
 > make testthreads
@@ -448,6 +453,8 @@ blocks into which the loop over the denominators is cut
 since the output must not depend on where the blocks end either.
 About a minute.
 
+\vfill\pagebreak % manual formatting
+
 \begin{verbatim}
 > make tsan
 \end{verbatim}
@@ -456,7 +463,41 @@ builds the library and the test programs in \texttt{build-tsan/} with
 (\texttt{tsan.sh}, which has the compiler flags): every output must match
 its reference, and the sanitizer must not report a data race. A few minutes.
 
-\vfill\pagebreak % manual formatting
+\begin{verbatim}
+> make sanitize
+\end{verbatim}
+builds the program and \texttt{rpapi} in \texttt{build-sanitize/} with
+\texttt{gcc}'s AddressSanitizer and UndefinedBehaviorSanitizer, every
+report being fatal, and runs \texttt{test4}, on one thread and with
+\verb+-t 3+, and \texttt{rpapi} on them (\texttt{sanitize.sh}, which has
+the compiler flags and the options of the sanitizers): every output must
+match its reference, and the sanitizers must report nothing. They see
+what is wrong and yet may leave every output right: a scan that runs past
+the end of an array, memory that is never freed, a signed overflow that
+happens to wrap around harmlessly, a double converted to a \texttt{long}
+it does not fit. So that a scan for a terminating zero that was never
+written runs off its array every time, AddressSanitizer fills the first
+megabyte of every allocation with non-zero bytes, not just the first 4096
+bytes. A minute or so.
+
+\begin{verbatim}
+> make testalloc
+\end{verbatim}
+checks what the library and the program do when memory runs out
+(\texttt{testalloc.sh}). The calls of \texttt{malloc}, \texttt{calloc} and
+\texttt{realloc} that the library and \texttt{main.c} make are sent through
+\texttt{rpalloc.c}, which makes the $n$-th of them fail, or every one from
+the $n$-th on, for $n = 1, 2, 3, \dots$ until $n$ has passed the last one;
+this needs the option \texttt{-{}-wrap} of GNU~\texttt{ld}, and without it
+the script says so and exits with status~2. A sequence of searches through
+the library, on one thread and on three, must deliver in every search the
+points that the same search delivers without failures, or the first so many
+of them and then return \texttt{RATPOINTS\_NO\_MEMORY}
+(Section~\ref{sec:library}); and a few runs of the program must print what
+they print without failures, or the first lines of that and then ``Not
+enough memory.'', with exit status~10. A crash, or a run that has not ended
+after a minute, fails the test. The memory of the gmp integers is gmp's and
+is left alone. Half a minute.
 
 \begin{verbatim}
 > make timing
@@ -479,7 +520,8 @@ tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
 change to the sieve rather than for checking that the build works. Neither
 are \texttt{testthreads} and \texttt{tsan}, which take longer than the rest
-together.
+together, nor \texttt{sanitize} and \texttt{testalloc}, which need the
+sanitizers and GNU~\texttt{ld}.
 
 \subsection{Install}
 
@@ -557,6 +599,9 @@ The archive contains the following files.
   \item \texttt{main.c, rptest.c, rpapi.c} --- the source code for the
         \texttt{ratpoints}, \texttt{rptest} and \texttt{rpapi} executables,
         respectively
+  \item \texttt{rpalloc.c} --- the source code for \texttt{rpalloc} and,
+        with \texttt{main.c}, for \texttt{ratpoints-alloc}, the programs
+        that \texttt{make testalloc} runs
   \item \texttt{testdata.h}, \texttt{testdata-many.h},
         \texttt{testdata-high-many.h}, \texttt{testdata-degrees.h} ---
         the curves used by the test runs
@@ -568,11 +613,13 @@ The archive contains the following files.
         \texttt{testbase4} (needs Python~3)
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
-        executable, as have the next five
+        executable, as have the next seven
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
         \texttt{make test4configs} and \texttt{make coverage} run
   \item \texttt{test4-threads.sh}, \texttt{tsan.sh} --- the second half of
         \texttt{make testthreads}, and what \texttt{make tsan} runs
+  \item \texttt{sanitize.sh}, \texttt{testalloc.sh} --- what
+        \texttt{make sanitize} and \texttt{make testalloc} run
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for

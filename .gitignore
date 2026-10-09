@@ -16,12 +16,16 @@
 /rptest-high-many
 /rptest-degrees
 /rpapi
+/rpalloc
+/ratpoints-alloc
 /bench_init
 /bench_check
 /tuning.mk
 /build-coverage/
 /build-test4-*/
 /build-tsan/
+/build-sanitize/
+/build-alloc/
 /build-nothreads/
 /build-threads-*/
 # output of the tests

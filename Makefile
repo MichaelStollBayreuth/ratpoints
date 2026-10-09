@@ -42,7 +42,9 @@
 #   test4       the invocations of test4.sh, the suite that exercises nearly
 #               every line of the code -- every degree and shape of curve,
 #               every option, restricted ranges, heights from 1 to 2^63-1,
-#               every error message -- against testbase4; a few seconds.
+#               every error message but that of a lack of memory -- and
+#               ends with the regression tests for the bugs fixed after
+#               those of test3, against testbase4; a few seconds.
 #               verify-test4.py checks that reference by brute force
 #   testapi     rpapi, the tests of the library interface that the program
 #               cannot reach (the argument checks and their error codes,
@@ -56,6 +58,18 @@
 #   coverage    build the sources instrumented for gcov in build-coverage/,
 #               run the tests through that build and print how much of each
 #               source file they executed (coverage.sh); a minute or so
+#   testthreads the suites with the sieve on several threads, and test4 and
+#               test1 on builds whose blocks of denominators end elsewhere
+#               (test4-threads.sh); a couple of minutes
+#   tsan        the threaded runs under ThreadSanitizer (tsan.sh); a few
+#               minutes
+#   sanitize    test4, on one thread and on three, and rpapi under
+#               AddressSanitizer and UndefinedBehaviorSanitizer (sanitize.sh),
+#               for what is wrong and yet leaves every output right: a read
+#               beyond an array, a signed overflow; a minute or so
+#   testalloc   the library and the program with the n-th allocation made to
+#               fail, or every one from the n-th on, for every n
+#               (testalloc.sh, rpalloc.c); needs GNU ld; half a minute
 #   tune        measure the four machine-dependent constants that decide how
 #               many primes each sieving stage uses and which, and write them
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
@@ -223,7 +237,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
             test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
-            rpapi.c testbase-api coverage.sh \
+            rpapi.c testbase-api coverage.sh sanitize.sh testalloc.sh rpalloc.c \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -241,7 +255,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
-              rptest-degrees rpapi ratpoints-debug \
+              rptest-degrees rpapi ratpoints-debug rpalloc ratpoints-alloc \
               bench_init bench_check ratpoints-doc-3.1.pdf
 
 FAILED = "Test failed!"
@@ -445,6 +459,27 @@ testthreads: rptest rptest-many rptest-degrees ratpoints testbase \
 tsan: testbase testbase-many testbase-degrees testbase-api testbase4 tsan.sh
 	./tsan.sh
 
+# test4, on one thread and with -t 3, and rpapi under AddressSanitizer and
+# UndefinedBehaviorSanitizer (sanitize.sh: a build with both in
+# build-sanitize/, every report fatal; every output must match its
+# reference and the sanitizers must report nothing; a minute or so).
+# They see what the comparisons with the references cannot: a scan that
+# runs past the end of an array, memory that is never freed, a signed
+# overflow, a double converted to a long it does not fit.
+.PHONY: sanitize
+sanitize: testbase4 testbase-api test4.sh sanitize.sh
+	./sanitize.sh
+
+# The library and the program when memory runs out (testalloc.sh: rpalloc.c
+# makes the n-th allocation fail, or every one from the n-th on, for
+# n = 1, 2, 3, ... until none is left; every search must deliver the points
+# it delivers without failures, or the first of them and then report the
+# lack of memory; the script exits with 2 when the linker has no --wrap;
+# half a minute).
+.PHONY: testalloc
+testalloc: testalloc.sh rpalloc.c
+	CC='${CC}' ./testalloc.sh
+
 # test4 on the library built with the other compile-time switches, each in
 # a build directory of its own (see test4-configs.sh; the script exits with
 # 1 when an output differs from the reference, with 2 when a build failed).
@@ -495,7 +530,8 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
-	${RM} -r build-coverage build-test4-* build-threads-* build-tsan
+	${RM} -r build-coverage build-test4-* build-threads-* build-tsan \
+	         build-sanitize build-alloc
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk
@@ -576,6 +612,21 @@ rptest-degrees: libratpoints.a rptest.c ratpoints.h testdata-degrees.h \
 
 rpapi: libratpoints.a rpapi.c ratpoints.h build.stamp
 	${CC} rpapi.c -o rpapi ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+# The two programs of "make testalloc" (see rpalloc.c): rpalloc runs searches
+# through the library, ratpoints-alloc is the program, and in both the calls
+# of malloc, calloc and realloc that the library and main.c make go to
+# rpalloc.c, which makes them fail when asked to.  GNU ld's option --wrap
+# does the redirection.
+WRAPFLAGS = -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc
+
+rpalloc: libratpoints.a rpalloc.c ratpoints.h build.stamp
+	${CC} rpalloc.c -o rpalloc ${CCFLAGS_0} ${WRAPFLAGS} ${CCFLAGS2} \
+	      ${CCFLAGS3} ${CCFLAGS}
+
+ratpoints-alloc: libratpoints.a main.c rpalloc.c ratpoints.h build.stamp
+	${CC} main.c rpalloc.c -o ratpoints-alloc -DRPALLOC_PROGRAM ${CCFLAGS_0} \
+	      ${WRAPFLAGS} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 # What is compiled depends on flags, which make cannot see by itself: change
 # CCFLAGS1 or PRIME_SIZE, or retune, and every file must be built again even

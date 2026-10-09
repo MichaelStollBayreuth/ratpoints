@@ -9,9 +9,10 @@
 # admissible numerator modulo 64, curves with and without forbidden
 # divisors of the denominator, every command-line option, restricted
 # denominator ranges and search intervals, height bounds from 1 to 2^63 - 1,
-# and every error the program reports about its input.  It runs in a few
-# seconds; the heights are small, and the large ones come with a narrow
-# search interval and a denominator range of one.
+# and every error the program reports about its input (testalloc.sh
+# provokes the one on a lack of memory).  It runs in a few seconds; the
+# heights are small, and the large ones come with a narrow search interval
+# and a denominator range of one.
 #
 # The reference was checked independently: verify-test4.py reads testbase4,
 # and for every invocation whose output is a list of points it searches all
