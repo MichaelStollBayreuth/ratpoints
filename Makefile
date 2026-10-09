@@ -49,6 +49,8 @@
 #   testapi     rpapi, the tests of the library interface that the program
 #               cannot reach (the argument checks and their error codes,
 #               the callback, the flags), against testbase-api
+#   testinit    every sieve table init.c builds, against a direct evaluation
+#               of its definition (bench_init.c); a fraction of a second
 #   test4configs  test4 again on the library built with the other
 #               compile-time switches: register widths 64, 128, 512,
 #               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7,
@@ -249,7 +251,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
             test3.out rptest-once.out rptest-once2.out rptest-once3.out \
-            test4.out testapi.out test4-*.out \
+            test4.out testapi.out testinit.out test4-*.out \
             rptest-t2.out rptest-t5.out rptest-many-t3.out \
             rptest-degrees-t4.out test3-t3.out rptest-threads-*.out
 
@@ -272,7 +274,8 @@ doc: ratpoints-doc-3.1.pdf
 # (make then exits with status 2 and names the target); "make test" runs
 # every suite whatever the earlier ones did and fails at the end if any of
 # them failed.
-TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi timing
+TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi testinit \
+        timing
 
 .PHONY: test
 test:
@@ -425,6 +428,13 @@ test4: ratpoints testbase4 test4.sh
 testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
 	cmp -s testbase-api testapi.out || ${FAIL}
+
+# The sieve tables of init.c, every prime and every class of the
+# denominator, against a direct evaluation of their definition (see
+# bench_init.c); the benchmark that follows the check runs once, and its
+# time is not looked at.
+testinit: bench_init
+	./bench_init 1 > testinit.out 2>&1 || ${FAIL}
 
 # The suites with the sieve on several threads (the option -t): the same
 # references, since what the program prints must not depend on the number

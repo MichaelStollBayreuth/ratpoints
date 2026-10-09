@@ -402,6 +402,14 @@ searches on one initialized structure
 \texttt{testbase-api}.
 
 \begin{verbatim}
+> make testinit
+\end{verbatim}
+builds \texttt{bench\_init} and compares every sieve table that
+\texttt{init.c} builds, for every prime and every class of the
+denominator, word for word with a direct evaluation of its definition
+(\texttt{bench\_init.c}); it takes a fraction of a second.
+
+\begin{verbatim}
 > make test4configs
 \end{verbatim}
 runs \texttt{test4} again on the library built with each of the other
@@ -514,7 +522,7 @@ Finally,
 \end{verbatim}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
-\texttt{testapi} and \texttt{timing},
+\texttt{testapi}, \texttt{testinit} and \texttt{timing},
 and fails at the end if any of them failed, so that a script can
 tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
@@ -2196,7 +2204,8 @@ the extremes of the input, and a new value of one tuning constant.
         integers, and the regression invocations for all of the above are at
         the end of \texttt{test4.sh}, where \texttt{verify-test4.py} checks
         them by brute force (Section~\ref{sec:tests}). \texttt{bench\_init}
-        builds and checks the sieve tables again.
+        builds again, and \texttt{make test} runs its check of the sieve
+        tables (\texttt{testinit}).
   \item \emph{Tuning.} The compiled-in threshold
         \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD} is $0.002$ instead of
         $0.003$, which two faster machines found best and which costs nothing
