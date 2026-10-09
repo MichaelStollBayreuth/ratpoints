@@ -38,7 +38,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{3.1.0} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{3.1.1} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -47,6 +47,13 @@
 \setlength{\parindent}{0mm}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% No page break between a verbatim block and the paragraph after it: the
+% command lines of Section 4 stay with their descriptions.
+\makeatletter
+\let\rp@verbatim\verbatim
+\def\verbatim{\@endparpenalty\@M\rp@verbatim}
+\makeatother
 
 \begin{document}
 
@@ -57,7 +64,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{September 24, 2026}
+\date{October 9, 2026}
 
 \maketitle
 
@@ -97,8 +104,10 @@ of curve and the height bound). Because of this substantial overall
 improvement and the change in the development workflow, I decided to
 increase the major version number from 2 to~3, even though many of
 the optimizations are incremental and there are few really new ideas involved.
-The current version~3.1.0 adds the option to run the sieve on several
+Version~3.1.0 added the option to run the sieve on several
 threads (Sections~\ref{sec:threads} and~\ref{sec:library}).
+The current version~3.1.1 fixes some bugs that were discovered while preparing
+for a verified version in~Lean.
 
 Note that version~2.2.4 is the last one that supports 32-bit architectures;
 versions 3.0.0 and up need a word size of 64~bit.
@@ -136,7 +145,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-3.1.0.tar.gz
+> tar xzf ratpoints-3.1.1.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -149,7 +158,7 @@ repository mentioned above into a directory of your choice (and replace
 Do
 
 \begin{verbatim}
-> cd ratpoints-3.1.0
+> cd ratpoints-3.1.1
 > make all
 \end{verbatim}
 
@@ -292,8 +301,6 @@ message \texttt{Test failed!} will be displayed (on its own on a line) and
 the target fails, so that \texttt{make} exits with an error and names the
 test.
 
-\vfill\pagebreak % manual formatting
-
 \begin{verbatim}
 > make test1once
 \end{verbatim}
@@ -358,7 +365,9 @@ expected.
 runs the invocations of \texttt{ratpoints} collected in \texttt{test3.sh}
 (which check that the bugs fixed in version~2.2.4, and those found while
 version~3.0.0 was being developed, stay fixed) and
-compares the output against \texttt{testbase3}.
+compares the output against \texttt{testbase3}. The invocations that check
+the bugs fixed since then are at the end of \texttt{test4.sh}, where
+\texttt{verify-test4.py} checks the points they print by brute force.
 
 \begin{verbatim}
 > make test4
@@ -372,13 +381,18 @@ curves with no points modulo some prime or no admissible numerator modulo~$64$,
 forbidden divisors of every kind, every option, restricted denominator
 ranges and search intervals, height bounds from $1$ to~$2^{63}-1$ (those come
 with a denominator range of one and a narrow search interval, so that the
-run stays short), and every error message.  The output is compared against
+run stays short), and every error message the program can give but the one
+on a lack of memory, which \texttt{make testalloc} below provokes; it ends
+with the regression tests mentioned above.  The output is compared against
 \texttt{testbase4}; the whole test takes about a second.  Before each invocation
 the script prints its arguments, so that a failing test can be found from
 the difference between \texttt{test4.out} and \texttt{testbase4}.  The
 reference was checked independently of the sieve: \texttt{verify-test4.py}
 reads it and, for every invocation that prints points, searches every
-coprime pair~$(a, b)$ in the range by brute force, in arbitrary precision;
+coprime pair~$(a, b)$ in the range by brute force, in arbitrary precision,
+and for every invocation that tests the arguments, it works out from the
+rules for them (Section~\ref{sec:usage}) whether the program has to refuse
+them, and with which exit status and message;
 it can be run again whenever the reference changes (it needs Python~3, and
 PARI/GP for the 19~searches, on two curves, that are too large for it).
 
@@ -389,9 +403,18 @@ runs \texttt{rpapi}, a program that tests what the library offers and the
 command-line program cannot reach: the checks that
 \texttt{find\_points\_work} makes on its arguments and the error codes it
 returns, a callback that stops the search or declines a point, the flags,
-and a sequence of searches on one initialized structure
+more search intervals than the command line takes, and a sequence of
+searches on one initialized structure
 (Section~\ref{sec:library}); the output is compared against
 \texttt{testbase-api}.
+
+\begin{verbatim}
+> make testinit
+\end{verbatim}
+builds \texttt{bench\_init} and compares every sieve table that
+\texttt{init.c} builds, for every prime and every class of the
+denominator, word for word with a direct evaluation of its definition
+(\texttt{bench\_init.c}); it takes a fraction of a second.
 
 \begin{verbatim}
 > make test4configs
@@ -401,7 +424,9 @@ compile-time switches: the register widths 64, 128 (both variants) and
 512 (emulated); \texttt{RATPOINTS\_CHUNK=1}, one register in the first
 stage; \texttt{USE\_LONG\_IN\_PHASE\_2}, the second stage one word at a
 time; \texttt{PRIME\_SIZE} 7 and~9, the smaller and the larger prime table;
-and composite moduli off and unbounded.  Each is
+composite moduli off and unbounded; and \texttt{RP\_NO\_INT128}, the forms
+for a compiler without a 128-bit integer type, which gcc and clang have on
+every 64-bit machine.  Each is
 built in a directory of its own, so that the build in the working
 directory is left alone (\texttt{test4-configs.sh}); the points found
 must not depend on any of these, so every build is compared against the
@@ -420,13 +445,14 @@ and~\texttt{timing}, which add nothing but minutes) and prints,
 for each source file, the lines executed
 and the branches taken at least once (\texttt{coverage.sh}); the
 annotated sources are left in that directory.
-When this was written the tests executed $99.5\%$ of the lines
-of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c}
-and~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is guards
-against states no caller can produce, the paths that a failure to create a
-thread or to get memory would take, arms that other compile-time settings
-reach (\texttt{test4configs} runs those builds, but this measures one), and
-a few conditions the arithmetic makes impossible.
+When this was written the tests executed $99.4\%$ of the lines
+of~\texttt{find\_points.c}, $96\%$ of~\texttt{sift.c}, all of~\texttt{init.c},
+$97\%$ of~\texttt{sturm.c} and $99\%$ of~\texttt{main.c}; what is left is
+guards against states no caller can produce, the paths that a failure to
+create a thread or to get memory would take (\texttt{make testalloc} below
+takes those of memory), arms that other compile-time settings reach
+(\texttt{test4configs} runs those builds, but this measures one), and a few
+conditions the arithmetic makes impossible.
 
 \begin{verbatim}
 > make testthreads
@@ -450,7 +476,41 @@ builds the library and the test programs in \texttt{build-tsan/} with
 (\texttt{tsan.sh}, which has the compiler flags): every output must match
 its reference, and the sanitizer must not report a data race. A few minutes.
 
-\vfill\pagebreak % manual formatting
+\begin{verbatim}
+> make sanitize
+\end{verbatim}
+builds the program and \texttt{rpapi} in \texttt{build-sanitize/} with
+\texttt{gcc}'s AddressSanitizer and UndefinedBehaviorSanitizer, every
+report being fatal, and runs \texttt{test4}, on one thread and with
+\verb+-t 3+, and \texttt{rpapi} on them (\texttt{sanitize.sh}, which has
+the compiler flags and the options of the sanitizers): every output must
+match its reference, and the sanitizers must report nothing. They see
+what is wrong and yet may leave every output right: a scan that runs past
+the end of an array, memory that is never freed, a signed overflow that
+happens to wrap around harmlessly, a double converted to a \texttt{long}
+it does not fit. So that a scan for a terminating zero that was never
+written runs off its array every time, AddressSanitizer fills the first
+megabyte of every allocation with non-zero bytes, not just the first 4096
+bytes. A minute or so.
+
+\begin{verbatim}
+> make testalloc
+\end{verbatim}
+checks what the library and the program do when memory runs out
+(\texttt{testalloc.sh}). The calls of \texttt{malloc}, \texttt{calloc} and
+\texttt{realloc} that the library and \texttt{main.c} make are sent through
+\texttt{rpalloc.c}, which makes the $n$-th of them fail, or every one from
+the $n$-th on, for $n = 1, 2, 3, \dots$ until $n$ has passed the last one;
+this needs the option \texttt{-{}-wrap} of GNU~\texttt{ld}, and without it
+the script says so and exits with status~2. A sequence of searches through
+the library, on one thread and on three, must deliver in every search the
+points that the same search delivers without failures, or the first so many
+of them and then return \texttt{RATPOINTS\_NO\_MEMORY}
+(Section~\ref{sec:library}); and a few runs of the program must print what
+they print without failures, or the first lines of that and then ``Not
+enough memory.'', with exit status~10. A crash, or a run that has not ended
+after a minute, fails the test. The memory of the gmp integers is gmp's and
+is left alone. Half a minute.
 
 \begin{verbatim}
 > make timing
@@ -467,13 +527,14 @@ Finally,
 \end{verbatim}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
-\texttt{testapi} and \texttt{timing},
+\texttt{testapi}, \texttt{testinit} and \texttt{timing},
 and fails at the end if any of them failed, so that a script can
 tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
 change to the sieve rather than for checking that the build works. Neither
 are \texttt{testthreads} and \texttt{tsan}, which take longer than the rest
-together.
+together, nor \texttt{sanitize} and \texttt{testalloc}, which need the
+sanitizers and GNU~\texttt{ld}.
 
 \subsection{Install}
 
@@ -551,6 +612,9 @@ The archive contains the following files.
   \item \texttt{main.c, rptest.c, rpapi.c} --- the source code for the
         \texttt{ratpoints}, \texttt{rptest} and \texttt{rpapi} executables,
         respectively
+  \item \texttt{rpalloc.c} --- the source code for \texttt{rpalloc} and,
+        with \texttt{main.c}, for \texttt{ratpoints-alloc}, the programs
+        that \texttt{make testalloc} runs
   \item \texttt{testdata.h}, \texttt{testdata-many.h},
         \texttt{testdata-high-many.h}, \texttt{testdata-degrees.h} ---
         the curves used by the test runs
@@ -562,11 +626,13 @@ The archive contains the following files.
         \texttt{testbase4} (needs Python~3)
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
-        executable, as have the next five
+        executable, as have the next seven
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
         \texttt{make test4configs} and \texttt{make coverage} run
   \item \texttt{test4-threads.sh}, \texttt{tsan.sh} --- the second half of
         \texttt{make testthreads}, and what \texttt{make tsan} runs
+  \item \texttt{sanitize.sh}, \texttt{testalloc.sh} --- what
+        \texttt{make sanitize} and \texttt{make testalloc} run
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
@@ -583,7 +649,7 @@ The archive contains the following files.
 
 %=========================================================================
 
-\section{How to use \texttt{ratpoints}}
+\section{How to use \texttt{ratpoints}}\label{sec:usage}
 
 \subsection{Basic operation}
 
@@ -597,8 +663,14 @@ The command to search for the points is then
 \verb+> ratpoints '+$a_0$ $a_1$ \dots $a_{n-1}$ $a_n$\verb+' +$H$
 
 The first argument to \texttt{ratpoints} is the list of the coefficients,
-which have to be integers, are separated by spaces, and are listed
-starting with the constant term. There is no bound on the size of the
+which have to be integers, are separated by blanks, and are listed
+starting with the constant term. Each coefficient is an optional sign
+followed by at least one digit and nothing else; the blanks between them,
+and any before the first and after the last, may be any white space:
+spaces, tabs, line feeds, carriage returns, vertical tabs and form feeds.
+The program refuses any other list with an error message, so that, say,
+\verb+'1 0 1.5'+ or \verb+'1 2 - 3'+ is not read as some other
+polynomial. There is no bound on the size of the
 coefficients; they are read as multi-precision integers.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
@@ -606,7 +678,11 @@ The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
-(e.g., if you specify two leading zero coefficients).
+(e.g., if you specify two leading zero coefficients), and when it cannot
+get the memory for the search (``Not enough memory.''). The memory of the
+multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
+cannot get it, it prints its own message and ends the program, and with
+several threads (option~\verb+-t+) that is often what happens first.
 
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.
@@ -614,6 +690,15 @@ Some of the options have arguments, others don't; the ordering of
 the options and option-argument pairs is largely arbitrary.
 The exceptions are options with opposite effect, where the last one given counts,
 and the specification of the search intervals, which must be given in increasing order.
+Where an option takes a number, its argument must be that number and nothing
+else, but for white space before and after it (so that a script with DOS
+line ends, which leave a carriage return on the last argument of a line,
+still works): an integer between~$-2^{63}$ and~$2^{63}-1$ (the range of a
+\texttt{long}) where the option takes an integer, and where it takes a real
+number, one that may be infinite (\verb+inf+, \verb+-inf+) but is not NaN. The
+program refuses any other argument with an error message, as it does a height
+bound that is not an integer from~$1$ to~$2^{63}-1$ (with the same white
+space allowed).
 
 \subsection{Early abort}
 
@@ -667,6 +752,9 @@ There are various ways to change this behavior.
         {\em string-before} is output. Then every point is printed
         according to {\em format}. Between any two points, {\em string-between}
         is output, and after the last point, {\em string-after} is output.
+        When no point is printed, because there is none or because
+        of~\verb+-z+, {\em string-before} and {\em string-after} are output
+        one after the other.
 
         As an example, consider the effect of \\
         \strut\quad\verb+-f "[%x,%y,%z]" -fs "{" -fm "," -fe "}\n"+
@@ -690,6 +778,29 @@ The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
 to~$+\infty$. The number $k$ of intervals is bounded by
 \texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+The ends are taken exactly as the numbers given, whether or not they are
+double-precision numbers: \verb+-l 1.6+ means~$8/5$, which no double is
+(the double nearest to it is a little larger), and
+\verb+-u 9007199254740993+ means~$2^{53}+1$. An end may be written as an
+integer or a decimal fraction, with or without an exponent (\verb+-3+,
+\verb+16e-1+, \verb+.5+, \verb+2.+), as a hexadecimal floating-point
+number, which stands for the fraction with a power of~$2$ as denominator
+that it denotes (\verb+0x1.8p3+ is~$12$), or as \verb+-inf+ or \verb+inf+.
+A number beyond the range of a double counts as an infinite end, and one
+other than~$0$ too small for a double as plus or minus half the smallest
+positive double; either lies on the same side of every $x$-coordinate of
+the search as the number itself. The intervals must come in increasing
+order with these ends, $l_i \le u_i < l_{i+1}$:
+\verb+-u 0.33333333333333333 -l 0.33333333333333334+ is accepted, as the
+two ends lie on either side of~$1/3$, although one double is the nearest
+to both, and the other way round it is refused. A point is searched for
+when its $x$-coordinate lies in one of these intervals. The library takes
+the ends of the intervals it is given exactly as the doubles they are
+(Section~\ref{sec:library}); so the program gives it, for each end, the
+double next to it on the outer side (two intervals whose doubles meet
+become one), and it neither prints nor counts the points the library
+finds outside the intervals of the command line: \verb+-1+ prints the
+first point inside them.
 
 \subsection{Using several threads}\label{sec:threads}
 
@@ -706,7 +817,12 @@ So the output is the same, line for line, however many threads are used,
 including the reports of~\verb+-v+ and what \verb+-1+ finds: the sieving
 parameters are chosen and revised from the same counts on the same
 schedule, and the first point is the first point of the sequential
-program, not the first one found in time. At most $33$ threads sieve at
+program, not the first one found in time. The points of the earliest
+block not yet printed are printed as they are found, so \verb+-1+ ends
+the search at once, as on one thread: when its point is printed, each
+thread leaves its block after the stretch of numerators it is sieving
+(at most \texttt{array\_size} bit arrays, Section~\ref{sec:library}),
+however long the block is. At most $33$ threads sieve at
 once, so \verb+-t 0+ on a machine with more processors uses~$33$; a
 build for more cores is described in Section~\ref{sec:build}. On a
 processor with hyperthreading, one thread per physical core is the better
@@ -855,6 +971,10 @@ program computes a Sturm sequence for the polynomial and uses it in order
 to find a union of intervals that contains the intervals of positivity
 of the polynomial. This is done by a successive subdivision of the
 interval $]{-\infty}, +\infty[$. The number~$S$ sets the recursion depth.
+It is at most~$55$, whatever is asked for: up to that depth the ends of
+the intervals, fractions with a power of~$2$ as denominator, are exact as
+double-precision numbers, as they must be for the union to contain the
+intervals of positivity.
 $S$ can be omitted; then it is given a default value. The option
 \verb+-s+ skips the Sturm sequence computation completely. This also has
 the effect of removing most of the check for squarefreeness.
@@ -959,8 +1079,10 @@ To prevent the reversal, set the \texttt{RATPOINTS\_NO\_REVERSE} bit
 in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
-degree or the height bound to be nonpositive; in this case the function
-returns the value \texttt{RATPOINTS\_BAD\_ARGS}.
+degree to be nonpositive or larger than \texttt{RATPOINTS\_MAX\_DEGREE}
+(defined in \texttt{ratpoints.h}, $100$ by default), or for the height
+bound to be nonpositive; in this case the function returns the value
+\texttt{RATPOINTS\_BAD\_ARGS}.
 
 The field \texttt{domain} must contain a pointer to an array of
 \texttt{ratpoints\_interval} structures of length at least \texttt{num\_inter}
@@ -973,12 +1095,25 @@ typedef struct {double low; double up;} ratpoints_interval;
 \end{verbatim}
 
 the meaning of this should be clear. In \texttt{ratpoints}, this is set
-via the \verb+-l+ and \verb+-u+ options. Usually, you do not want to
+via the \verb+-l+ and \verb+-u+ options. The intervals are closed, and as on
+the command line they must be given in increasing order and be disjoint:
+$\texttt{low} \le \texttt{up}$ for each, and each one ends below the start
+of the next (so two intervals that meet in an end must be given as one).
+An end may be infinite, but not NaN; intervals that break these rules make
+the call return \texttt{RATPOINTS\_BAD\_ARGS}. The ends are taken exactly:
+the search takes the $x = a/b$ with $\texttt{low} \le x \le \texttt{up}$ for
+one of the intervals. For an end that is not a double, such as~$8/5$, the
+program \texttt{ratpoints} passes the double next to it on the outer side
+and drops in its callback the points beyond the end itself
+(Section~\ref{sec:usage}). There may be any number of intervals (the
+search keeps its copies of them on the heap, not on the stack).
+Usually, you do not want to
 restrict the range of $x$-coordinates; then you set \texttt{num\_inter = 0}
 (but you still have to fill \texttt{domain} with a valid pointer to at least
 \texttt{degree} intervals; a null pointer makes the call return
 \texttt{RATPOINTS\_BAD\_ARGS}, since the program stores the default
-interval $]-\texttt{height}, \texttt{height}[$ there. If \texttt{sturm} is
+interval $[-\texttt{height}, \texttt{height}]$ there, with its ends rounded
+outward when \texttt{height} is not a double. If \texttt{sturm} is
 negative, one interval is enough.)
 The program intersects the given intervals with the region where $f$ is
 positive (unless \texttt{sturm} has a negative value, which may lead to a
@@ -1030,13 +1165,16 @@ Similar statements are true for~\texttt{num\_primes} (option~\verb+-p+),
 \texttt{sturm} (options \verb+-s+, \verb+-S+) and~\texttt{max\_forbidden}
 (option~\verb+-F+). Note that a non-negative \texttt{num\_primes} is a hard
 limit: only when it is negative does the program look at further primes of
-its own accord for a curve that needs them. The field~\texttt{array\_size} specifies the maximal size
+its own accord for a curve that needs them. Like~\verb+-S+, \texttt{sturm}
+is at most~$55$; a larger value counts as~$55$. The field~\texttt{array\_size} specifies the maximal size
 (in bit arrays; a bit array
 contains 64, 128, 256 or~512 bits, depending on the configuration) of the
 array that is used in the first sieving stage. If non-positive, it is
-set to a default value. The various default values are defined at the
-beginning of the header file~\texttt{ratpoints.h}, where also the maximal
-degree of the polynomial is set.
+set to a default value, and a value above~$2^{20}$ is reduced to~$2^{20}$:
+every sieving thread allocates an array of that many bit arrays. The various
+default values are defined at the beginning of the header
+file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial is
+set.
 
 \texttt{num\_threads} says how many threads sieve (option~\verb+-t+,
 Section~\ref{sec:threads}): $1$ or~$0$, the calling thread alone; $n \ge 2$,
@@ -1048,8 +1186,10 @@ that searches many curves should use the \texttt{find\_points\_init},
 \texttt{find\_points\_work}, \texttt{find\_points\_clear} sequence
 described below rather than \texttt{find\_points}, which creates and ends
 them on every call. A call with another value of \texttt{num\_threads}
-replaces them. If the threads cannot be created, the calling thread sieves
-alone. No more than $33$ threads are created, whatever the field says,
+replaces them. If the threads cannot be created, or one of them cannot get
+the array it sieves in for a search, the calling thread sieves alone (the
+threads stay for later calls). No more than $33$ threads are created,
+whatever the field says,
 unless the library is built for more (Section~\ref{sec:build}). A library
 built without threads (\texttt{make THREADS=0}) ignores the field.
 
@@ -1096,13 +1236,35 @@ for counting the points; usually it will be~1.
 Whatever \texttt{num\_threads} says, \texttt{proc} is called from the
 thread that called \texttt{find\_points}, never from a sieving thread, and
 for the same points in the same order as a single thread finds them; the
-return value of \texttt{find\_points} and the point at which \texttt{*quit}
-takes effect are the same as well. So \texttt{proc} and \texttt{info} need
-no protection against concurrent calls. A sieving thread keeps the points
+return value of \texttt{find\_points}, the point at which \texttt{*quit}
+takes effect and what the three \texttt{\_used} fields report are the same
+as well. So \texttt{proc} and \texttt{info} need
+no protection against concurrent calls. The points of the earliest block
+not yet delivered are delivered as they are found, and a stop takes effect
+at once, as on one thread: when \texttt{proc} sets \texttt{*quit}, each
+sieving thread leaves its block after the stretch of numerators it is
+sieving (at most \texttt{array\_size} bit arrays), and the search returns.
+A sieving thread keeps the points
 it finds until every earlier block of the search has been delivered; if it
 cannot get the memory for that, the search fails with the return value
 \texttt{RATPOINTS\_NO\_MEMORY} rather than deliver fewer points than it
-found.
+found, unless \texttt{*quit} stops it before the first point that could
+not be kept.
+
+\texttt{RATPOINTS\_NO\_MEMORY} is also returned when the search cannot get
+the memory for its sieving tables or its arrays; the points delivered
+before are points of the curve, but the search is incomplete. The arrays
+the search allocated for itself are freed by then, but what the structure
+holds for the searches after it --- the memory of
+\texttt{find\_points\_init}, the buffers a search enlarges, and the sieving
+threads with their memory --- stays until \texttt{find\_points\_clear},
+which a caller short of memory can call, followed by
+\texttt{find\_points\_init}, before trying again. If
+\texttt{find\_points\_init} cannot get its memory, it frees what it got,
+and \texttt{find\_points\_work} then returns \texttt{RATPOINTS\_NO\_MEMORY}
+(\texttt{find\_points\_clear} can be called as usual). The memory of the
+gmp integers is gmp's: when gmp cannot get it, by default it prints a
+message and ends the program.
 
 The usual framework for using \texttt{find\_points} is as follows.
 
@@ -1164,6 +1326,9 @@ int main(int argc, char *argv[])
 
   data *info = malloc(sizeof(data));
 
+  if(info == NULL)
+  { ... } /* not enough memory */
+
   /* initialize multi-precision integer variables */
   for(n = 0; n <= degree; n++) { mpz_init(c[n]); }
 
@@ -1205,6 +1370,8 @@ int main(int argc, char *argv[])
     { ... }
     if(total == RATPOINTS_BAD_ARGS)
     { ... }
+    if(total == RATPOINTS_NO_MEMORY)
+    { ... } /* the search is incomplete */
 
     (...)
 
@@ -1239,6 +1406,15 @@ else changes from curve to curve) need to be set; the other input fields
 keep their values across calls. \texttt{rptest.c} with
 the \verb+-O+~option does exactly this, and \texttt{make test1once} checks
 that the points found are the same as with the fields set once per curve.
+
+\texttt{find\_points\_init} sizes part of the memory by the degree, so the
+searches can be of that degree or a smaller one (a larger one makes
+\texttt{find\_points\_work} return
+\texttt{RATPOINTS\_WORK\_LENGTH\_TOO\_SMALL}). Given a degree that is
+negative or larger than \texttt{RATPOINTS\_MAX\_DEGREE}, it allocates
+nothing, and the calls of \texttt{find\_points\_work} that follow return
+\texttt{RATPOINTS\_BAD\_ARGS}, whatever the degree they are given
+(\texttt{find\_points\_clear} can be called as usual).
 
 Searches on different \texttt{ratpoints\_args} structures are independent
 of each other: the library keeps no state outside the structure (its
@@ -1670,7 +1846,9 @@ offset from the run length it is scaled by.
 
 Should you prefer to do it by hand, the constants can be given for a single
 run with \verb+-r+, \verb+-R+, \verb+-U+, \verb+-C+ and \verb+-Q+, which
-\texttt{ratpoints} and \texttt{rptest} both accept, and hard-coded by
+\texttt{ratpoints} and \texttt{rptest} both accept (\texttt{rptest} reads
+the numbers of its options by the same rules, and ends at once, printing
+nothing, on one it cannot read), and hard-coded by
 changing the definitions in \texttt{ratpoints.h} (followed by \texttt{make
 distclean all test}). \texttt{rptest -z -T} prints the CPU time of a run and
 nothing else, which is what \texttt{tune.sh} uses; \verb+-h+~$H$ changes its
@@ -1961,15 +2139,91 @@ several threads.
         (Section~\ref{sec:tests}).
 \end{itemize}
 
-\textbf{Since version 3.1.0} (in the repository, to appear in the next
-release): the compiled-in threshold \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD}
-is $0.002$ instead of $0.003$, which two faster machines found best and
-which costs nothing on the author's laptop; on an Intel i7-13700K it makes
-the random test curves $4.6\%$ faster at $16383$ and $2.2\%$ at
-$2\cdot10^5$ and changes nothing on the point-rich ones
-(Section~\ref{sec:retune}), and the ladder of \texttt{tune.sh} brackets the
-new value. The manual now says that one thread per physical core beats one
-per hardware thread (Section~\ref{sec:threads}).
+\textbf{Version 3.1.1} was released October 9, 2026. It fixes bugs that a
+review of the code turned up while a verified version in Lean was being
+prepared, most of them at the extremes of the input, and gives one tuning
+constant a new value.
+\begin{itemize}
+  \item \emph{The search intervals are taken exactly.} The library takes each
+        end as the double it is given and searches exactly the numerators~$a$
+        with $l \le a/b \le u$; the program takes each end as the number
+        written, so that \verb+-l 1.6+ means $8/5$, gives the library the
+        double on the outer side of it, and drops the points outside the given
+        intervals before it prints them (Section~\ref{sec:usage}). The bounds
+        used to be products rounded to doubles: two adjacent intervals could
+        report a point twice that lay in neither (\texttt{ratpoints '-1 0 9'
+        10 -u 0.3333333333333333 -l 0.33333333333333337} printed $(1:0:3)$
+        twice), above~$2^{53}$ a point next to an end, the caller's or the
+        Sturm step's, could be cut off, an end that rounded to~$2^{63}$ made
+        the run endless, and a NaN end made it endless or searched the whole
+        box.
+  \item \emph{The input is checked.} The library returns
+        \texttt{RATPOINTS\_BAD\_ARGS} for search intervals that are not as
+        Section~\ref{sec:library} requires (no end NaN, $l \le u$, increasing
+        and disjoint) --- overlapping ones used to give duplicates, unsorted
+        ones to lose points --- and for a degree above
+        \texttt{RATPOINTS\_MAX\_DEGREE}, which used to overflow or crash. The
+        program reads every number whole and refuses what does not fit: a
+        height bound of $10^{23}$ used to be taken as $2^{63}-1$, and
+        \texttt{1e5} as~$1$; the coefficients must be integers separated by
+        blanks (\texttt{'1 2 3 - 4'} searched $y^2 = 4x^4 + 3x^2 + 2x + 1$),
+        with a message of their own and exit status~$11$. A first \verb+-u+
+        below the search box with no \verb+-l+ before it is the interval
+        $]{-\infty}, u]$, as a last \verb+-l+ above it with no \verb+-u+ is
+        $[l, \infty[$, instead of an error.
+  \item \emph{The Sturm step.} Its depth (\verb+-S+, the field
+        \texttt{sturm}) counts at most~$55$, the largest at which the ends of
+        the intervals it finds are doubles exactly; at the depths $56$
+        to~$62$ rounded ends lost points (\texttt{ratpoints '1 -103' 200 -S
+        62} missed $(1:0:103)$). Its sign tests use \texttt{mpz\_sgn} instead
+        of relying on \texttt{gmp.h} to turn \texttt{mpz\_cmp\_si(x, 0)} into
+        it.
+  \item \emph{A leading coefficient of $-2^{63}$} made the Jacobi symbol test
+        negate it as a \texttt{long}; such a search hung once the
+        denominators passed~$2^{32}$.
+  \item \emph{Threads.} A stop by \texttt{*quit} or \verb+-1+ takes effect at
+        once on several threads, as it does on one; it used to wait until the
+        whole block was sieved, so that a search of at most 16~steps at a huge
+        height did not return with \verb+-t+. A stop in the block where a
+        revision of the moduli takes effect reports the same
+        \texttt{sp2\_used} and \texttt{sp3\_used} on several threads as on
+        one, and a sieving thread's failed allocation after the stop no longer
+        fails a search that one thread completes.
+  \item \emph{Memory.} When memory runs out, \texttt{find\_points} returns
+        \texttt{RATPOINTS\_NO\_MEMORY} instead of crashing, and the program
+        prints ``Not enough memory.''\ with exit status~$10$ (\texttt{gmp}'s
+        own allocations excepted). Any number of search
+        intervals can be given to the library (a few hundred thousand used to
+        overflow the stack), and \texttt{array\_size} is capped at~$2^{20}$.
+  \item \emph{Undefined behaviour.} Signed overflow at the extremes of the
+        height bound and of the tuning fields of \texttt{ratpoints\_args} is
+        gone, and for odd degree the set-up of the denominator loop no longer
+        reads uninitialized memory (which changed no point).
+  \item \emph{Output.} With \verb+-z+, the \verb+-fs+ string is printed in
+        every run, in place of the points, as the \verb+-fe+ string always
+        was. The manual used to call the default interval open; it is the
+        closed $[-\texttt{height}, \texttt{height}]$.
+  \item \emph{Tests.} \texttt{make sanitize} runs \texttt{test4} and the
+        library tests under AddressSanitizer and UndefinedBehaviorSanitizer,
+        \texttt{make testalloc} makes the allocations of a search fail one by
+        one, \texttt{make test4configs} gains a build without 128-bit
+        integers, and the regression invocations for all of the above are at
+        the end of \texttt{test4.sh}, where \texttt{verify-test4.py} checks
+        them by brute force (Section~\ref{sec:tests}). \texttt{bench\_init}
+        builds again, and \texttt{make test} runs its check of the sieve
+        tables (\texttt{testinit}).
+  \item \emph{Tuning.} The compiled-in threshold
+        \texttt{RATPOINTS\_SURVIVORS\_PER\_WORD} is $0.002$ instead of
+        $0.003$, which two faster machines found best and which costs nothing
+        on the author's laptop; on an Intel i7-13700K it makes the random test
+        curves $4.6\%$ faster at $16383$ and $2.2\%$ at $2\cdot10^5$ and
+        changes nothing on the point-rich ones (Section~\ref{sec:retune}), and
+        the ladder of \texttt{tune.sh} brackets the new value. The manual now
+        says that one thread per physical core beats one per hardware thread
+        (Section~\ref{sec:threads}).
+\end{itemize}
+Programs using the library need not be recompiled, and the running time is
+that of 3.1.0 within the accuracy of the measurements.
 
 %=========================================================================
 

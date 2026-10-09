@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.1.0                                                     *
+ * ratpoints-3.1.1                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -29,6 +29,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <math.h>
 
 #include "ratpoints.h"
 
@@ -37,7 +41,7 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-3.1.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.1.1 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
   "terms of the GNU General Public License version 2 or later.\n\n" \
@@ -62,6 +66,14 @@ char *string_after;   /* String to be printed after the points */
 ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
                       /* This contains the intervals representing the search region */
 
+/* An end of a search interval as the command line gives it, exactly: inf is
+ * -1 for -infinity, +1 for +infinity and 0 for the rational number q */
+typedef struct {int inf; mpq_t q;} exact_end;
+
+exact_end ends[2*RATPOINTS_MAX_DEGREE];
+                      /* The ends of the intervals of the command line:
+                         ends[2*i] <= x <= ends[2*i+1] for the i-th */
+
 char *usage_str =
     "Usage: ratpoints 'a_0 a_1 ... a_n' max_height\n"
     "                 [-dl low_den] [-du up_den]\n"
@@ -81,6 +93,10 @@ char *usage_str =
 
 int read_input(long, char *argv[], ratpoints_args*);
 char *scan_mpz(char*, mpz_t);
+int scan_long(char*, long*);
+int scan_double(char*, double*);
+int scan_end(char*, int, exact_end*, double*);
+void join_intervals(ratpoints_args*);
 void print_poly(mpz_t*, long);
 void print_string(char*);
 void message(long n, long total, ratpoints_args *args);
@@ -93,12 +109,47 @@ void error(long);
 /* structure containing data to be passed to the point-processing function */
 typedef struct {int print_between; int no_output; int one_point;
                 int points_at_infty; int no_y; char *pf;
-                char* string_before; char *string_between;} data;
+                char* string_before; char *string_between;
+                long num_inter; exact_end *ends;} data;
+
+/* The sign of the end e minus x = a/b, for b > 0. */
+static int cmp_end_x(const exact_end *e, long a, long b)
+{
+  if(e->inf) { return(e->inf); }
+  return(mpq_cmp_si(e->q, a, (unsigned long)b));
+}
+
+/* Whether x = a/b, b > 0, lies in one of the n intervals with the ends
+ * e[2*i] <= x <= e[2*i+1], which are increasing and disjoint: the first
+ * interval that does not end below x must hold it, and a binary search
+ * finds that one. */
+static int in_region(long a, long b, const exact_end *e, long n)
+{
+  long lo = 0, hi = n;
+
+  while(lo < hi)
+  { long mid = lo + (hi - lo)/2;
+
+    if(cmp_end_x(&e[2*mid+1], a, b) < 0) { lo = mid + 1; }
+    else { hi = mid; }
+  }
+  return(lo < n && cmp_end_x(&e[2*lo], a, b) <= 0);
+}
 
 int process(long a, long b, const mpz_t y, void *info0, int *quit)
 { data *info = (data *)info0;
   char *fmt = info->pf;
   if(b == 0 && !(info->points_at_infty)) return(0);
+  /* The library searches intervals whose ends are the doubles next to the
+   * ends of the command line, outward (see scan_end and join_intervals), so
+   * it can find a point just beyond an end; such a point is not in the
+   * search region, and it is passed over as if the library had not found
+   * it: it is not counted, and it does not stop the search under -1.  The
+   * points at infinity have no x-coordinate and are reported whatever the
+   * intervals. */
+  if(b != 0 && info->num_inter > 0
+     && !in_region(a, b, info->ends, info->num_inter))
+  { return(0); }
   *quit = info->one_point;
   if(info->no_output) return(1);
   if(info->print_between) { print_string(info->string_between); }
@@ -144,11 +195,14 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
 int main(int argc, char *argv[])
 {
   long total;
+  int before_printed; /* whether process has printed string_before */
   ratpoints_args args;
 
   { long n;
     /* initialize multi-precision integer variables */
     for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_init(c[n]); }
+    /* and the rational ones for the ends of the intervals */
+    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_init(ends[n].q); }
   }
   mpz_init(tmp); mpz_init(tmp2);;
 
@@ -171,11 +225,13 @@ int main(int argc, char *argv[])
 
   /* typedef struct {int print_between; int no_output; int one_point;
                      int points_at_infty; int no_y; char *pf;
-                     char* string_before; char *string_between;} data; */
+                     char* string_before; char *string_between;
+                     long num_inter; exact_end *ends;} data; */
 
   /* initialize data structure to be passed to process... */
   { data *info = malloc(sizeof(data));
 
+    if(info == NULL) { error(10); }
     info->print_between   = 0;
     info->no_output       = no_output;
     info->pf              = print_format;
@@ -184,21 +240,29 @@ int main(int argc, char *argv[])
     info->string_before   = string_before;
     info->string_between  = string_between;
     info->no_y            = args.flags & (RATPOINTS_NO_CHECK | RATPOINTS_NO_Y);
+    /* process() checks the points against the intervals of the command
+     * line, if there are any; the library is given their ends as doubles,
+     * and two intervals whose doubles meet as one */
+    info->num_inter       = args.num_inter;
+    info->ends            = &ends[0];
+    join_intervals(&args);
 
     /* ...and call find_points */
     total = find_points(&args, process, (void *)info);
+    before_printed = info->print_between;
     /* clean up */
     free(info);
   }
   if(total < 0) /* error signaled by find_points? */
   { mpz_clear(tmp); mpz_clear(tmp2);
     if(total == RATPOINTS_NON_SQUAREFREE) error(8);
+    if(total == RATPOINTS_NO_MEMORY) error(10);
     error(9);
   }
-  /* if no point was processed, print string_before;
-   * otherwise this is done by process before printing
-   * the first point. */
-  if(total == 0) { print_string(string_before); }
+  /* process prints string_before before the first point it prints;
+   * if it printed none (there was no point, or -z suppressed them),
+   * print string_before now, in place of the points. */
+  if(!before_printed) { print_string(string_before); }
   /* terminate the output of the points */
   print_string(string_after);
   if(!quiet)
@@ -215,6 +279,7 @@ int main(int argc, char *argv[])
   mpz_clear(tmp); mpz_clear(tmp2);
   { long n;
     for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
+    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_clear(ends[n].q); }
   }
   return(0);
 }
@@ -226,6 +291,26 @@ int main(int argc, char *argv[])
 /**************************************************************************
  * get at the input                                                       *
  **************************************************************************/
+
+/* The end that stands for a missing first -l (negated) or last -u: the
+ * height bound as a double, rounded up when it is not one, so that the
+ * interval holds every x = a/b with |a| <= height (the library takes the
+ * ends of the intervals exactly). */
+static double height_end(long height)
+{ double h = (double)height;
+
+  if(h < 9223372036854775808.0 && (long)h < height)
+  { h = nextafter(h, HUGE_VAL); }
+  return(h);
+}
+
+/* The sign of the end e minus the end f; two infinities of one sign are
+ * equal. */
+static int cmp_end(const exact_end *e, const exact_end *f)
+{
+  if(e->inf || f->inf) { return(e->inf - f->inf); }
+  return(mpq_cmp(e->q, f->q));
+}
 
 int read_input(long argc, char *argv[], ratpoints_args *args)
 {
@@ -270,20 +355,27 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                             /* use Jacobi symbol test */
 
   mpz_init(fff); /* initialize gmp integer */
-  /* read coefficients */
+  /* read coefficients: integers separated by white space (see scan_mpz),
+   * at most RATPOINTS_MAX_DEGREE + 1 of them.  Those beyond go into fff,
+   * so that a list with something in it that is not an integer is refused
+   * as such, however long it is. */
   { char *s = argv[1];
-    long degree = 0;
+    long n = 0; /* the number of integers read */
 
-    while((degree <= RATPOINTS_MAX_DEGREE) && (s = scan_mpz(s, c[degree])))
-    { degree++; }
-    degree--;
-    if(scan_mpz(s, fff)) { error(3); }
-    if(degree <= 0) { error(5); }
-    args->degree = degree;
+    for(;;)
+    { while(isspace((unsigned char)*s)) { s++; }
+      if(*s == 0) { break; }
+      s = scan_mpz(s, (n <= RATPOINTS_MAX_DEGREE) ? c[n] : fff);
+      if(s == NULL) { error(11); }
+      n++;
+    }
+    if(n > RATPOINTS_MAX_DEGREE + 1) { error(3); }
+    if(n <= 1) { error(5); }
+    args->degree = n - 1;
   }
 
   /* read height bound */
-  if(sscanf(argv[2], " %ld", &(args->height)) != 1 || args->height < 1)
+  if(!scan_long(argv[2], &(args->height)) || args->height < 1)
   { error(4); }
   args->b_high = args->height;
 
@@ -303,13 +395,18 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
     {
       if(*(argv[i]) != '-') { error(6); }
       switch(argv[i][1])
-      { case 'l': /* lower intevral endpoint */
+      { case 'l': /* lower interval endpoint */
           if(argc == i) error(7);
           i++;
           if(l_seen) { error(7); } /* -l -l */
           if(num_inter == RATPOINTS_MAX_DEGREE) { error(7); }
-          if(sscanf(argv[i], " %lf", &domain[num_inter].low) != 1) { error(7); }
-          if(num_inter > 0 && domain[num_inter-1].up >= domain[num_inter].low)
+          if(!scan_end(argv[i], -1, &ends[2*num_inter],
+                       &domain[num_inter].low))
+          { error(7); }
+          /* the ends are compared as the numbers they are, not as their
+           * doubles */
+          if(num_inter > 0
+             && cmp_end(&ends[2*num_inter-1], &ends[2*num_inter]) >= 0)
           { error(7); }
           i++;
           l_seen = 1;
@@ -318,11 +415,21 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) { error(7); }
           i++;
           if(!l_seen)
-          { if(num_inter == 0) { domain[0].low = -args->height; }
+          { if(num_inter == 0)
+            { domain[0].low = -height_end(args->height); ends[0].inf = -1; }
             else { error(7); } /* -u -u */
           }
-          if(sscanf(argv[i], " %lf", &domain[num_inter].up) != 1) { error(7); }
-          if(domain[num_inter].low > domain[num_inter].up) { error(7); }
+          if(!scan_end(argv[i], 1, &ends[2*num_inter+1],
+                       &domain[num_inter].up))
+          { error(7); }
+          /* a first interval with no -l that ends below -height holds no
+           * x = a/b of the search, and it is made [-infinity, u], which is
+           * what a missing first -l stands for, rather than turned around,
+           * which the library would refuse */
+          if(!l_seen && domain[num_inter].up < domain[num_inter].low)
+          { domain[num_inter].low = -HUGE_VAL; }
+          if(cmp_end(&ends[2*num_inter], &ends[2*num_inter+1]) > 0)
+          { error(7); }
           i++;
           l_seen = 0;
           num_inter++;
@@ -330,32 +437,32 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
         case 'p': /* max number of primes used */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->num_primes)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->num_primes))) { error(6); }
           i++;
           break;
         case 'F': /* max number of "forbidden divisors of denominator" */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->max_forbidden)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->max_forbidden))) { error(6); }
           i++;
           break;
         case 't': /* sieving threads; 0: as many as there are processors */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->num_threads)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->num_threads))) { error(6); }
           if(args->num_threads == 0) { args->num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp1)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp1))) { error(6); }
           i++;
           break;
         case 'N': /* number of primes used for sieving altogether */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp2)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp2))) { error(6); }
           i++;
           break;
         case 'r': /* the survivors of the first stage per 64-bit word swept
@@ -364,7 +471,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * (ratpoints.h, RATPOINTS_SURVIVORS_PER_WORD) */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->survivors_per_word)) != 1)
+          if(!scan_double(argv[i], &(args->survivors_per_word)))
           { error(6); }
           i++;
           break;
@@ -372,7 +479,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * absent */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp2_extra)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp2_extra))) { error(6); }
           i++;
           break;
         case 'U': /* the number of numerator words at which a second-stage
@@ -380,7 +487,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * short runs.  Zero leaves -R flat */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->sp2_u0)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->sp2_u0))) { error(6); }
           i++;
           break;
         case 'A': /* how much of the choice to correct during the run from
@@ -388,7 +495,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * third stage, 2 the second stage as well */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->adapt)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->adapt))) { error(6); }
           i++;
           break;
         case 'C': /* what building one row of a sieve table costs, in units
@@ -396,14 +503,14 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * by what they say alone */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->cost_table)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->cost_table))) { error(6); }
           i++;
           break;
         case 'P': /* how many primes the third stage adds to sp2; negative
                    * means choose it from the curve */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %ld", &(args->sp3_extra)) != 1) { error(6); }
+          if(!scan_long(argv[i], &(args->sp3_extra))) { error(6); }
           i++;
           break;
         case 'Q': /* what one third-stage prime costs per denominator, as a
@@ -411,7 +518,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * absent */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->sp3_per_denom)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->sp3_per_denom))) { error(6); }
           i++;
           break;
         case 'W': /* what one exact check costs, in rdtsc cycles; negative
@@ -420,7 +527,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                    * coefficients */
           if(argc == i) { error(6); }
           i++;
-          if(sscanf(argv[i], " %lf", &(args->check_cost)) != 1) { error(6); }
+          if(!scan_double(argv[i], &(args->check_cost))) { error(6); }
           i++;
           break;
         case 'f': /* printing format */
@@ -430,6 +537,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 print_format = malloc((l+1)*sizeof(char));
+                if(print_format == NULL) { error(10); }
                 strcpy(print_format, argv[i]);
               }
               i++;
@@ -439,6 +547,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_before = malloc((l+1)*sizeof(char));
+                if(string_before == NULL) { error(10); }
                 strcpy(string_before, argv[i]);
               }
               i++;
@@ -448,6 +557,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_between = malloc((l+1)*sizeof(char));
+                if(string_between == NULL) { error(10); }
                 strcpy(string_between, argv[i]);
               }
               i++;
@@ -457,6 +567,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
               i++;
               { long l = strlen(argv[i]);
                 string_after = malloc((l+1)*sizeof(char));
+                if(string_after == NULL) { error(10); }
                 strcpy(string_after, argv[i]);
               }
               i++;
@@ -532,7 +643,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           args->sturm = RATPOINTS_DEFAULT_STURM;
           i++;
           if(i <= argc && argv[i][0] != '-')
-          { if(sscanf(argv[i], " %ld", &(args->sturm)) != 1) { error(6); }
+          { if(!scan_long(argv[i], &(args->sturm))) { error(6); }
             i++;
           }
           break;
@@ -541,13 +652,13 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           { case 'l': /* lower bound */
               if(argc == i) { error(6); }
               i++;
-              if(sscanf(argv[i], " %ld", &(args->b_low)) != 1) { error(6); }
+              if(!scan_long(argv[i], &(args->b_low))) { error(6); }
               i++;
               break;
             case 'u': /* upper bound */
               if(argc == i) { error(6); }
               i++;
-              if(sscanf(argv[i], " %ld", &(args->b_high)) != 1) { error(6); }
+              if(!scan_long(argv[i], &(args->b_high))) { error(6); }
               i++;
               break;
             default: { error(6); }
@@ -556,8 +667,15 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
         default: { error(6); }
   } } }
   if(l_seen)
-  /* complete last interval */
-  { domain[num_inter].up = args->height; num_inter++; }
+  /* complete last interval; one that starts above the height bound holds no
+   * x = a/b of the search, and it is made [l, +infinity] rather than turned
+   * around, which the library would refuse */
+  { domain[num_inter].up = height_end(args->height);
+    if(domain[num_inter].up < domain[num_inter].low)
+    { domain[num_inter].up = HUGE_VAL; }
+    ends[2*num_inter+1].inf = 1;
+    num_inter++;
+  }
   args->num_inter = num_inter;
 
   if(!print_format)
@@ -573,25 +691,217 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   return(0);
 }
 
-/* Read in a long long long integer as an mpz_t. */
+/* Read the integer that s starts with -- an optional sign and at least one
+ * digit, ended by white space or by the end of s -- into x, and return a
+ * pointer to what follows it; return NULL if s does not start with one.
+ * White space is what isspace() counts as such in the C locale, in which
+ * the program runs: spaces, tabs, line feeds, carriage returns, vertical
+ * tabs and form feeds. */
 char *scan_mpz(char *s, mpz_t x)
 {
-  long neg = 0; /* flag for sign */
+  int neg = 0; /* flag for sign */
 
-  if(s == NULL || *s == 0) { return NULL; }
-  while(*s == ' ') { s++; }
-  if(*s == 0) { return NULL; }
   if(*s == '-') { neg = 1; s++; }
   else if(*s == '+') { s++; }
-  mpz_set_si(tmp2, 0);
+  if(!('0' <= *s && *s <= '9')) { return NULL; }
+  mpz_set_ui(tmp2, 0);
   while('0' <= *s && *s <= '9')
   { mpz_mul_ui(tmp2, tmp2, 10);
-    mpz_add_ui(tmp2, tmp2, (long)(*s - '0'));
+    mpz_add_ui(tmp2, tmp2, (unsigned long)(*s - '0'));
     s++;
   }
+  if(*s != 0 && !isspace((unsigned char)*s)) { return NULL; }
   if(neg) { mpz_neg(tmp2, tmp2); }
   mpz_set(x, tmp2);
   return s;
+}
+
+/* Whether nothing but white space follows the number that ends at end:
+ * a number on the command line may have white space before it (strtol and
+ * strtod skip that) and after it, so that the carriage return that a
+ * script with CRLF line ends leaves on the last argument of a line does
+ * no harm. */
+static int only_space_after(const char *end)
+{
+  while(isspace((unsigned char)*end)) { end++; }
+  return(*end == 0);
+}
+
+/* Read the integer that is the whole of s, but for white space before and
+ * after it, into x.  Returns 0 if s is not an integer or if the integer
+ * does not fit a long. */
+int scan_long(char *s, long *x)
+{
+  char *end;
+
+  errno = 0;
+  *x = strtol(s, &end, 10);
+  return(end != s && errno == 0 && only_space_after(end));
+}
+
+/* Read the real number that is the whole of s, but for white space before
+ * and after it, into x.  Returns 0 if s is not a number or if it is a NaN.
+ * An infinity is accepted, since -l -inf and -u inf are interval ends that
+ * bound nothing, and a number beyond the range of a double is read as one. */
+int scan_double(char *s, double *x)
+{
+  char *end;
+
+  *x = strtod(s, &end);
+  return(end != s && !isnan(*x) && only_space_after(end));
+}
+
+/* The double the library is given for the end v of an interval of the
+ * command line, x being the double nearest to v: for dir < 0, a lower end,
+ * the largest double <= v, for dir > 0 the smallest double >= v, so that
+ * the interval the library searches holds the one given.  Since x is the
+ * nearest double, that is x or the double next to it outward; the loop
+ * does not rely on it.  It stops at an infinity, which lies on the safe
+ * side of every number. */
+static double outward(double x, const mpq_t v, int dir)
+{
+  mpq_t t;
+
+  mpq_init(t);
+  while(isfinite(x))
+  { int s;
+
+    mpq_set_d(t, x);
+    s = mpq_cmp(t, v);
+    if((dir < 0) ? (s <= 0) : (s >= 0)) { break; }
+    x = nextafter(x, (dir < 0) ? -HUGE_VAL : HUGE_VAL);
+  }
+  mpq_clear(t);
+  return(x);
+}
+
+/* Read the end of a search interval that s is -- a number as scan_double
+ * reads it, so with white space before and after it, and possibly infinite
+ * -- into e, as the number it denotes: a decimal number, an integer or a
+ * fraction with or without an exponent, as the rational number it is, so
+ * that 1.6 is 8/5, which no double is, and a hexadecimal one as the
+ * fraction with a power of 2 as denominator that it is.  Into d goes the
+ * double the library is given for it (see outward): dir < 0 for a lower
+ * end, dir > 0 for an upper one.  Returns 0 if s is not a number or if it
+ * is a NaN.
+ * Two kinds of number are not taken as they stand.  One beyond the range of
+ * a double, which strtod reads as an infinity, is taken as an infinite end:
+ * it bounds the same x = a/b of the search, which all lie within the range
+ * of a long.  And one that strtod reads as 0 but is not 0, at most half the
+ * least positive double in size, is taken as plus or minus that half: like
+ * the number itself it lies strictly between 0 and every other x of the
+ * search and has the same doubles next to it, while its exponent may be
+ * too large to compute with.  So two ends of one of these kinds count as
+ * equal when they are compared.  Every other number lies within the range
+ * of the doubles, so that its exponent is bounded by that range and the
+ * length of s, and it is computed as it is. */
+int scan_end(char *s, int dir, exact_end *e, double *d)
+{
+  char *digits;
+  double x;    /* the double nearest to the number */
+  int neg = 0, base = 10;
+  long n = 0;  /* the number of digits */
+  long k = 0;  /* the number of them after the point */
+  long ex = 0; /* the exponent, of 10 for base 10, of 2 for base 16 */
+  mpz_t m;
+
+  if(!scan_double(s, &x)) { return(0); }
+  if(isinf(x)) { e->inf = (x > 0) ? 1 : -1; *d = x; return(1); }
+  e->inf = 0;
+  /* strtod has checked the syntax, and the number is finite: an optional
+   * sign, then at least one digit with or without a point among them, after
+   * 0x or 0X for base 16, and then an optional exponent, after e or E for
+   * base 10 and after p or P for base 16, an optional sign and at least one
+   * decimal digit */
+  while(isspace((unsigned char)*s)) { s++; }
+  if(*s == '-') { neg = 1; s++; }
+  else if(*s == '+') { s++; }
+  if(s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { base = 16; s += 2; }
+  digits = malloc(strlen(s) + 1);
+  if(digits == NULL) { error(10); }
+  { int point = 0; /* whether the point has been passed */
+
+    for( ; ; s++)
+    { if(*s == '.') { point = 1; }
+      else if((base == 10) ? isdigit((unsigned char)*s)
+                           : isxdigit((unsigned char)*s))
+      { digits[n++] = *s;
+        if(point) { k++; }
+      }
+      else { break; }
+    }
+  }
+  digits[n] = 0;
+  if(*s == 'e' || *s == 'E' || *s == 'p' || *s == 'P')
+  { int eneg = 0;
+
+    s++;
+    if(*s == '-') { eneg = 1; s++; }
+    else if(*s == '+') { s++; }
+    /* an exponent beyond LONG_MAX/20 stays there, so that nothing
+     * overflows: the number is then beyond the range of the doubles or 0,
+     * and its exponent is not used */
+    for( ; isdigit((unsigned char)*s); s++)
+    { if(ex < LONG_MAX/20) { ex = 10*ex + (*s - '0'); } }
+    if(eneg) { ex = -ex; }
+  }
+  mpz_init(m);
+  mpz_set_str(m, digits, base);
+  free(digits);
+  if(mpz_sgn(m) == 0) { mpq_set_ui(e->q, 0, 1); }
+  else if(x == 0)
+  { mpq_set_d(e->q, nextafter(0.0, 1.0));
+    mpq_div_2exp(e->q, e->q, 1);
+  }
+  else if(base == 16)
+  { long t = ex - 4*k; /* the number is m 2^t */
+
+    mpq_set_z(e->q, m);
+    if(t >= 0) { mpq_mul_2exp(e->q, e->q, (unsigned long)t); }
+    else { mpq_div_2exp(e->q, e->q, (unsigned long)(-t)); }
+  }
+  else
+  { long t = ex - k; /* the number is m 10^t */
+    mpz_t p;
+
+    mpz_init(p);
+    mpz_ui_pow_ui(p, 10, (unsigned long)((t >= 0) ? t : -t));
+    if(t >= 0) { mpz_mul(m, m, p); mpq_set_z(e->q, m); }
+    else
+    { mpq_set_num(e->q, m); mpq_set_den(e->q, p);
+      mpq_canonicalize(e->q);
+    }
+    mpz_clear(p);
+  }
+  if(neg) { mpq_neg(e->q, e->q); }
+  mpz_clear(m);
+  *d = outward(x, e->q, dir);
+  return(1);
+}
+
+/* The library takes the intervals it is given as they stand, ends included,
+ * and wants them increasing and disjoint, each ending below the start of
+ * the next.  The doubles it gets for the ends of the command line lie
+ * outward of them, and those of two intervals may meet or overlap although
+ * the intervals do not: 0.3333333333333333 and 0.33333333333333337 lie on
+ * either side of 1/3, and the double nearest to 1/3 lies outward of both.
+ * Such intervals are given to the library as one, the smallest that holds
+ * them both; it then also searches the x between them, which process()
+ * passes over. */
+void join_intervals(ratpoints_args *args)
+{
+  ratpoints_interval *iv = args->domain;
+  long i, n = 0; /* iv[n] is the interval the next one may be joined to */
+
+  if(args->num_inter <= 0) { return; }
+  for(i = 1; i < args->num_inter; i++)
+  { if(iv[n].up >= iv[i].low)
+    { if(iv[i].low < iv[n].low) { iv[n].low = iv[i].low; }
+      if(iv[i].up > iv[n].up) { iv[n].up = iv[i].up; }
+    }
+    else { n++; iv[n] = iv[i]; }
+  }
+  args->num_inter = n + 1;
 }
 
 
@@ -722,21 +1032,25 @@ void message(long n, long total, ratpoints_args *args)
   fflush(stdout);
 }
 
-/* Print error message number errno and exit. */
-void error(long errno)
+/* Print error message number n and exit. */
+void error(long n)
 {
-  switch(errno)
+  switch(n)
   { case 3: printf("\nToo many coefficients.\n\n"); break;
     case 4: printf("\nIncorrect height argument.\n\n"); break;
     case 5: printf("\nThe polynomial must have degree at least 1.\n\n"); break;
     case 6: printf("\nWrong syntax for optional arguments:\n\n");
     case 2: printf("\n%s\n%s", RATPOINTS_VERSION, usage_str); break;
-    case 7: printf("\nIncorrect interval arguments (not alternating, ");
-            printf("too many, or not ordered).\n\n");
+    case 7: printf("\nIncorrect interval arguments (not numbers, ");
+            printf("not alternating, too many, or not ordered).\n\n");
             break;
     case 8: printf("\nPolynomial is not square-free.\n\n"); break;
     case 9: printf("\nBug no. 1 - please report!\n\n"); break;
+    case 10: printf("\nNot enough memory.\n\n"); break;
+    case 11: printf("\nIncorrect coefficients (not integers separated by ");
+             printf("blanks).\n\n");
+             break;
   }
   fflush(stdout);
-  exit(errno);
+  exit(n);
 }

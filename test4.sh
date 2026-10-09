@@ -9,7 +9,8 @@
 # admissible numerator modulo 64, curves with and without forbidden
 # divisors of the denominator, every command-line option, restricted
 # denominator ranges and search intervals, height bounds from 1 to 2^63 - 1,
-# and every error the program reports.  It runs in a few seconds; the
+# and every error the program reports about its input (testalloc.sh
+# provokes the one on a lack of memory).  It runs in a few seconds; the
 # heights are small, and the large ones come with a narrow search interval
 # and a denominator range of one.
 #
@@ -30,8 +31,20 @@
 # for the register widths and the other compile-time switches.
 #
 # The first part prints points and messages that are the same in 2.2.4 and
-# 3.0.0; the second part looks at the reports of -v, whose texts differ
-# between the versions; the third uses options that 2.2.4 does not have.
+# 3.0.0, except that the message on the interval arguments is worded
+# otherwise and that a coefficient list that is not one of integers has a
+# message of its own; the second part looks at the reports of -v, whose
+# texts differ between the versions; the third uses options that 2.2.4
+# does not have, and ends with a block each on search intervals whose ends
+# are taken exactly, the isolation of the positivity region deeper than 55
+# steps, a Sturm sequence whose values take two limbs, the leading
+# coefficient -2^63, the options of the sieve at their extremes, arguments
+# that are not numbers as a whole, out of range or NaN, -fs and -fe under
+# -z, the coefficients and the numbers read whole (coefficient lists that
+# are not integers separated by white space, white space around a number,
+# and the intervals that a missing first -l or last -u leave open), -1 in
+# a search of a single block, and ends of the search intervals that are
+# not doubles, which are taken as the numbers they are.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -742,3 +755,309 @@ e '1 2 3' 10 -C x
 e '1 2 3' 10 -P x
 e '1 2 3' 10 -Q x
 e '1 2 3' 10 -W x
+
+echo '---- the search intervals, exactly ----'
+# The numerators of an interval [l, u] at the denominator b are the a with
+# l <= a/b <= u, whatever b and the ends: b l and b u rounded to doubles
+# would put a numerator next to an end into both of two adjacent intervals,
+# or into neither of them, or out of the one it is in.  x = 1/3 on
+# y^2 = 9x^2 - 1 lies between 0.3333333333333333 and 0.33333333333333337,
+# so in neither interval of the first run and in the one interval of each
+# of the next two; x = -47/3 on y^2 = 3x + 48 lies between the ends of the
+# two intervals of the fourth.  The ends are taken as the numbers they are,
+# and the library is given the doubles next to them on the outer side: for
+# the fourth run the two doubles on either side of -47/3, for the first one
+# the same double twice, the one nearest to 1/3, so that the library is
+# given one interval (see the last block, which also gives it the doubles
+# on either side of 1/3)
+t '-1 0 9' 10 -q -u 0.3333333333333333 -l 0.33333333333333337
+t '-1 0 9' 10 -q -u 0.33333333333333337
+t '-1 0 9' 10 -q -l 0.3333333333333333
+t '48 3' 50 -q -l -50 -u -15.666666666666668 -l -15.666666666666666 -u 50
+# The same with denominators above 2^61, on y^2 = x^2 + 1 and two primitive
+# Pythagorean triples (a, b, c).  For (3226670801200005632,
+# 4302220858710230025, 5377779167689769993) a/b lies between
+# 0.7500011987221257 and 0.7500011987221258, so in neither interval of the
+# first run and in the one of the second; for (3226666674000000004,
+# 4302222234444444453, 5377777791955555565) a/b lies about 271/b below the
+# upper end 0.7499999995738637 of the third.  The ends are the shortest
+# decimal numbers that strtod reads as the doubles X0 - 8 ulps, X0,
+# X1 = X0 + 1 ulp, X1 + 8 ulps and U - 8 ulps, U, where a/b lies between X0
+# and X1 and about 63/b below U, while b U rounded to a double is a - 4.
+# Taken as the numbers they are, they give the library the doubles next to
+# them on the outer side, which for the first run is one interval; the last
+# block gives it the doubles X0, X1 and U themselves
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221257 -l 0.7500011987221258 -u 0.7500011987221267
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0.7500011987221248 -u 0.7500011987221267
+t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0.7499999995738628 -u 0.7499999995738637
+# An end the Sturm step puts in: 2x^2 - x = x(2x - 1) is positive from 1/2
+# on, and x = 1152921532524134569/2305843065048269134 lies 2/b beyond it,
+# with y = 2(2^30 + 13); the search without the Sturm step agrees
+t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001
+t '0 -1 2' 2305843065048269134 -q -dl 2305843065048269134 -du 2305843065048269134 -l 0.499999999999999 -u 0.500000000000001 -s
+# Ends at the limits of a long: 9223372036854775807 is 2^63 - 1, and the
+# library is given the double below it, 2^63 - 1024, and for the missing -u
+# the height bound rounded up, 2^63, so that it searches the last 1024
+# numerators, which hold no point, and only the points at infinity are
+# printed (the run must end), and the same at the bottom of the range (the
+# last block gives the library [2^63, 2^63] and [-2^63, -2^63], which hold
+# no numerator); the numerators from -(2^63 - 1) to -(2^63 - 1024), where
+# the bit arrays hold those with a = 2 mod 4 and the first bit is
+# ceil((-(2^63 - 1) - 2)/4), from a value below the range of a long; and at
+# the height bound 2^53 + 1, which is not a double, a missing last -u still
+# admits x = 2^53 + 1
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854775807
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -9223372036854775807
+t '-3 0 1' 9223372036854775807 -q -dl 1 -du 1 -l -1e30 -u -9223372036854774784
+t '-9007199254740992 1' 9007199254740993 -q -dl 1 -du 1 -l 9007199254740990
+# Ends below 2^-75 in absolute value, whose binary exponents the search cuts
+# down to one that the product of the denominator and the mantissa can be
+# shifted by: x = 0 lies in [-1e-300, 1e-300] and not in [-1, -4.9e-324] or
+# [4.9e-324, 1], which hold x = -3/4 and 3/4.  The library is given the
+# doubles nearest to -1e-300 and 1e-300, which lie outward of them, and for
+# -4.9e-324 and 4.9e-324, which are smaller in size than the least positive
+# double 2^-1074, -0 and 0, so that it is given one interval, [-1, 1], and
+# the program drops x = 0 (the last block gives the library the ends
+# -2^-1074 and 2^-1074)
+t '1 0 1' 10 -q -l -1e-300 -u 1e-300
+t '1 0 1' 10 -q -l -1 -u -4.9e-324 -l 4.9e-324 -u 1
+
+echo '---- the isolation of the positivity region deeper than 55 steps ----'
+# the isolation of the positivity region at a depth beyond 55, which is
+# taken as 55 (and -v reports 55): up to that depth the ends of its
+# intervals, n/2^e, are exact as doubles.  1 - 103x is positive up to its
+# root 1/103, where the point (1 : 0 : 103) lies, and at depth 62 the end
+# next to it would have a numerator of 54 bits over 2^60; at depth 56 the
+# end next to 15/13, the root of 15 - 13x, would have one over 2^53.  The
+# points are those -s finds
+t '1 -103' 200 -q -S 62
+t '15 -13' 30 -q -S 56
+f "grep 'iterations for'" '1 -103' 200 -v -S 62
+
+echo '---- a Sturm sequence whose values take two limbs ----'
+# the Sturm sequence of f = -(10^30 + 57)(3x - 2)(13x - 15)(7x + 5), whose
+# coefficients and values take two limbs: its signs are compared with each
+# other, so they must come out as -1, 0 and 1, and the points (2 : 0 : 3),
+# (-5 : 0 : 7) and (15 : 0 : 13) lie on the ends of the positivity region
+t '-150000000000000000000000000008550 145000000000000000000000000008265 302000000000000000000000000017214 -273000000000000000000000000015561' 30 -q
+
+echo '---- the leading coefficient -2^63 ----'
+# the leading coefficient -2^63, the most negative long, in the Jacobi
+# symbol test on denominators beyond 2^32, where jacobi1 computes it:
+# y^2 = 1 - 1100690047 x - 2^63 x^2 has the point x = 1/4294968331, and the
+# window holds the whole region where the polynomial is positive (between
+# -3.95e-10 and 2.75e-10); then y^2 = 1 - 2^63 x^2 with the point
+# x = 1/(2^60 + 2), as (2^60 + 2)^2 - 2^63 = (2^60 - 2)^2, a denominator
+# whose odd part is beyond 2^59, so that the symbol is computed without a
+# reduction first
+t '1 -1100690047 -9223372036854775808' 4294968331 -q -dl 4294968331 -du 4294968331 -l -1e-9 -u 1e-9
+t '1 0 -9223372036854775808' 1152921504606846980 -q -dl 1152921504606846977 -du 1152921504606846980 -l 0 -u 1e-17
+
+echo '---- the options of the sieve at their extremes ----'
+# the options of the rules that choose the sieving primes at the extremes
+# of what the command line accepts, which change how the moduli are chosen
+# and never the points: the largest long as the offset of the second
+# stage, flat (-U 0) and scaled by a run length so short that it stays near
+# 2^63 (-U 1e-300); as the number of moduli of the first stage when the
+# second is chosen, which the rule that looks at further primes adds the
+# offset to; and as the number of third-stage primes.  Then the largest and
+# the smallest positive double for each of the real-valued options.  Then,
+# with the largest values again, two of the searches at the height bound
+# 2^63 - 1 in the block on large height bounds: its window at the top of
+# the range, narrowed to the numerators from 2^63 - 1024 on (fourteen
+# points, (9223372036854769900 + y^2 : +-y : 1) for y = 70, ..., 76, and
+# the one at infinity), and its last eight denominators as they are (no
+# point)
+t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 0
+t '1 0 126 0 441' 200 -q -R 9223372036854775807 -U 1e-300
+t '1 0 126 0 441' 200 -q -n 9223372036854775807 -U 0
+t '1 0 126 0 441' 200 -q -P 9223372036854775807
+t '1 0 126 0 441' 200 -q -r 1.7976931348623157e308 -U 1.7976931348623157e308 -C 1.7976931348623157e308 -Q 1.7976931348623157e308 -W 1.7976931348623157e308
+t '1 0 126 0 441' 200 -q -r 4.9e-324 -U 4.9e-324 -C 4.9e-324 -Q 4.9e-324 -W 4.9e-324
+t '-9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -l 9223372036854774784 -u 1e30 -R 9223372036854775807 -U 1e-300 -P 9223372036854775807
+t '5 3 7' 9223372036854775807 -q -dl 9223372036854775800 -du 9223372036854775807 -l 0 -u 1e-18 -n 9223372036854775807 -R 9223372036854775807 -U 0 -P 9223372036854775807
+
+echo '---- arguments that are not numbers, out of range or NaN ----'
+# a number given as the height bound or as the argument of an option has
+# to be the whole argument and to fit its type: an integer between -2^63
+# and 2^63 - 1 (the runs above search up to a height bound of 2^63 - 1),
+# a real number that is not NaN.  So the height bounds 2^63, 10^23 and 1e5
+# are refused, the denominator bounds 2^63 and -2^63 - 1, 3x and 10x where
+# an integer is expected, NaN and 1x as ends of a search interval, and NaN
+# as the value of each real-valued constant of the sieve and 306x as that
+# of -W; the infinite ends that a missing -l or -u stands for may be given
+e '1 0 1' 9223372036854775808 -dl 1 -du 1 -l 0 -u 0
+e '1 0 1' 99999999999999999999999 -dl 1 -du 1 -l 0 -u 0
+e '1 0 1' 1e5
+e '1 2 3' 10 -dl 9223372036854775808
+e '1 2 3' 10 -du -9223372036854775809
+e '1 2 3' 10 -n 3x
+e '1 2 3' 10 -S 10x
+e '1 0 1' 10 -q -l 0 -u nan
+e '1 0 1' 10 -q -l nan -u nan
+e '1 0 1' 10 -q -l nan
+e '1 0 1' 10 -q -u nan
+e '1 0 1' 10 -q -l 0 -u 1x
+e '1 2 3' 10 -r nan
+e '1 2 3' 10 -U nan
+e '1 2 3' 10 -C nan
+e '1 2 3' 10 -Q nan
+e '1 2 3' 10 -W nan
+e '1 2 3' 10 -W 306x
+t '1 0 1' 10 -q -l -inf -u inf
+t '1 0 1' 10 -q -l -inf -u -1 -l 1 -u inf
+
+echo '---- -fs and -fe under -z ----'
+# with -z, the strings of -fs and -fe are printed one after the other in
+# place of the points, whether there are points or not, and -fm is not
+t '1 0 126 0 441' 200 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
+t '-1 0 -1' 50 -q -z -fs 'start\n' -fm ', ' -fe 'end\n'
+t '1 0 126 0 441' 200 -q -z -1 -fs '[' -fe ']\n'
+
+echo '---- the coefficients and the numbers, read whole ----'
+tab=$(printf '\t')
+cr=$(printf '\r')
+# The coefficients are integers, each an optional sign and at least one
+# digit, separated by white space, and a list that is anything else is
+# refused with a message of its own rather than read as some other
+# polynomial: a sign that no digit follows is not a zero ('1 2 3 - 4' is
+# not 4x^4 + 3x^2 + 2x + 1, '- 5' not 5x, '1 2 3 -' not a cubic with a
+# zero leading coefficient, '1 0 --1' not -x^3 + 1), a sign does not
+# separate two numbers ('1-1' is not -x + 1, '1+1 0 1' not x^3 + x + 1),
+# and a character that cannot be part of an integer does not end the list
+# ('1 0 1x', '1 0 1.5', '1,0,1').  A list of more than
+# RATPOINTS_MAX_DEGREE + 1 numbers with something else among them is
+# refused for that, not for its length.  Tabs separate the coefficients as
+# blanks do, and white space may stand before and after the list.
+e '1 2 3 - 4' 10
+e '1-1' 10
+e '1+1 0 1' 10
+e '1 0 --1' 10
+e '- 5' 10
+e '1 2 3 -' 10
+e '1 0 1x' 10
+e '1 0 1.5' 10
+e '1,0,1' 10
+s=1; i=0; while [ $i -lt 101 ]; do s="$s 0"; i=$((i+1)); done
+e "$s x" 10
+t "${tab}1${tab}0 $tab 1 " 10 -q
+# A number given as the height bound or as the argument of an option may
+# have white space before and after it, but nothing else: a script with
+# CRLF line ends leaves a carriage return on the last argument of a line
+t '1 0 1' "10$cr" -q -t "1$cr"
+t '1 0 1' " 10 " -q -l " -1$tab" -u "$tab 1 " -dl " 1" -du "4 " -r " 0.5 "
+e '1 0 1' '10 0'
+e '1 2 3' 10 -n '5 5'
+e '1 2 3' 10 -l 0 -u '1 1'
+# A missing first -l stands for -infinity and a missing last -u for
+# +infinity.  The program puts in minus the height bound and the height
+# bound, which give the same numerators, but where that would turn the
+# interval around -- a first -u below minus the height bound, a last -l
+# above it -- the interval holds no x of the search and is [-infinity, u]
+# or [l, +infinity] (the search region -v shows), and only the points at
+# infinity are found: (1 : +-1 : 0) on y^2 = x^2 + 1, (1 : 0 : 0) on
+# y^2 = 3x + 48, there also without the Sturm step, which leaves the
+# infinite end to the sieve.  -u -inf is [-infinity, -infinity], which
+# holds no x at all, and an interval may follow it, here [-5, 5] with all
+# twelve points of height at most 10; a last -l of 10.5 at the height
+# bound 10 leaves (-4 : +-5 : 3) in [-5, -1] and the points at infinity.
+v '1 0 1' 10 -v -u -20
+v '1 0 1' 10 -v -l 20
+t '48 3' 50 -q -u -51 -s
+t '48 3' 50 -q -l 51 -s
+t '1 0 1' 10 -q -u -inf -l -5 -u 5
+t '1 0 1' 10 -q -l -5 -u -1 -l 10.5
+
+echo '---- a stop at the first point, whatever the threads ----'
+# -1 ends the search at the first point it prints, at once: on several
+# threads ("make testthreads" runs this file with -t 3 and -t 7) the points
+# of the block at the head of the order are delivered as they are found,
+# and every thread leaves its block after its current call of the sieve.
+# Each of these searches is a single block of the loop over the
+# denominators -- the squares up to 16, the one word of the denominators
+# up to 16, the denominator 1 -- over 2 * 10^12 numerators per denominator
+# or, at the height bound 2^63 - 1, nearly 2^64, and its first point is at
+# the start of the denominator 1: x + 10^12 vanishes at x = -10^12, the
+# lower end of the height bound, 2x^2 + 2 * 10^24 is (2 * 10^12)^2 there,
+# and x + 9223372036854769900 vanishes where its positivity region begins.
+# verify-test4.py tries the numerators of the denominator 1 up to the point
+t '1000000000000 1' 1000000000000 -q -du 16 -1 -i
+t '2000000000000000000000000 0 2' 1000000000000 -q -du 16 -1
+t '9223372036854769900 1' 9223372036854775807 -q -dl 1 -du 1 -1 -i
+
+echo '---- the ends of the search intervals, as the numbers they are ----'
+# An end of a search interval is the number it denotes, which is often not
+# a double: 1.6 is 8/5, and the double nearest to it lies above 8/5, while
+# the one nearest to 1.7 lies below 17/10.  The library takes the doubles
+# it is given as they are, and the program gives it the double next to
+# each end on the outer side, so that the library searches a little more
+# than the intervals, and passes over the points the library finds outside
+# them.  y^2 = 10x - 16 has the points x = 8/5 (where y = 0), 13/8 and
+# 17/10 in [1.6, 1.7]; y^2 = 10x - 6 has x = 3/5 and 7/10 at the ends of
+# [0.6, 0.7], and y^2 = 10x has x = 1/10 at the lower end of [0.1, 1].
+# Then [1.6, 1.7] with the ends written with exponents; in hexadecimal, as
+# the doubles nearest to 1.6 and 1.7, which leave out 8/5 and 17/10, and
+# with more digits than a double holds, as numbers just below 8/5 and just
+# above 17/10 (whose nearest doubles are those two again); and with a
+# second interval, [3.2, 6.5], which has x = 16/5 at its lower end and
+# x = 13/2 at its upper one
+t '-16 10' 20 -q -l 1.6 -u 1.7 -i
+t '-6 10' 20 -q -l 0.6 -u 0.7
+t '0 10' 10 -q -l 0.1 -u 1
+t '-16 10' 20 -q -l 16e-1 -u .17E+1 -i
+t '-16 10' 20 -q -l 0x1.999999999999ap0 -u 0x1.b333333333333p0 -i
+t '-16 10' 20 -q -l 0x1.9999999999999999p0 -u 0x1.b333333333333334P0 -i
+t '-16 10' 20 -q -l 1.6 -u 1.7 -l 3.2 -u 6.5 -i
+# Ends that are not equal, with no double between them: the double outward
+# of 0.3333333333333333 and the one outward of 0.33333333333333337, which
+# lie on either side of 1/3, are both the double nearest to 1/3, and as the
+# library refuses intervals that meet, it is given one interval, [-10, 10]
+# (the search intervals the program reports at the end, here without the
+# Sturm step), while the program drops x = 1/3.  0.33333333333333333 and
+# 0.33333333333333334 also lie on either side of 1/3 and have one nearest
+# double: they are in order as the upper end of an interval and the lower
+# end of the next, and not the other way round
+m '-1 0 9' 10 -s -u 0.3333333333333333 -l 0.33333333333333337
+t '-1 0 9' 10 -q -u 0.33333333333333333 -l 0.33333333333333334
+e '-1 0 9' 10 -q -l 0.33333333333333334 -u 0.33333333333333333
+# The first point the library finds may lie outside the search region:
+# 0.33333333333333334 lies above 1/3 and the double below it below 1/3, so
+# that the library finds (1 : 0 : 3) first.  The point is passed over as if
+# it had not been found: with -i, -1 prints (5 : 12 : 9) and stops there,
+# and -z -1 counts that one point, while -z alone counts the four points of
+# the region, two of them at infinity; -x (with every prime of the table
+# sieving) and -y print (1 : 0) and (5 : 9), and the strings of -fs and -fm
+# go before and between the two points printed
+t '-1 0 9' 10 -q -1 -i -l 0.33333333333333334
+f 'grep found' '-1 0 9' 10 -z -l 0.33333333333333334
+f 'grep found' '-1 0 9' 10 -z -1 -i -l 0.33333333333333334
+t '-1 0 9' 10 -q -x -n 15 -N 30 -p 30 -l 0.33333333333333334
+t '-1 0 9' 10 -q -y -l 0.33333333333333334
+t '-1 0 9' 10 -q -i -l 0.33333333333333334 -fs '[' -fm ', ' -fe ']\n' -f '(%x : %y : %z)'
+# A number too small for a double is not 0: x = 0 on y^2 = x^2 + 1 lies in
+# neither [1e-400, 1] nor [-1, -1e-400]
+t '1 0 1' 10 -q -l 1e-400 -u 1
+t '1 0 1' 10 -q -l -1 -u -1e-400
+# The runs of the block on the search intervals, exactly, whose ends are
+# doubles written in decimal, with the doubles given in hexadecimal, so
+# that the library is given them as they are: the two doubles on either
+# side of 1/3, where it searches two intervals and does not find x = 1/3;
+# X0 - 8 ulps, X0, X1 and X1 + 8 ulps at the denominator
+# 4302220858710230025, and U - 8 ulps and U at 4302222234444444453, where
+# b U rounded to a double is a - 4; 2^63; and the doubles next to 0,
+# -2^-1074 and 2^-1074, where it searches two intervals and does not find
+# x = 0
+t '-1 0 9' 10 -q -u 0x1.5555555555555p-2 -l 0x1.5555555555556p-2
+t '1 0 1' 4611686018427387904 -q -dl 4302220858710230025 -du 4302220858710230025 -l 0x1.80002838f1d45p-1 -u 0x1.80002838f1d4dp-1 -l 0x1.80002838f1d4ep-1 -u 0x1.80002838f1d56p-1
+t '1 0 1' 4611686018427387904 -q -dl 4302222234444444453 -du 4302222234444444453 -l 0x1.7ffffffc56ea1p-1 -u 0x1.7ffffffc56ea9p-1
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -l 0x1p63
+t '1 0 1' 9223372036854775807 -q -dl 1 -du 1 -u -0x1p63
+t '1 0 1' 10 -q -l -1 -u -0x1p-1074 -l 0x1p-1074 -u 1
+# The other forms an end may take: a leading plus sign; an exponent beyond
+# every range, which is an infinite end; and a decimal just above the
+# largest double (and its negative), which strtod rounds to that double:
+# the library is given the infinity beyond it
+t '-16 10' 20 -q -i -l +1.6 -u +.17E+1
+t '-16 10' 20 -q -i -l 1.6 -u 1e99999999999999999999
+m '-16 10' 20 -i -l 1.6 -u 1.7976931348623158e308
+t '-16 10' 20 -q -i -l -1.7976931348623158e308 -u 1.7

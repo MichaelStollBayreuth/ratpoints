@@ -1,4 +1,4 @@
-#   ratpoints-3.1.0
+#   ratpoints-3.1.1
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
@@ -42,19 +42,36 @@
 #   test4       the invocations of test4.sh, the suite that exercises nearly
 #               every line of the code -- every degree and shape of curve,
 #               every option, restricted ranges, heights from 1 to 2^63-1,
-#               every error message -- against testbase4; a few seconds.
+#               every error message but that of a lack of memory -- and
+#               ends with the regression tests for the bugs fixed after
+#               those of test3, against testbase4; a few seconds.
 #               verify-test4.py checks that reference by brute force
 #   testapi     rpapi, the tests of the library interface that the program
 #               cannot reach (the argument checks and their error codes,
 #               the callback, the flags), against testbase-api
+#   testinit    every sieve table init.c builds, against a direct evaluation
+#               of its definition (bench_init.c); a fraction of a second
 #   test4configs  test4 again on the library built with the other
 #               compile-time switches: register widths 64, 128, 512,
-#               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7 and
-#               composite moduli off and unbounded (test4-configs.sh);
-#               builds each in a directory of its own, about a minute
+#               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7,
+#               composite moduli off and unbounded, and no 128-bit integers
+#               (test4-configs.sh); builds each in a directory of its own,
+#               about a minute
 #   coverage    build the sources instrumented for gcov in build-coverage/,
 #               run the tests through that build and print how much of each
 #               source file they executed (coverage.sh); a minute or so
+#   testthreads the suites with the sieve on several threads, and test4 and
+#               test1 on builds whose blocks of denominators end elsewhere
+#               (test4-threads.sh); a couple of minutes
+#   tsan        the threaded runs under ThreadSanitizer (tsan.sh); a few
+#               minutes
+#   sanitize    test4, on one thread and on three, and rpapi under
+#               AddressSanitizer and UndefinedBehaviorSanitizer (sanitize.sh),
+#               for what is wrong and yet leaves every output right: a read
+#               beyond an array, a signed overflow; a minute or so
+#   testalloc   the library and the program with the n-th allocation made to
+#               fail, or every one from the n-th on, for every n
+#               (testalloc.sh, rpalloc.c); needs GNU ld; half a minute
 #   tune        measure the four machine-dependent constants that decide how
 #               many primes each sieving stage uses and which, and write them
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
@@ -72,7 +89,7 @@
 # with very many rational points; on those it is worth up to a factor of two.
 # Having the larger table costs nothing when it is not used.
 PRIME_SIZE = 8
-VERSION = 3.1.0
+VERSION = 3.1.1
 
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
@@ -135,6 +152,8 @@ CCFLAGS0 = -Wall -O2 -fomit-frame-pointer -DRATPOINTS_MAX_BITS_IN_PRIME=${PRIME_
 #  other without the code-alignment difference two builds would bring (the
 #  multiplication is worth 2 to 3%).  "-DRP_MOD_COUNTS" reports how often the
 #  chain of conditional subtractions actually divides.
+# Add "-DRP_NO_INT128" to build as on a compiler without a 128-bit integer
+#  type; "make test4configs" tests that build.
 # When comparing two builds whose *source* differs, be aware that where gcc
 #  happens to place the hot loops is worth about 10% here, reproducibly, so
 #  repeating the runs will not reveal it. Rebuild both with, say,
@@ -220,7 +239,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
             test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
-            rpapi.c testbase-api coverage.sh \
+            rpapi.c testbase-api coverage.sh sanitize.sh testalloc.sh rpalloc.c \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -232,13 +251,13 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
             rptest-high-many.out rptest-degrees.out config.stamp build.stamp \
             sift-debug.o find_points-debug.o main.o test2.out \
             test3.out rptest-once.out rptest-once2.out rptest-once3.out \
-            test4.out testapi.out test4-*.out \
+            test4.out testapi.out testinit.out test4-*.out \
             rptest-t2.out rptest-t5.out rptest-many-t3.out \
             rptest-degrees-t4.out test3-t3.out rptest-threads-*.out
 
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
-              rptest-degrees rpapi ratpoints-debug \
+              rptest-degrees rpapi ratpoints-debug rpalloc ratpoints-alloc \
               bench_init bench_check ratpoints-doc-3.1.pdf
 
 FAILED = "Test failed!"
@@ -255,7 +274,8 @@ doc: ratpoints-doc-3.1.pdf
 # (make then exits with status 2 and names the target); "make test" runs
 # every suite whatever the earlier ones did and fails at the end if any of
 # them failed.
-TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi timing
+TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi testinit \
+        timing
 
 .PHONY: test
 test:
@@ -409,6 +429,13 @@ testapi: rpapi testbase-api
 	./rpapi > testapi.out 2>&1
 	cmp -s testbase-api testapi.out || ${FAIL}
 
+# The sieve tables of init.c, every prime and every class of the
+# denominator, against a direct evaluation of their definition (see
+# bench_init.c); the benchmark that follows the check runs once, and its
+# time is not looked at.
+testinit: bench_init
+	./bench_init 1 > testinit.out 2>&1 || ${FAIL}
+
 # The suites with the sieve on several threads (the option -t): the same
 # references, since what the program prints must not depend on the number
 # of threads; then test4 and test1 on builds with fixed block lengths, so
@@ -441,6 +468,27 @@ testthreads: rptest rptest-many rptest-degrees ratpoints testbase \
 .PHONY: tsan
 tsan: testbase testbase-many testbase-degrees testbase-api testbase4 tsan.sh
 	./tsan.sh
+
+# test4, on one thread and with -t 3, and rpapi under AddressSanitizer and
+# UndefinedBehaviorSanitizer (sanitize.sh: a build with both in
+# build-sanitize/, every report fatal; every output must match its
+# reference and the sanitizers must report nothing; a minute or so).
+# They see what the comparisons with the references cannot: a scan that
+# runs past the end of an array, memory that is never freed, a signed
+# overflow, a double converted to a long it does not fit.
+.PHONY: sanitize
+sanitize: testbase4 testbase-api test4.sh sanitize.sh
+	./sanitize.sh
+
+# The library and the program when memory runs out (testalloc.sh: rpalloc.c
+# makes the n-th allocation fail, or every one from the n-th on, for
+# n = 1, 2, 3, ... until none is left; every search must deliver the points
+# it delivers without failures, or the first of them and then report the
+# lack of memory; the script exits with 2 when the linker has no --wrap;
+# half a minute).
+.PHONY: testalloc
+testalloc: testalloc.sh rpalloc.c
+	CC='${CC}' ./testalloc.sh
 
 # test4 on the library built with the other compile-time switches, each in
 # a build directory of its own (see test4-configs.sh; the script exits with
@@ -492,7 +540,8 @@ dist: ${DISTFILES}
 
 clean:
 	${RM} ${TEMPFILES}
-	${RM} -r build-coverage build-test4-* build-threads-* build-tsan
+	${RM} -r build-coverage build-test4-* build-threads-* build-tsan \
+	         build-sanitize build-alloc
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk
@@ -573,6 +622,21 @@ rptest-degrees: libratpoints.a rptest.c ratpoints.h testdata-degrees.h \
 
 rpapi: libratpoints.a rpapi.c ratpoints.h build.stamp
 	${CC} rpapi.c -o rpapi ${CCFLAGS_0} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
+
+# The two programs of "make testalloc" (see rpalloc.c): rpalloc runs searches
+# through the library, ratpoints-alloc is the program, and in both the calls
+# of malloc, calloc and realloc that the library and main.c make go to
+# rpalloc.c, which makes them fail when asked to.  GNU ld's option --wrap
+# does the redirection.
+WRAPFLAGS = -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc
+
+rpalloc: libratpoints.a rpalloc.c ratpoints.h build.stamp
+	${CC} rpalloc.c -o rpalloc ${CCFLAGS_0} ${WRAPFLAGS} ${CCFLAGS2} \
+	      ${CCFLAGS3} ${CCFLAGS}
+
+ratpoints-alloc: libratpoints.a main.c rpalloc.c ratpoints.h build.stamp
+	${CC} main.c rpalloc.c -o ratpoints-alloc -DRPALLOC_PROGRAM ${CCFLAGS_0} \
+	      ${WRAPFLAGS} ${CCFLAGS2} ${CCFLAGS3} ${CCFLAGS}
 
 # What is compiled depends on flags, which make cannot see by itself: change
 # CCFLAGS1 or PRIME_SIZE, or retune, and every file must be built again even

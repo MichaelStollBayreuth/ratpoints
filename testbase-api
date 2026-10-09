@@ -7,6 +7,8 @@ height -7                                                  -2  (0 seen)
 domain = NULL                                              -2  (0 seen)
 degree 0                                                   -2  (0 seen)
 degree -1                                                  -2  (0 seen)
+degree RATPOINTS_MAX_DEGREE + 1                            -2  (0 seen)
+degree LONG_MAX                                            -2  (0 seen)
 degree 2 with c[1] = c[2] = 0 (degree 0 after stripping)   -1  (0 seen)
 degree 6 after initialising for degree 3                   -3  (0 seen)
 degree 3 with two leading zeros (genus drops)              -1  (0 seen)
@@ -36,6 +38,23 @@ the same, on the interval [0.5, 2]                          1  (1 seen)
     (3 : -5 : 4)
 y^2 = x^2 + 1 on [-2, -1] U [0, 1]                          8  (8 seen)
   the region searched: 2 interval(s)
+height 20 on [0, 3]                                        16  (16 seen)
+height 20 on [0, 2], [1, 3] (overlapping)                  -2  (0 seen)
+  num_inter 2, domain [0, 2], [1, 3]
+height 20 on [0, 1.5], [1.5, 3] (touching)                 -2  (0 seen)
+height 20 on [-3, -1], [5, 30]                              8  (8 seen)
+height 20 on [5, 30], [-3, -1] (decreasing)                -2  (0 seen)
+height 20 on [2, 1] (empty)                                -2  (0 seen)
+height 20 on [0, NaN]                                      -2  (0 seen)
+height 20 on [NaN, 1], [2, 3], no Sturm step               -2  (0 seen)
+height 20 on [-infinity, infinity]                         28  (28 seen)
+    (1 : 0 : 0)
+    (9007199254740992 : 0 : 1)
+    (9007199254740993 : 1 : 1)
+    (9007199254740993 : -1 : 1)
+y^2 = x - 2^53, height 2^53 + 1, denominator 1              4  (4 seen)
+height 20 on [n, n + 1/2], 600000 of them, no Sturm step   16  (16 seen)
+height 20 on [n, n + 1/2], 600000 of them                  16  (16 seen)
 find_points: y^2 = x^5 + 1, height 30                       4  (4 seen)
 find_points: y^2 = (x^2 + 1)(x^4 + 1), height 30            8  (8 seen)
     (1 : 1 : 0)
@@ -43,6 +62,17 @@ find_points: y^2 = (x^2 + 1)(x^4 + 1), height 30            8  (8 seen)
     (0 : 1 : 1)
     (0 : -1 : 1)
 the same on [-0.5, 0.5]                                     4  (4 seen)
+    (1 : 1 : 0)
+    (1 : -1 : 0)
+    (0 : 1 : 1)
+    (0 : -1 : 1)
+find_points: y^2 = x^100 + 1, height 10                     4  (4 seen)
+find_points: degree RATPOINTS_MAX_DEGREE + 1               -2  (0 seen)
+find_points: degree LONG_MAX                               -2  (0 seen)
+init for degree RATPOINTS_MAX_DEGREE + 1, then degree 2    -2  (0 seen)
+init for degree LONG_MAX, then degree 2                    -2  (0 seen)
+init for degree -1, then degree 2                          -2  (0 seen)
+init for degree LONG_MIN, then degree 2                    -2  (0 seen)
 y^2 = x^2 + 1, height 2000, one thread                   2852  (2852 seen)
 the same on three threads                                2852  (2852 seen)
   num_threads after the search: 3
@@ -60,4 +90,32 @@ as many threads as there are processors                  2852  (2852 seen)
 two threads after the pool of three                      2852  (2852 seen)
 and one thread after that                                2852  (2852 seen)
   the two runs: 2852 and 2852 points, the same in the same order
+a curve of many points, height 50000, stopped at b >= 2700  123  (123 seen)
+the same on three threads                                 123  (123 seen)
+  the two runs: 123 and 123 points, the same in the same order
+  the moduli reported: the same on one and three threads
 find_points on four threads (the pool made and freed inside)    8  (8 seen)
+y^2 = 7x^2 + 3x + 5, height 1000, the defaults            884  (884 seen)
+  the fields of type double at NaN, -NaN, inf, -inf, the largest and the least
+  positive double, those of type long at LONG_MAX and LONG_MIN:
+    survivors_per_word                       the same points
+    sp2_u0                                   the same points
+    cost_table                               the same points
+    sp3_per_denom                            the same points
+    check_cost                               the same points
+    sp1                                      the same points
+    sp2                                      the same points
+    sp2_extra                                the same points
+    sp3_extra                                the same points
+    adapt                                    the same points
+    array_size                               the same points
+    num_primes                               the same points
+    max_forbidden                            the same points
+    sp2_extra LONG_MAX, sp2_u0 0             the same points
+    sp2_extra LONG_MAX, sp2_u0 1e-300        the same points
+    sp1 LONG_MAX, sp2_u0 0                   the same points
+    all but sp2, num_primes; doubles NaN     the same points
+    all but sp2, num_primes; doubles inf     the same points
+y^2 = x - 9223372036854769900, height 2^63 - 1             15  (15 seen)
+    array_size LONG_MAX                      the same points
+    all but sp2, num_primes; doubles inf     the same points

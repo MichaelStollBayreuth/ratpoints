@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.1.0                                                     *
+ * ratpoints-3.1.1                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -28,6 +28,10 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <math.h>
 #include <time.h>
 
 #include "ratpoints.h"
@@ -65,6 +69,45 @@
 mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
 
 ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+
+/**************************************************************************
+ * reading the numbers on the command line, as main.c does                *
+ **************************************************************************/
+
+/* Whether nothing but white space follows the number that ends at end:
+ * a number on the command line may have white space before it (strtol and
+ * strtod skip that) and after it, so that the carriage return that a
+ * script with CRLF line ends leaves on the last argument of a line does
+ * no harm. */
+static int only_space_after(const char *end)
+{
+  while(isspace((unsigned char)*end)) { end++; }
+  return(*end == 0);
+}
+
+/* Read the integer that is the whole of s, but for white space before and
+ * after it, into x.  Returns 0 if s is not an integer or if the integer
+ * does not fit a long. */
+static int scan_long(char *s, long *x)
+{
+  char *end;
+
+  errno = 0;
+  *x = strtol(s, &end, 10);
+  return(end != s && errno == 0 && only_space_after(end));
+}
+
+/* Read the real number that is the whole of s, but for white space before
+ * and after it, into x.  Returns 0 if s is not a number or if it is a NaN;
+ * an infinity is accepted, and a number beyond the range of a double is
+ * read as one. */
+static int scan_double(char *s, double *x)
+{
+  char *end;
+
+  *x = strtod(s, &end);
+  return(end != s && !isnan(*x) && only_space_after(end));
+}
 
 /**************************************************************************
  * function that processes the points                                     *
@@ -148,88 +191,88 @@ int main(int argc, char *argv[])
       if(*(argv[i]) != '-') return(-6);
       switch(argv[i][1])
       { case 'h': /* height bound */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &height) != 1) return(-6);
+          if(!scan_long(argv[i], &height)) return(-6);
           i++;
           break;
         case 'p': /* max number of primes used */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &num_primes) != 1) return(-6);
+          if(!scan_long(argv[i], &num_primes)) return(-6);
           i++;
           break;
         case 'F': /* max number of "forbidden divisors of denominator" */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &max_forbidden) != 1) return(-6);
+          if(!scan_long(argv[i], &max_forbidden)) return(-6);
           i++;
           break;
         case 't': /* sieving threads; 0: as many as there are processors */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &num_threads) != 1) return(-6);
+          if(!scan_long(argv[i], &num_threads)) return(-6);
           if(num_threads == 0) { num_threads = -1; }
           i++;
           break;
         case 'n': /* number of primes used for first stage of sieving */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &sieve_primes1) != 1) return(-6);
+          if(!scan_long(argv[i], &sieve_primes1)) return(-6);
           i++;
           break;
         case 'N': /* number of primes used for sieving altogether */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &sieve_primes2) != 1) return(-6);
+          if(!scan_long(argv[i], &sieve_primes2)) return(-6);
           i++;
           break;
         case 'r': /* target survivors of the first stage per bit array */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &survivors_per_word) != 1) return(-6);
+          if(!scan_double(argv[i], &survivors_per_word)) return(-6);
           i++;
           break;
         case 'R': /* primes added to sp1 to get sp2 */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &sp2_extra) != 1) return(-6);
+          if(!scan_long(argv[i], &sp2_extra)) return(-6);
           i++;
           break;
         case 'U': /* run length at which a stage-2 prime pays for its set-up */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &sp2_u0) != 1) return(-6);
+          if(!scan_double(argv[i], &sp2_u0)) return(-6);
           i++;
           break;
         case 'A': /* whether to correct the primes during the run */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &adapt) != 1) return(-6);
+          if(!scan_long(argv[i], &adapt)) return(-6);
           i++;
           break;
         case 'C': /* what one row of a sieve table costs */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &cost_table) != 1) return(-6);
+          if(!scan_double(argv[i], &cost_table)) return(-6);
           i++;
           break;
         case 'P': /* primes added to sp2 for the third stage */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %ld", &sp3_extra) != 1) return(-6);
+          if(!scan_long(argv[i], &sp3_extra)) return(-6);
           i++;
           break;
         case 'Q': /* what a third-stage prime costs per denominator */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &sp3_per_denom) != 1) return(-6);
+          if(!scan_double(argv[i], &sp3_per_denom)) return(-6);
           i++;
           break;
         case 'W': /* what one exact check costs, in rdtsc cycles */
-          if(argc == i) return(-6);
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %lf", &check_cost) != 1) return(-6);
+          if(!scan_double(argv[i], &check_cost)) return(-6);
           i++;
           break;
         case 'j': /* do not use Jacobi sum test */
@@ -281,10 +324,10 @@ int main(int argc, char *argv[])
           sturm_iter = -1;
           i++;
           break;
-        case 'S': /* Sturm sequence */
+        case 'S': /* Sturm sequence; the depth may follow */
           i++;
-          if(i <= argc && argv[i][0] != '-')
-          { if(sscanf(argv[i], " %ld", &sturm_iter) != 1) return(-6);
+          if(i < argc && argv[i][0] != '-')
+          { if(!scan_long(argv[i], &sturm_iter)) return(-6);
             i++;
           }
           else sturm_iter = RATPOINTS_DEFAULT_STURM;
@@ -292,25 +335,29 @@ int main(int argc, char *argv[])
         case 'd': /* Bounds for denom */
           switch(argv[i][2])
           { case 'l': /* lower bound */
-              if(argc == i) return(-6);
+              if(i + 1 >= argc) return(-6);
               i++;
-              if(sscanf(argv[i], " %ld", &b_low) != 1) return(-6);
+              if(!scan_long(argv[i], &b_low)) return(-6);
               i++;
               break;
             case 'u': /* upper bound */
-              if(argc == i) return(-6);
+              if(i + 1 >= argc) return(-6);
               i++;
-              if(sscanf(argv[i], " %ld", &b_high) != 1) return(-6);
+              if(!scan_long(argv[i], &b_high)) return(-6);
               i++;
               b_high_set = 1; /* note that upper bound was set */
               break;
             default: return(-6);
           }
           break;
-        case 'm': /* Number of iterations */
-          if(argc == i) return(-6);
+        case 'm': /* Number of iterations, from 0 to INT_MAX */
+          if(i + 1 >= argc) return(-6);
           i++;
-          if(sscanf(argv[i], " %d", &iterations) != 1) return(-6);
+          { long m;
+
+            if(!scan_long(argv[i], &m) || m < 0 || m > INT_MAX) return(-6);
+            iterations = (int)m;
+          }
           i++;
           break;
         case 'O': /* set the input fields once, outside the loop */

@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.1.0                                                     *
+ * ratpoints-3.1.1                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -427,8 +427,10 @@ typedef struct { mpz_t *cof; long degree; long height;
 #define RATPOINTS_NON_SQUAREFREE (-1)
 #define RATPOINTS_BAD_ARGS (-2)
 #define RATPOINTS_WORK_LENGTH_TOO_SMALL (-3)
-#define RATPOINTS_NO_MEMORY (-4)  /* a sieving thread ran out of memory for
-                                     the points of a block */
+#define RATPOINTS_NO_MEMORY (-4)  /* the memory the search needs could not
+                                     be had, by find_points_init, by the
+                                     search itself, or by a sieving thread
+                                     for the points of a block */
 
 /* Function prototypes */
 long find_points(ratpoints_args*,

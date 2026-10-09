@@ -5,11 +5,16 @@
 # register in the first stage (RATPOINTS_CHUNK=1), the second stage one word
 # at a time (USE_LONG_IN_PHASE_2), the smaller prime table (PRIME_SIZE 7,
 # the default of 2.2.4) and the larger one (PRIME_SIZE 9, 96 primes, where
-# the mask of the primes a modulus involves runs out of bits), and composite
+# the mask of the primes a modulus involves runs out of bits), composite
 # moduli off (RATPOINTS_COMPOSITE_MAX 1) and up to 1023 (every odd modulus
-# below the table's bound is a candidate).  The points found must not depend
-# on any of these, and test4.sh prints nothing that does, so every build is
-# compared with the same testbase4.  "make test4configs" runs this.
+# below the table's bound is a candidate), and the forms for a compiler
+# without a 128-bit integer type (RP_NO_INT128: the products of a
+# denominator and the end of a search interval put together from 32-bit
+# halves, divisions in place of the reductions by multiplying), which no
+# other build compiles, as gcc and clang have that type on every 64-bit
+# machine.  The points found must not depend on any of these, and test4.sh
+# prints nothing that does, so every build is compared with the same
+# testbase4.  "make test4configs" runs this.
 #
 # Each configuration is built in a directory of its own, build-test4-<name>,
 # from symbolic links to the sources, so that the build in the working
@@ -29,7 +34,8 @@ CONFIGS=${CONFIGS:-'64: 128:-DUSE_AVX128 128s:-DUSE_SSE 512:-DUSE_AVX512
   prime7:-DUSE_AVX,-mavx2,PRIME_SIZE=7:nopart2
   prime9:-DUSE_AVX,-mavx2,PRIME_SIZE=9
   comp1:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1
-  comp1023:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1023'}
+  comp1023:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1023
+  noint128:-DUSE_AVX,-mavx2,-DRP_NO_INT128'}
 
 status=0
 for cfg in $CONFIGS; do

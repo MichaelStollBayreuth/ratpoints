@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.1.0                                                     *
+ * ratpoints-3.1.1                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -62,13 +63,16 @@ typedef char rp_long_has_64_bits[(sizeof(unsigned long)*CHAR_BIT == 64) ? 1 : -1
  * num_threads field): POSIX threads, and the gcc/clang atomic builtins for
  * the few words that one thread writes and another reads without a lock --
  * a pointer to a sieve table that a thread has just built, the count of the
- * correction's decisions, the flag that stops a search.  RP_PUBLISH writes
- * such a word after everything it points to is complete, RP_ACQUIRE reads
- * it so that what it points to is seen complete, and RP_RELAXED reads a
- * flag.  (Not a fence after a loop of relaxed loads: ThreadSanitizer does
- * not see through fences, and the acquire loads cost nothing measurable.)
- * With -DRATPOINTS_NO_THREADS they are the plain operations, and the
- * library sieves on the calling thread whatever num_threads says. */
+ * correction's decisions, the flag that stops a search, the count of the
+ * points a sieving thread has stored for its block, which the calling
+ * thread delivers while the block is sieved (see collect in find_points.c).
+ * RP_PUBLISH writes such a word after everything it points to is complete,
+ * RP_ACQUIRE reads it so that what it points to is seen complete, and
+ * RP_RELAXED reads a flag.  (Not a fence after a loop of relaxed loads:
+ * ThreadSanitizer does not see through fences, and the acquire loads cost
+ * nothing measurable.)  With -DRATPOINTS_NO_THREADS they are the plain
+ * operations, and the library sieves on the calling thread whatever
+ * num_threads says. */
 #ifndef RATPOINTS_NO_THREADS
 # define RP_ACQUIRE(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
 # define RP_RELAXED(p)    __atomic_load_n((p), __ATOMIC_RELAXED)
@@ -393,8 +397,12 @@ typedef struct { long p; long offset; ratpoints_bit_array *ptr;
  * denominators (find_points.c).
  *
  * Build with -DRP_MULMOD_DIVIDE to use the division everywhere instead,
- * which is what those callers cost without this. */
-#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE)
+ * which is what those callers cost without this.  A build with
+ * -DRP_NO_INT128 divides too: it takes, here and in find_points.c, the
+ * forms for a compiler without a 128-bit integer type, so that they can be
+ * tested (test4-configs.sh). */
+#if defined(__SIZEOF_INT128__) && !defined(RP_MULMOD_DIVIDE) \
+    && !defined(RP_NO_INT128)
 # define RP_MULMOD(u, p, m) \
     ((long)(unsigned long)(((__uint128_t)((m)*(unsigned long)(u)) \
                              * (unsigned long)(p)) >> 64))
@@ -548,9 +556,11 @@ typedef struct ratpoints_sieve_entry_s
 
 /* The state of one sieving thread.  Everything the path from a denominator
  * to its points writes is here, so that several of them can sieve the same
- * curve at once from one ratpoints_args that they only read: the survivors
- * array (array_size bit arrays, one spare for the alignment and one for the
- * sentinel the scan of the second stage runs into), the gmp temporaries
+ * curve at once from one ratpoints_args and one list of search intervals
+ * (rp_intervals in find_points.c, which iv points to for each block sieved)
+ * that they only read: the survivors array (array_size bit arrays, one
+ * spare for the alignment and one for the sentinel the scan of the second
+ * stage runs into), the gmp temporaries
  * (work[0..2], and from work[3] on the coefficients times the powers of the
  * current denominator), the third stage's check_spec array, the numbers of
  * moduli in force, the counters of the block being sieved (which the run
@@ -561,7 +571,7 @@ typedef struct ratpoints_sieve_entry_s
  * also knows its pool, the slot it puts its block's points into, and the
  * flag that tells it to abandon the block; on the calling thread the three
  * are NULL. */
-typedef struct { ratpoints_args *args;
+typedef struct { ratpoints_args *args; const struct rp_intervals_s *iv;
                  ratpoints_bit_array *survivors; void *survivors_na;
                  mpz_t *work;
                  check_spec *checks;
