@@ -9,9 +9,24 @@ The program is distributed under the GNU GPL, version 2 (or later).
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.1.pdf).
 
+## Verification in Lean
+
+[RatpointsLean](https://github.com/MichaelStollBayreuth/RatpointsLean) is a
+model of ratpoints 3.1.1 in Lean 4 that mirrors the C code function by
+function, with the same loops, tables and bit arrays, together with proofs
+that the model meets a short specification: it finds exactly the rational
+points up to the height bound, each once, in the order in which ratpoints
+finds them. Since Lean has no semantics of C, the model is linked to the C code
+by a record of which Lean definition models which lines of C, checked against
+this repository, and by differential tests against this program. The
+[blueprint](https://michaelstollbayreuth.github.io/RatpointsLean/blueprint/)
+explains what is verified and what one has to trust.
+
+## Change log
+
 The current version is **ratpoints-3.1.1** from October 9, 2026. It fixes bugs
-that a review of the code turned up while a verified version in Lean was being
-prepared, most of them at the extremes of the input:
+that a review of the code turned up while the verified version in Lean
+mentioned above was being prepared, most of them at the extremes of the input:
 
 * **Search intervals are taken exactly.** The library takes each end as the
   double it is given, and the program each end as the number written
