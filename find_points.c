@@ -3158,7 +3158,8 @@ static void worker_clear(rp_worker *wk)
  * -- and the shift of the row for the packing of the class, with the
  * multiple of p that keeps the row index non-negative built in (see
  * rp_num_class and sieve_spec in rp-private.h); end is the end of the
- * table, which the first stage's wrap-around compares against (the start
+ * table, which the first stage's wrap-around compares against, and NULL
+ * with ptr for a row not built yet, which sift() then builds (the start
  * field is set by sift0 at the head of every call, for the first-stage
  * moduli, and nothing reads it before that).  Returns whether a row is
  * missing, i.e. not built yet.  Inlined at its two calls with shared a
@@ -3180,7 +3181,7 @@ int set_rows(sieve_spec *ssp, ratpoints_sieve_entry **sieve_list,
     ssp[n].p = p;
     ssp[n].offset = cls->offset[n];
     ssp[n].ptr = sptr;
-    ssp[n].end = sptr + p;
+    ssp[n].end = (sptr == NULL) ? NULL : sptr + p;
     if(sptr == NULL) { missing = 1; }
   }
   return(missing);
