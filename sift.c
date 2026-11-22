@@ -572,6 +572,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   fflush(NULL);
 #endif
 
+#if (RATPOINTS_CHUNK > 16)
+# error "the tail legs cover lengths up to 15: widen them with the ladder"
+#endif
 #if (defined(RATPOINTS_CHUNK) && (RATPOINTS_CHUNK > 1) && (RATPOINTS_CHUNK <= 16))
   /* Use separate variables for the individual bit-arrays;
    * they should be mapped to CPU registers.
@@ -924,9 +927,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * all bit arrays swept at height 16383, four fifths at height 1000.) */
     { long t = w_high - w_high_full;
 
-#if (RATPOINTS_CHUNK > 16)
-# error "the tail legs cover lengths up to 15: widen them with the ladder"
-#endif
 #if (RATPOINTS_CHUNK > 8)
       if(t & 8) { tail_leg(8, 0, surv, bits64, sieves, sp1); }
 #endif
