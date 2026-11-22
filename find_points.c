@@ -4613,6 +4613,23 @@ long find_points_work(ratpoints_args *args,
   return(result);
 }
 
+/* The number of bits of the largest of the coefficients c[0..degree] in
+ * absolute value, as mpz_sizeinbase counts them (1 for a zero): what the
+ * report of RATPOINTS_VERBOSE prints in place of the list of the
+ * coefficients from the degree RATPOINTS_PRINT_DEGREE on. */
+static unsigned long coeff_bits(mpz_t *c, long degree)
+{
+  unsigned long bits = 0;
+  long k;
+
+  for(k = 0; k <= degree; k++)
+  { unsigned long b = mpz_sizeinbase(c[k], 2);
+
+    if(b > bits) { bits = b; }
+  }
+  return(bits);
+}
+
 static long find_points_work_1(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info,
                  const rp_coeffs *rc)
@@ -4742,10 +4759,15 @@ static long find_points_work_1(ratpoints_args *args,
   { printf("\nfind_points:\n");
     printf("  degree:       %ld\n", args->degree);
     printf("  coefficients:");
+    if(degree < RATPOINTS_PRINT_DEGREE)
     { long n;
 
       for(n = 0; n <= degree; n++)
       { printf(" "); mpz_out_str(NULL, 10, args->cof[n]); }
+    }
+    else
+    { printf(" of at most %lu bits (not printed)",
+             coeff_bits(args->cof, degree));
     }
     printf("\n");
     printf("  height bound: %ld\n", args->height);
@@ -4842,11 +4864,16 @@ static long find_points_work_1(ratpoints_args *args,
         { printf("  odd degree, leading coefficient not +/-1, zero "
                  "constant term, coefficient of x is +/-1 ==> reverse\n");
           printf("  coefficients now:");
+          if(degree < RATPOINTS_PRINT_DEGREE)
           { long n;
 
             for(n = 0; n <= degree; n++)
             { printf(" "); mpz_out_str(NULL, 10, args->cof[n]); }
             printf("\n\n");
+          }
+          else
+          { printf(" of at most %lu bits (not printed)\n\n",
+                   coeff_bits(args->cof, degree));
           }
         }
       }

@@ -45,7 +45,11 @@ accept may end with the message for a polynomial that is not squarefree,
 which is checked, or else is checked like any other.  Invocations that
 test an output format or the report of -v are not checked here beyond
 what they print, except that the points a -v report contains are still
-compared.  A run whose standard output refuses every write (announced with
+compared, and that wherever the equation of the curve (without -q) or a
+list of the coefficients (the report of -v, at its start and after a
+reversal) is printed, it must be the polynomial in full below the degree
+RATPOINTS_PRINT_DEGREE and its short form from there on (see
+curve_line).  A run whose standard output refuses every write (announced with
 ">/dev/full" or ">&-" after the arguments) must report the failure on
 standard error and exit with status 13 when the program writes anything
 there -- the message of a refusal, the banner, a point (see writes) -- and
@@ -74,18 +78,27 @@ FILES = {'lf-tab': ' 1\t0\n\n\t1\r\n', 'empty': '', 'nul': '1 0 1\0 2\n',
          'word': '1 0 x\n', '-': '1\n0\n1\n',
          'big': '-1' + BIG_ZEROS + '6 0 1' + BIG_ZEROS + '7\n',
          'deg250': '1 -1 2' + ' 0'*122 + ' 2' + ' 0'*124 + ' 1\n',
-         'deg251': '1 2 1' + ' 0'*247 + ' -1 2\n'}
+         'deg251': '1 2 1' + ' 0'*247 + ' -1 2\n',
+         'deg999': '0 1 2' + ' 0'*995 + ' -1 2\n',
+         'deg999z': '0 1 2' + ' 0'*995 + ' -1 2 0\n',
+         'deg1000': '1 -1 2' + ' 0'*497 + ' 2' + ' 0'*499 + ' 1\n',
+         'deg1001': '0 1 2' + ' 0'*997 + ' -1 2\n',
+         'deg3000': '%d -1 2' % (10**100 + 7)**2 + ' 0'*1497 + ' %d' % (2*(10**100 + 7))
+                    + ' 0'*1499 + ' 1\n'}
 
-def max_degree():
-    """RATPOINTS_MAX_DEGREE of the ratpoints.h next to this script, the
-    default that its #ifndef gives; without it the rules of the command
-    line are not known"""
+def macro(name):
+    """the macro name of the ratpoints.h next to this script, the default
+    that its #ifndef gives; without it the rules of the command line or of
+    the output are not known"""
     fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')
     try:
-        return int(re.search(r'^#\s*define\s+RATPOINTS_MAX_DEGREE\s+(\d+)', open(fn).read(), re.M)[1])
+        return int(re.search(r'^#\s*define\s+%s\s+(\d+)' % name, open(fn).read(), re.M)[1])
     except (OSError, TypeError):
-        sys.exit('verify-test4.py: no RATPOINTS_MAX_DEGREE in %s' % fn)
-MAX_DEGREE = max_degree()
+        sys.exit('verify-test4.py: no %s in %s' % (name, fn))
+MAX_DEGREE = macro('RATPOINTS_MAX_DEGREE')
+# from this degree on, the curve and the lists of its coefficients are
+# printed in their short forms
+PRINT_DEGREE = macro('RATPOINTS_PRINT_DEGREE')
 
 # White space as isspace() has it in the C locale, in which ratpoints runs;
 # a number may have it before and after it (strtol and strtod skip it
@@ -375,6 +388,23 @@ def first_point_b1(c, H, ivs, a_end):
             if r*r == v: return {(a, 1): {r, -r}}
     return {}
 
+def squarefree_mod(c, p):
+    """whether f = sum c_i x^i, of degree len(c) - 1 modulo the prime p,
+    is squarefree modulo p: the gcd of f and f' modulo p is a constant"""
+    def strip(a):
+        while a and a[-1] == 0: a.pop()
+        return a
+    f = strip([x % p for x in c])
+    g = strip([(i*c[i]) % p for i in range(1, len(c))])
+    while g:
+        inv = pow(g[-1], p - 2, p)
+        while len(f) >= len(g):
+            q = f[-1]*inv % p; k = len(f) - len(g)
+            for i in range(len(g)): f[k+i] = (f[k+i] - q*g[i]) % p
+            strip(f)
+        f, g = g, f
+    return len(f) == 1
+
 def squarefree(c):
     """whether f = sum c_i x^i, leading zeros dropped, is squarefree as a
     binary form of even degree: no repeated root, and no double root at
@@ -383,6 +413,12 @@ def squarefree(c):
     while d > 0 and c[d] == 0: d -= 1
     if d <= 0: return False
     if (d + 1) >> 1 < (d0 + 1) >> 1: return False
+    # f is squarefree when it is so modulo a prime that does not divide its
+    # leading coefficient, its discriminant then not being 0 modulo the
+    # prime; this decides it fast at a large degree, and the gcd over Q
+    # below, which can take minutes there, decides the rest
+    for p in (2**61 - 1, 2**31 - 1):
+        if c[d] % p and squarefree_mod(c[:d+1], p): return True
     f = [Fraction(x) for x in c[:d+1]]
     g = [Fraction(i*c[i]) for i in range(1, d+1)]
     # polynomial gcd over Q; squarefree iff it is a constant
@@ -395,6 +431,44 @@ def squarefree(c):
             while f and f[-1] == 0: f.pop()
         f, g = g, f
     return len(f) == 1
+
+def poly_text(c):
+    """the polynomial sum c_i x^i as main.c's print_poly prints it"""
+    s = ''
+    for i in range(len(c) - 1, -1, -1):
+        a = c[i]
+        if a == 0: continue
+        if a > 0: s += ' + ' if s else ''
+        else: s += ' - ' if s else '- '; a = -a
+        if i == 0: s += '%d' % a
+        elif i == 1: s += 'x' if a == 1 else '%d x' % a
+        else: s += ('x^%d' % i) if a == 1 else '%d x^%d' % (a, i)
+    return s
+
+def curve_line(line, c):
+    """What a line that prints the curve or the list of its coefficients
+    must be, on the coefficients c given; None for any other line.  The
+    equation of the curve (message 5 of main.c) is the polynomial in full
+    below the degree RATPOINTS_PRINT_DEGREE, its leading zero coefficients
+    not counted, and from there on that degree and the number of bits of
+    its largest coefficient (mpz_sizeinbase, which counts 1 for a 0); so is
+    the list of the coefficients of the report of -v, with its leading
+    zeros dropped, and so is the list after the reversal of an odd degree
+    with a zero constant term, which swaps c_n and c_(d+1-n) for n = 1 to
+    d"""
+    d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
+    bits = max(abs(a).bit_length() or 1 for a in c[:d+1])
+    if line.startswith('Curve equation is  y^2 = '):
+        if d < PRINT_DEGREE: return 'Curve equation is  y^2 = ' + poly_text(c)
+        return ('Curve equation is  y^2 = f(x), where f has degree %d and coefficients'
+                ' of at most %d bits' % (d, bits))
+    for head, cs in (('  coefficients: ', c[:d+1]),
+                     ('  coefficients now: ', c[:1] + [c[d+1-n] for n in range(1, d+1)])):
+        if line.startswith(head):
+            if d < PRINT_DEGREE: return head[:-1] + ''.join(' %d' % a for a in cs)
+            return head + 'of at most %d bits (not printed)' % bits
+    return None
 
 POINT = re.compile(r'^\((-?\d+) : (-?\d+) : (\d+)\)$')
 XONLY = re.compile(r'^\((-?\d+) : (\d+)\)$')
@@ -440,7 +514,7 @@ def main():
             cur = None
         elif cur is not None:
             cur[1].append(line)
-    checked = failed = skipped = gp_used = refusals = write_fails = 0
+    checked = failed = skipped = gp_used = refusals = write_fails = curves = 0
     notes = []
     for args, out, filt in invs:
         o = parse_args(args)
@@ -449,6 +523,14 @@ def main():
             failed += 1; print('FAIL:', ' '.join('<%s>' % a for a in args)); print('   ', msg)
         exit_line = [l for l in out if l.startswith('exit ')]
         body = [l for l in out if not l.startswith('exit ')]
+        # the curve and the lists of its coefficients, wherever they are
+        # printed, in full or in their short forms
+        if 'c' in o:
+            for l in body:
+                want = curve_line(l, o['c'])
+                if want is None: continue
+                if l != want: fail('printed "%s", where it must be "%s"' % (l[:100], want[:100])); break
+                curves += 1
         if filt in WRITE_FAILS:
             # what the program prints on standard error, where it reports
             # that a write failed, and its exit status
@@ -573,8 +655,9 @@ def main():
             fail('missing %s extra %s wrong y %s' % (sorted(missing)[:5], sorted(extra)[:5], wrong[:5]))
     print('%d invocations checked (%d by gp, %d over the denominators e m^2 only), '
           '%d refusals of the arguments checked, %d runs on a failing standard output checked, '
+          '%d lines of the curve or its coefficients checked, '
           '%d skipped (formats, reports), %d failed'
-          % (checked, gp_used, rule_used, refusals, write_fails, skipped, failed))
+          % (checked, gp_used, rule_used, refusals, write_fails, curves, skipped, failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 

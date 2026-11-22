@@ -1105,7 +1105,24 @@ void message(long n, long total, ratpoints_args *args)
             printf("%ld further primes used in the third stage.\n",
                    args->sp3_used - args->sp2_used);
             break;
-    case 5: printf("\nCurve equation is  y^2 = ");
+    case 5: /* the polynomial, or from the degree RATPOINTS_PRINT_DEGREE on its
+             * degree and the number of bits of its largest coefficient */
+            { long d = args->degree, k; /* d: the leading zeros dropped */
+
+              while(d > 0 && mpz_cmp_si(args->cof[d], 0) == 0) { d--; }
+              if(d >= RATPOINTS_PRINT_DEGREE)
+              { unsigned long bits = 0;
+
+                for(k = 0; k <= d; k++)
+                { unsigned long b = mpz_sizeinbase(args->cof[k], 2);
+
+                  if(b > bits) { bits = b; }
+                }
+                printf("\nCurve equation is  y^2 = f(x), where f has degree %ld"
+                       " and coefficients of at most %lu bits\n", d, bits);
+                break;
+            } }
+            printf("\nCurve equation is  y^2 = ");
             print_poly(args->cof, args->degree);
             printf("\n");
             break;

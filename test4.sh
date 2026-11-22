@@ -1144,7 +1144,21 @@ echo '---- the list of the coefficients from a file ----'
 # second.  deg250 and deg251 hold polynomials of these degrees, of the
 # shapes of those of degrees 102 and 101 above, (x^125 + 1)^2 + x(2x - 1)
 # with the Sturm step and 2x^251 - x^250 + (x + 1)^2 under -s, which have
-# the points at x = 1/2 and x = 0 and those at infinity
+# the points at x = 1/2 and x = 0 and those at infinity.  From the degree
+# RATPOINTS_PRINT_DEGREE (1000) on, the program prints the degree and the
+# number of bits of the largest coefficient in place of the equation of the
+# curve, and so does the report of -v in place of the lists of the
+# coefficients, at its start and after a reversal: deg999 holds
+# 2x^999 - x^998 + 2x^2 + x, of degree 999, printed in full, an odd degree
+# with a zero constant term and the coefficient 1 of x, so that it is
+# reversed, with the points (1 : +-2 : 1) and (1 : +-2^500 : 2) besides
+# (0 : 0 : 1) and the one at infinity; deg999z the same list with a zero
+# after it, 1001 coefficients of a polynomial of degree 999, printed in
+# full; deg1000 (x^500 + 1)^2 + x(2x - 1), short; deg1001
+# 2x^1001 - x^1000 + 2x^2 + x, reversed and short in both lists of -v; and
+# deg3000 (x^1500 + C)^2 + x(2x - 1) with C = 10^100 + 7, whose
+# coefficients C^2 and 2C have 665 and 334 bits, under -s, since the Sturm
+# sequence at that degree with such coefficients takes more than a second
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
 (
   case $RP in /*) ;; *) RP=$PWD/$RP ;; esac
@@ -1161,6 +1175,19 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
                printf " 1\n" }' > deg250
   awk 'BEGIN { printf "1 2 1"; for (i = 3; i < 250; i++) printf " 0"
                printf " -1 2\n" }' > deg251
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 998; i++) printf " 0"
+               printf " -1 2\n" }' > deg999
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 998; i++) printf " 0"
+               printf " -1 2 0\n" }' > deg999z
+  awk 'BEGIN { printf "1 -1 2"; for (i = 3; i < 500; i++) printf " 0"
+               printf " 2"; for (i = 501; i < 1000; i++) printf " 0"
+               printf " 1\n" }' > deg1000
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 1000; i++) printf " 0"
+               printf " -1 2\n" }' > deg1001
+  awk 'BEGIN { z = sprintf("%098d", 0); printf "1%s14%s49 -1 2", z, z
+               for (i = 3; i < 1500; i++) printf " 0"
+               printf " 2%s14", z; for (i = 1501; i < 3000; i++) printf " 0"
+               printf " 1\n" }' > deg3000
   t @lf-tab 10 -q
   e @empty 10
   e @missing 10
@@ -1173,6 +1200,15 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
   t @big 3 -q
   t @deg250 10 -q
   t @deg251 10 -q -s
+  m @deg999 10
+  v @deg999 10 -v
+  m @deg1000 10
+  v @deg1000 10 -v
+  m @deg999z 10
+  v @deg999z 10 -v
+  v @deg1001 10 -v
+  m @deg3000 10 -s
+  v @deg3000 10 -s -v
 )
 rm -rf "$tmp"
 

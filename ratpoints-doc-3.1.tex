@@ -541,6 +541,7 @@ Finally,
 \begin{verbatim}
 > make test
 \end{verbatim}
+\begin{sloppypar}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
 \texttt{testapi}, \texttt{testinit}, \texttt{testmaxdegree} and \texttt{timing},
@@ -551,6 +552,7 @@ change to the sieve rather than for checking that the build works. Neither
 are \texttt{testthreads} and \texttt{tsan}, which take longer than the rest
 together, nor \texttt{sanitize} and \texttt{testalloc}, which need the
 sanitizers and GNU~\texttt{ld}.
+\end{sloppypar}
 
 \subsection{Install}
 
@@ -774,7 +776,15 @@ Here, $(x : y : z)$ are the coordinates of the point considered as a point
 in the $(1, \lceil n/2\rceil, 1)$-weighted projective plane, which is the
 natural ambient space for the curve. The coordinates are integers with
 $x$ and~$z$ coprime and $z > 0$, or $z = 0$ and $x = 1$ (for points at
-infinity).
+infinity). The information before the points includes the equation of the
+curve, but from the degree \texttt{RATPOINTS\_PRINT\_DEGREE} on (defined in
+\texttt{ratpoints.h}, $1000$ by default), where the polynomial could fill
+pages (half a gigabyte at degree~$65000$ with large coefficients), only its
+degree~$d$ and the number~$b$ of bits of the absolute value of its largest
+coefficient: ``\texttt{Curve equation is\ \ y\^{}2 = f(x), where f has
+degree} $d$ \texttt{and coefficients of at most} $b$ \texttt{bits}''. The
+degree is that of the polynomial given, its leading zero coefficients not
+counted.
 
 There are various ways to change this behavior.
 \begin{itemize}\setlength{\parindent}{0mm}\setlength{\parskip}{1ex}
@@ -782,7 +792,12 @@ There are various ways to change this behavior.
         {\em quiet}).
   \item To add some more output explaining what the program is doing,
         use \verb+-v+ (for {\em verbose}). This has no effect if
-        the \verb+-q+ option is also given.
+        the \verb+-q+ option is also given. The report lists the
+        coefficients, and again after a reversal that changes them; from
+        the degree \texttt{RATPOINTS\_PRINT\_DEGREE} on, as for the
+        equation of the curve, a line ``\verb+coefficients: of at most+
+        $b$ \verb+bits (not printed)+'' gives the number of bits of the
+        largest of them instead.
   \item To suppress printing of the points, use \verb+-z+.
   \item If you only want to list the $x$-coordinates of point pairs rather
         than individual points, use~\verb+-y+.
@@ -1266,7 +1281,10 @@ The \texttt{flags} field holds a number of bit flags.
         Jacobi symbol test (set by the \verb+-j+~option to~\texttt{ratpoints}).
   \item \texttt{RATPOINTS\_VERBOSE} --- when set, causes the procedure to
         print some output on what it is doing (set by the \verb+-v+~option
-        to~\texttt{ratpoints}).
+        to~\texttt{ratpoints}); from the degree
+        \texttt{RATPOINTS\_PRINT\_DEGREE} on, it prints the number of bits
+        of the largest coefficient in place of the list of the
+        coefficients.
 \end{itemize}
 
 There are some other flags that are used internally. One of them might be

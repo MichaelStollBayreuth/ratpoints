@@ -58,6 +58,15 @@ typedef char ratpoints_max_degree_fits_size_t
   [((size_t)-1/sizeof(mpz_t)/((size_t)RATPOINTS_MAX_DEGREE + 7)
       >= ((size_t)RATPOINTS_MAX_DEGREE + 1)/2) ? 1 : -1];
 
+/* From this degree of f on, the program and the library print its degree
+ * and the number of bits of its largest coefficient where they would print
+ * the polynomial or the list of its coefficients (the curve the program
+ * prints without -q, the report of -v): at degree 65000 the polynomial can
+ * take half a gigabyte. */
+#ifndef RATPOINTS_PRINT_DEGREE
+#define RATPOINTS_PRINT_DEGREE 1000        /* print f only below this degree */
+#endif
+
 /* A fixed choice of the numbers of moduli in the first stage and in the
  * first two stages, as versions 2.x used it.  The library does not use
  * these values: when sp1 and sp2 are negative -- which is what the command
