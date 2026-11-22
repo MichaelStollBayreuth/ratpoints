@@ -37,8 +37,8 @@ which test4.sh writes and FILES records (a name that FILES does not have
 cannot be read, and a zero byte in a file is refused like a word that is
 no integer); a number is the whole argument but for white space around it, an
 integer within the range of a long or a real number that is not NaN; and
-the search intervals alternate, are ordered by their ends as the numbers
-they are and are not too many.  An
+the search intervals alternate and are ordered by their ends as the
+numbers they are, however many there are.  An
 invocation that reports an exit status must report the one these rules
 give, with its message, and one they refuse must report it; one they
 accept may end with the message for a polynomial that is not squarefree,
@@ -179,7 +179,7 @@ def parse_args(args):
             if i + 1 >= n: o['exit'] = 7; return o
             i += 1
             if k == 'l':
-                if l_seen or len(o['ivs']) == MAX_DEGREE: o['exit'] = 7; return o
+                if l_seen: o['exit'] = 7; return o
                 low = c_end(args[i])
                 if low is None: o['exit'] = 7; return o
                 if o['ivs'] and o['ivs'][-1][1] >= low: o['exit'] = 7; return o
@@ -230,7 +230,7 @@ MESSAGE = {3: 'Too many coefficients.',
            4: 'Incorrect height argument.',
            5: 'The polynomial must have degree at least 1.',
            6: 'Wrong syntax for optional arguments:',
-           7: 'Incorrect interval arguments (not numbers, not alternating, too many, or not ordered).',
+           7: 'Incorrect interval arguments (not numbers, not alternating, or not ordered).',
            11: 'Incorrect coefficients (not integers separated by blanks).',
            12: 'Cannot read the file of the coefficients.'}
 

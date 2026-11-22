@@ -45,7 +45,8 @@
 # and the intervals that a missing first -l or last -u leave open), -1 in
 # a search of a single block, ends of the search intervals that are not
 # doubles, which are taken as the numbers they are, writes to standard
-# output that fail, and the list of the coefficients read from a file.
+# output that fail, the list of the coefficients read from a file, and any
+# number of search intervals.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -621,12 +622,6 @@ e '5 0' 10
 e '1 2 0 0' 20 -q
 e '1 2 0 0' 20 -q -k
 e '1 2 0 0' 20 -q -s
-# a hundred and one intervals
-set --
-i=0
-while [ $i -le 100 ]; do set -- "$@" -l $((3*i)) -u $((3*i+1)); i=$((i+1)); done
-e '1 2 3' 1000 "$@"
-set --
 
 echo '==== part 2: the report -v prints ===='
 v '1 0 126 0 441' 100 -v -n 3 -N 5 -P 2
@@ -1157,3 +1152,22 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
   t @big 3 -q
 )
 rm -rf "$tmp"
+
+echo '---- any number of search intervals ----'
+# The command line takes any number of search intervals: the program sizes
+# its arrays of them by the number of its words.  The 101 intervals
+# [3i, 3i + 1] for i = 0 to 100 on y^2 = 3x^2 + 2x + 1, whose points lie in
+# the first interval and in others; and the 201 intervals [i, i] for
+# i = -100 to 100 with the denominator 1 only, which hold the same x of the
+# search as the one interval [-100, 100] and give its points, five pairs of
+# them from x = -24 to x = 88
+set --
+i=0
+while [ $i -le 100 ]; do set -- "$@" -l $((3*i)) -u $((3*i+1)); i=$((i+1)); done
+t '1 2 3' 200 -q "$@"
+set --
+i=-100
+while [ $i -le 100 ]; do set -- "$@" -l $i -u $i; i=$((i+1)); done
+t '1 2 3' 100 -q -du 1 "$@"
+t '1 2 3' 100 -q -du 1 -l -100 -u 100
+set --

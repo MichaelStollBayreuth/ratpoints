@@ -52,7 +52,8 @@
  * global variables                                                       *
  **************************************************************************/
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
+mpz_t *c;             /* The coefficients of f, one per word of the list */
+long num_c;           /* the entries of c */
 mpz_t tmp, tmp2;      /* for intermediate results with gmp integers */
 
 int quiet;            /* A flag saying whether to suppress messages */
@@ -64,16 +65,17 @@ char *string_before;  /* String to be printed before the points */
 char *string_between; /* String to be printed between the points */
 char *string_after;   /* String to be printed after the points */
 
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+ratpoints_interval *domain;
                       /* This contains the intervals representing the search region */
 
 /* An end of a search interval as the command line gives it, exactly: inf is
  * -1 for -infinity, +1 for +infinity and 0 for the rational number q */
 typedef struct {int inf; mpq_t q;} exact_end;
 
-exact_end ends[2*RATPOINTS_MAX_DEGREE];
+exact_end *ends;
                       /* The ends of the intervals of the command line:
                          ends[2*i] <= x <= ends[2*i+1] for the i-th */
+long num_ends;        /* the entries of ends */
 
 char *usage_str =
     "Usage: ratpoints 'a_0 a_1 ... a_n' max_height\n"
@@ -203,12 +205,7 @@ int main(int argc, char *argv[])
   int before_printed; /* whether process has printed string_before */
   ratpoints_args args;
 
-  { long n;
-    /* initialize multi-precision integer variables */
-    for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_init(c[n]); }
-    /* and the rational ones for the ends of the intervals */
-    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_init(ends[n].q); }
-  }
+  /* the arrays c, ends and domain are sized and initialized by read_input */
   mpz_init(tmp); mpz_init(tmp2);;
 
   /* read input */
@@ -283,9 +280,10 @@ int main(int argc, char *argv[])
   /* clear multi-precision integer variables */
   mpz_clear(tmp); mpz_clear(tmp2);
   { long n;
-    for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
-    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_clear(ends[n].q); }
+    for(n = 0; n < num_c; n++) { mpz_clear(c[n]); }
+    for(n = 0; n < num_ends; n++) { mpq_clear(ends[n].q); }
   }
+  free(c); free(ends); free(domain);
   return(exit_status(0));
 }
 
@@ -320,7 +318,6 @@ static int cmp_end(const exact_end *e, const exact_end *f)
 int read_input(long argc, char *argv[], ratpoints_args *args)
 {
   int l_seen = 0;     /* flag for dealing with -l -u */
-  mpz_t fff;          /* temporary variable for gmp integers */
   long num_inter = 0; /* number of positivity intervals */
 
   /* Initialize args */
@@ -332,10 +329,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                     unsigned int flags; ...}
             ratpoints_args;
   */
-  args->cof           = &c[0];
+  args->cof           = NULL; /* c, once the words of the list are counted */
   args->degree        = 0;
   args->height        = 0;
-  args->domain        = &domain[0];
+  args->domain        = NULL; /* domain, before the options are read */
   args->num_inter     = 0;  /* No interval up to now */
   args->b_low         = 1;  /* denominators go from 1 to h */
   args->b_high        = -1;
@@ -359,26 +356,44 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                             /* allow reversal of polynomial */
                             /* use Jacobi symbol test */
 
-  mpz_init(fff); /* initialize gmp integer */
   /* read coefficients: integers separated by white space (see scan_mpz),
-   * at most RATPOINTS_MAX_DEGREE + 1 of them.  Those beyond go into fff,
-   * so that a list with something in it that is not an integer is refused
+   * at most RATPOINTS_MAX_DEGREE + 1 of them, since the library takes no
+   * larger degree.  Each word is read into an entry of c of its own, so
+   * that a list with something in it that is not an integer is refused
    * as such, however long it is.  The list is the first argument, or, when
    * that is @path, the contents of the file that path names (@- for
    * standard input; see read_coeff_file), which are freed once the
    * coefficients are read. */
   { char *s = argv[1];
     char *list = NULL; /* the contents of the file of @path */
+    long num_words = 0; /* the words of the list */
     long n = 0; /* the number of integers read */
+    long k;
 
     if(*s == '@')
     { list = read_coeff_file(s + 1);
       s = list;
     }
+    /* count the words of the list, the runs of characters that are not
+     * white space: c gets an entry for each, and one for an empty list */
+    { char *t = s;
+
+      for(;;)
+      { while(isspace((unsigned char)*t)) { t++; }
+        if(*t == 0) { break; }
+        num_words++;
+        while(*t != 0 && !isspace((unsigned char)*t)) { t++; }
+      }
+    }
+    num_c = (num_words > 0) ? num_words : 1;
+    c = calloc(num_c, sizeof(mpz_t));
+    if(c == NULL) { error(10); }
+    for(k = 0; k < num_c; k++) { mpz_init(c[k]); }
+    args->cof = c;
     for(;;)
     { while(isspace((unsigned char)*s)) { s++; }
       if(*s == 0) { break; }
-      s = scan_mpz(s, (n <= RATPOINTS_MAX_DEGREE) ? c[n] : fff);
+      s = scan_mpz(s, c[n]); /* a scan takes one word, so n < num_words */
       if(s == NULL) { error(11); }
       n++;
     }
@@ -403,6 +418,32 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   string_between  = NULL;
   string_after    = NULL;
 
+  /* The arrays of the search intervals, sized by the number of intervals
+   * that the options can give at most.  num_inter is advanced after a -u
+   * and the number after it, or, for a last interval without -u, after its
+   * -l and the number after it, so that each interval has two words of the
+   * options of its own; and the entries of the interval num_inter are
+   * written only once its option and the number after it have been read.
+   * So the argc - 2 words of the options, argv[3] to argv[argc], give at
+   * most (argc - 2)/2 intervals, with two entries of ends each.  domain
+   * has in addition the degree entries that the library asks for, since it
+   * writes there the region it searches, the intervals cut down to where f
+   * is positive.  Each array gets at least one entry (domain since the
+   * degree is at least 1), every entry starts as 0, and the rational
+   * numbers are initialized. */
+  { long max_inter, num_domain, k;
+
+    max_inter = (argc - 2)/2;
+    num_ends = (max_inter > 0) ? 2*max_inter : 1;
+    num_domain = max_inter + args->degree;
+    ends = calloc(num_ends, sizeof(exact_end));
+    if(ends == NULL) { error(10); }
+    for(k = 0; k < num_ends; k++) { mpq_init(ends[k].q); }
+    domain = calloc(num_domain, sizeof(ratpoints_interval));
+    if(domain == NULL) { error(10); }
+    args->domain = domain;
+  }
+
   /* recognize optional args */
   { long i = 3;
     while(i <= argc)
@@ -413,7 +454,6 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) error(7);
           i++;
           if(l_seen) { error(7); } /* -l -l */
-          if(num_inter == RATPOINTS_MAX_DEGREE) { error(7); }
           if(!scan_end(argv[i], -1, &ends[2*num_inter],
                        &domain[num_inter].low))
           { error(7); }
@@ -701,7 +741,6 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   /* quiet implies not verbose */
   if(quiet) { args->flags &= ~RATPOINTS_VERBOSE; }
 
-  mpz_clear(fff); /* clean up */
   return(0);
 }
 
@@ -1103,7 +1142,7 @@ void error(long n)
     case 6: printf("\nWrong syntax for optional arguments:\n\n");
     case 2: printf("\n%s\n%s", RATPOINTS_VERSION, usage_str); break;
     case 7: printf("\nIncorrect interval arguments (not numbers, ");
-            printf("not alternating, too many, or not ordered).\n\n");
+            printf("not alternating, or not ordered).\n\n");
             break;
     case 8: printf("\nPolynomial is not square-free.\n\n"); break;
     case 9: printf("\nBug no. 1 - please report!\n\n"); break;

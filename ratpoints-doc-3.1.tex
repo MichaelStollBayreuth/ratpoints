@@ -403,7 +403,7 @@ runs \texttt{rpapi}, a program that tests what the library offers and the
 command-line program cannot reach: the checks that
 \texttt{find\_points\_work} makes on its arguments and the error codes it
 returns, a callback that stops the search or declines a point, the flags,
-more search intervals than the command line takes, and a sequence of
+more search intervals than a command line can hold, and a sequence of
 searches on one initialized structure
 (Section~\ref{sec:library}); the output is compared against
 \texttt{testbase-api}.
@@ -791,8 +791,7 @@ you can specify this in the form \\
 \verb+-l+ $l_k$ \verb+-u+ $u_k$ \,. \\
 The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
-to~$+\infty$. The number $k$ of intervals is bounded by
-\texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+to~$+\infty$. There is no bound on the number~$k$ of intervals.
 The ends are taken exactly as the numbers given, whether or not they are
 double-precision numbers: \verb+-l 1.6+ means~$8/5$, which no double is
 (the double nearest to it is a little larger), and
