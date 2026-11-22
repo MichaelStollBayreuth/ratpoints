@@ -1119,7 +1119,7 @@ void message(long n, long total, ratpoints_args *args)
                   if(b > bits) { bits = b; }
                 }
                 printf("\nCurve equation is  y^2 = f(x), where f has degree %ld"
-                       " and coefficients of at most %lu bits\n", d, bits);
+                       " and coefficients of at most %lu bits\n\n", d, bits);
                 break;
             } }
             printf("\nCurve equation is  y^2 = ");

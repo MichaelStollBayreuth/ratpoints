@@ -12559,6 +12559,7 @@ Please acknowledge use of this program in published work.
 
 
 Curve equation is  y^2 = f(x), where f has degree 1000 and coefficients of at most 2 bits
+
 max. Height = 10
 
 (1 : 1 : 0)
@@ -12586,6 +12587,7 @@ Please acknowledge use of this program in published work.
 
 
 Curve equation is  y^2 = f(x), where f has degree 1000 and coefficients of at most 2 bits
+
 
 find_points:
   degree:       1000
@@ -12725,6 +12727,7 @@ Please acknowledge use of this program in published work.
 
 Curve equation is  y^2 = f(x), where f has degree 1001 and coefficients of at most 2 bits
 
+
 find_points:
   degree:       1001
   coefficients: of at most 2 bits (not printed)
@@ -12779,6 +12782,7 @@ Please acknowledge use of this program in published work.
 
 
 Curve equation is  y^2 = f(x), where f has degree 3000 and coefficients of at most 665 bits
+
 max. Height = 10
 
 (1 : 1 : 0)
@@ -12806,6 +12810,7 @@ Please acknowledge use of this program in published work.
 
 
 Curve equation is  y^2 = f(x), where f has degree 3000 and coefficients of at most 665 bits
+
 
 find_points:
   degree:       3000

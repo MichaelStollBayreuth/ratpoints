@@ -455,7 +455,8 @@ def curve_line(line, c):
     the list of the coefficients of the report of -v, with its leading
     zeros dropped, and so is the list after the reversal of an odd degree
     with a zero constant term, which swaps c_n and c_(d+1-n) for n = 1 to
-    d"""
+    d.  The equation of the curve is followed by a blank line in both forms
+    (see the check in main)"""
     d = len(c) - 1
     while d > 0 and c[d] == 0: d -= 1
     bits = max(abs(a).bit_length() or 1 for a in c[:d+1])
@@ -526,10 +527,21 @@ def main():
         # the curve and the lists of its coefficients, wherever they are
         # printed, in full or in their short forms
         if 'c' in o:
-            for l in body:
+            for i, l in enumerate(body):
                 want = curve_line(l, o['c'])
                 if want is None: continue
                 if l != want: fail('printed "%s", where it must be "%s"' % (l[:100], want[:100])); break
+                # message 5 ends in a blank line, in both forms, after which
+                # comes the height bound (message 6) or, under -v, the search
+                # region (message 3) when intervals are given and otherwise
+                # the report, which begins with a blank line of its own
+                # (unless a filter of the run has taken the lines out)
+                after = body[i+1:i+3]
+                blank2 = o['v'] and not o['ivs']
+                if not filt and l.startswith('Curve equation is') and \
+                   (after[:1] != [''] or (len(after) > 1 and (after[1] == '') != blank2)):
+                    fail('"%s" is followed by %s, not by a blank line and %s'
+                         % (l[:100], after, 'another' if blank2 else 'a line of text')); break
                 curves += 1
         if filt in WRITE_FAILS:
             # what the program prints on standard error, where it reports
