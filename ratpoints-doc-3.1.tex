@@ -758,7 +758,11 @@ There are various ways to change this behavior.
         \verb+"\\"+ and \verb+"\%"+ are recognized and do what you expect.
         The {\em format} string can contain markers \verb+%x+, \verb+%y+,
         \verb+%z+ that will be replaced with the $x$, $y$, and $z$-coordinate
-        of the point, respectively. The defaults are empty for
+        of the point, respectively. A~\verb+%+ followed by any other
+        character prints both: \verb+%%+ prints two percent signs, and
+        \verb+\%+ is the way to print one. Likewise a backslash followed by
+        any other character prints both, and a~\verb+%+ or a backslash at
+        the end of a string prints as it is. The defaults are empty for
         {\em string-before}, {\em string-between} and {\em string-after},
         and \verb+"(%x : %y : %z)\n"+ for {\em format} when \verb+-y+
         is not specified; otherwise \verb+"(%x : %z)\n"+.
@@ -1245,7 +1249,10 @@ to \texttt{proc}. If \texttt{*quit} is set to a non-zero value, this indicates
 that \texttt{find\_points} should abort the point search and return immediately;
 otherwise the search continues. This is how the \verb+-1+~option works.
 The return value is taken as a weight
-for counting the points; usually it will be~1.
+for counting the points; usually it will be~1. The weights should not be
+negative: \texttt{find\_points} adds them up into the count it returns,
+whose negative values are its error codes (such as
+\texttt{RATPOINTS\_NO\_MEMORY}).
 
 Whatever \texttt{num\_threads} says, \texttt{proc} is called from the
 thread that called \texttt{find\_points}, never from a sieving thread, and

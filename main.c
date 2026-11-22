@@ -167,7 +167,7 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
     { case '%':
         c = *fmt++;
         switch(c)
-        { case 0: putchar('%'); return(1);
+        { case 0: putchar('%'); fflush(stdout); return(1);
           case 'x': printf("%ld", a); break;
           case 'y': if(info->no_y)
                     { putchar('%'); putchar('y'); }
@@ -181,7 +181,7 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
       case '\\':
         c = *fmt++;
         switch(c)
-        { case 0: putchar('\\'); return(1);
+        { case 0: putchar('\\'); fflush(stdout); return(1);
           case 't': printf("\t"); break;
           case 'n': printf("\n"); break;
           case '\\': putchar('\\'); break;
