@@ -917,6 +917,8 @@ t '1 0 126 0 441' 200 -q -z -1 -fs '[' -fe ']\n'
 echo '---- the coefficients and the numbers, read whole ----'
 tab=$(printf '\t')
 cr=$(printf '\r')
+vt=$(printf '\v')
+ff=$(printf '\f')
 # The coefficients are integers, each an optional sign and at least one
 # digit, separated by white space, and a list that is anything else is
 # refused with a message of its own rather than read as some other
@@ -941,6 +943,22 @@ e '1,0,1' 10
 s=1; i=0; while [ $i -lt 101 ]; do s="$s 0"; i=$((i+1)); done
 e "$s x" 10
 t "${tab}1${tab}0 $tab 1 " 10 -q
+# Leading zeros and a sign on 0 change nothing, and the rest of the white
+# space of isspace() separates the coefficients as well ('+0001 -00 01' with
+# a vertical tab, a form feed and a carriage return is x^2 + 1).  A sign
+# alone is not a number, and neither are two signs, whichever they are.  A
+# long coefficient is read exactly: 10^4000 + 2*10^2000 + 1, of 4001 digits,
+# is (10^2000 + 1)^2, so that y^2 = x^2 + (10^2000 + 1)^2 has the points
+# (0 : +-(10^2000 + 1) : 1) and the two at infinity, and no other of height
+# at most 10.
+t "+0001${vt}-00${ff}${cr}01" 10 -q
+e '1 2 +' 10
+e '+ 1' 10
+e '1 +-1' 10
+e '1 -+1' 10
+e '1 ++1' 10
+z=''; i=0; while [ $i -lt 1999 ]; do z="${z}0"; i=$((i+1)); done
+t "1${z}2${z}1 0 1" 10 -q
 # A number given as the height bound or as the argument of an option may
 # have white space before and after it, but nothing else: a script with
 # CRLF line ends leaves a carriage return on the last argument of a line

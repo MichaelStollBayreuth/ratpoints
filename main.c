@@ -696,7 +696,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
  * pointer to what follows it; return NULL if s does not start with one.
  * White space is what isspace() counts as such in the C locale, in which
  * the program runs: spaces, tabs, line feeds, carriage returns, vertical
- * tabs and form feeds. */
+ * tabs and form feeds.  The digits are converted by gmp, in a time nearly
+ * linear in their number (one multiplication by 10 per digit would take a
+ * time quadratic in it); for that the character after them is replaced by
+ * a zero for the call and then put back, so s must be writable. */
 char *scan_mpz(char *s, mpz_t x)
 {
   int neg = 0; /* flag for sign */
@@ -704,11 +707,12 @@ char *scan_mpz(char *s, mpz_t x)
   if(*s == '-') { neg = 1; s++; }
   else if(*s == '+') { s++; }
   if(!('0' <= *s && *s <= '9')) { return NULL; }
-  mpz_set_ui(tmp2, 0);
-  while('0' <= *s && *s <= '9')
-  { mpz_mul_ui(tmp2, tmp2, 10);
-    mpz_add_ui(tmp2, tmp2, (unsigned long)(*s - '0'));
-    s++;
+  { char *e = s, save;
+
+    while('0' <= *e && *e <= '9') { e++; }
+    save = *e; *e = 0;
+    mpz_set_str(tmp2, s, 10);
+    *e = save; s = e;
   }
   if(*s != 0 && !isspace((unsigned char)*s)) { return NULL; }
   if(neg) { mpz_neg(tmp2, tmp2); }
