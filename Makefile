@@ -25,7 +25,8 @@
 # The main targets are
 #   all         the library, the program and this documentation
 #   test        test1, test1once, test1many, testdegrees, test2, test3,
-#               test4, testapi and timing (see below)
+#               test4, testapi, testinit, testmaxdegree and timing (see
+#               below)
 #   test1once   the curves of test1 with the input fields of args set once
 #               before the loop: the library must leave them alone
 #   test3       the invocations of test3.sh, regression tests for bugs
@@ -51,6 +52,8 @@
 #               the callback, the flags), against testbase-api
 #   testinit    every sieve table init.c builds, against a direct evaluation
 #               of its definition (bench_init.c); a fraction of a second
+#   testmaxdegree  the refusals at the bound on the degree, in a build with
+#               RATPOINTS_MAX_DEGREE 100 in build-maxdegree/ (maxdegree.sh)
 #   test4configs  test4 again on the library built with the other
 #               compile-time switches: register widths 64, 128, 512,
 #               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7,
@@ -240,6 +243,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             test3.sh testbase3 \
             test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
             rpapi.c testbase-api coverage.sh sanitize.sh testalloc.sh rpalloc.c \
+            maxdegree.sh \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -275,7 +279,7 @@ doc: ratpoints-doc-3.1.pdf
 # every suite whatever the earlier ones did and fails at the end if any of
 # them failed.
 TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi testinit \
-        timing
+        testmaxdegree timing
 
 .PHONY: test
 test:
@@ -436,6 +440,14 @@ testapi: rpapi testbase-api
 testinit: bench_init
 	./bench_init 1 > testinit.out 2>&1 || ${FAIL}
 
+# The refusals at the bound on the degree, which the default build cannot
+# reach (maxdegree.sh: the program and rpapi built with RATPOINTS_MAX_DEGREE
+# 100 in build-maxdegree/; the lists of 101 and 102 coefficients, and rpapi
+# against testbase-api).
+.PHONY: testmaxdegree
+testmaxdegree: ratpoints testbase-api maxdegree.sh
+	./maxdegree.sh || ${FAIL}
+
 # The suites with the sieve on several threads (the option -t): the same
 # references, since what the program prints must not depend on the number
 # of threads; then test4 and test1 on builds with fixed block lengths, so
@@ -541,7 +553,7 @@ dist: ${DISTFILES}
 clean:
 	${RM} ${TEMPFILES}
 	${RM} -r build-coverage build-test4-* build-threads-* build-tsan \
-	         build-sanitize build-alloc
+	         build-sanitize build-alloc build-maxdegree
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk

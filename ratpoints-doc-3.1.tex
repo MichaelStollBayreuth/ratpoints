@@ -374,7 +374,7 @@ the bugs fixed since then are at the end of \texttt{test4.sh}, where
 \end{verbatim}
 runs a few hundred invocations of \texttt{ratpoints} collected in \texttt{test4.sh},
 chosen so that nearly every line of the code runs at
-least once (\texttt{make coverage} below says how nearly): degrees $1$ to~$9$ and up to the maximum of~$100$,
+least once (\texttt{make coverage} below says how nearly): degrees $1$ to~$9$ and larger ones, beyond~$100$ too,
 odd and even degrees, square and non-square
 leading and constant coefficients, every reason to reverse the polynomial,
 curves with no points modulo some prime or no admissible numerator modulo~$64$,
@@ -415,6 +415,21 @@ builds \texttt{bench\_init} and compares every sieve table that
 \texttt{init.c} builds, for every prime and every class of the
 denominator, word for word with a direct evaluation of its definition
 (\texttt{bench\_init.c}); it takes a fraction of a second.
+
+\begin{verbatim}
+> make testmaxdegree
+\end{verbatim}
+tests the refusals at the bound on the degree (Section~\ref{sec:usage}),
+which the default build cannot reach, since no test can give a list of
+that many coefficients: \texttt{maxdegree.sh} builds the program and
+\texttt{rpapi} with \texttt{RATPOINTS\_MAX\_DEGREE} set to~$100$ in
+\texttt{build-maxdegree/}, where a list of $101$~coefficients must be
+searched as the default build searches it, one of~$102$ refused with ``Too
+many coefficients.'', and $102$~integers followed by a word that is not one
+refused as a list that is not one of integers; and \texttt{rpapi} must
+print \texttt{testbase-api}, its refusals of the degree
+$\texttt{RATPOINTS\_MAX\_DEGREE} + 1$ being those of~$101$. A few seconds
+besides the build.
 
 \begin{verbatim}
 > make test4configs
@@ -528,7 +543,7 @@ Finally,
 \end{verbatim}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
-\texttt{testapi}, \texttt{testinit} and \texttt{timing},
+\texttt{testapi}, \texttt{testinit}, \texttt{testmaxdegree} and \texttt{timing},
 and fails at the end if any of them failed, so that a script can
 tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
@@ -627,13 +642,14 @@ The archive contains the following files.
         \texttt{testbase4} (needs Python~3)
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
-        executable, as have the next seven
+        executable, as have the next eight
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
         \texttt{make test4configs} and \texttt{make coverage} run
   \item \texttt{test4-threads.sh}, \texttt{tsan.sh} --- the second half of
         \texttt{make testthreads}, and what \texttt{make tsan} runs
-  \item \texttt{sanitize.sh}, \texttt{testalloc.sh} --- what
-        \texttt{make sanitize} and \texttt{make testalloc} run
+  \item \texttt{sanitize.sh}, \texttt{testalloc.sh}, \texttt{maxdegree.sh} ---
+        what \texttt{make sanitize}, \texttt{make testalloc} and
+        \texttt{make testmaxdegree} run
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
@@ -681,10 +697,24 @@ the operating system lets one argument be (on Linux, 128~KiB). A zero
 byte in the file is refused like a word that is not an integer.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
-(defined in \texttt{ratpoints.h}), which is set to~$100$ by default.
-At a large degree, the option~\verb+-s+ (Section~\ref{fd}) saves time and
-memory: the Sturm sequence of a polynomial of degree~$d$ has about~$d^2/2$
-coefficients, which get larger along the sequence.
+(defined in \texttt{ratpoints.h}), which is set to~$1518500246$ by default,
+and a longer list is refused (``Too many coefficients.''). That is the
+largest degree for which every size, index and count that the program and
+the library compute from the degree stays within its type, on a machine
+whose \texttt{long} and \texttt{size\_t} have 64~bits: the one that binds
+is the size of the Sturm sequence, $8d^2 + 56d$ bytes for the degree~$d$
+(\texttt{ratpoints.h} has the list). A larger value is not supported; a
+smaller one can be given to the compiler (\verb+-DRATPOINTS_MAX_DEGREE=+$n$
+in \verb+CCFLAGS+), as \texttt{make testmaxdegree} does. In practice memory
+and time limit the degree long before that: the coefficients are kept as
+multi-precision integers, and so are a few more numbers for each of them;
+the exact test of a point costs a step per degree on numbers of up to
+about the degree times the size of the height bound; and the Sturm step
+costs most of all. At a large degree, the option~\verb+-s+
+(Section~\ref{fd}) saves time and memory: the Sturm sequence of a
+polynomial of degree~$d$ has about~$d^2/2$ coefficients, which get larger
+along the sequence. A list too long for one argument is read from a file,
+by~\verb+@+ as above.
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
@@ -1104,7 +1134,9 @@ in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
 degree to be nonpositive or larger than \texttt{RATPOINTS\_MAX\_DEGREE}
-(defined in \texttt{ratpoints.h}, $100$ by default), or for the height
+(defined in \texttt{ratpoints.h}, $1518500246$ by default, the largest
+degree for which the sizes the library computes from the degree stay
+within their types; see Section~\ref{sec:usage}), or for the height
 bound to be nonpositive; in this case the function returns the value
 \texttt{RATPOINTS\_BAD\_ARGS}.
 
@@ -1197,8 +1229,10 @@ array that is used in the first sieving stage. If non-positive, it is
 set to a default value, and a value above~$2^{20}$ is reduced to~$2^{20}$:
 every sieving thread allocates an array of that many bit arrays. The various
 default values are defined at the beginning of the header
-file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial is
-set.
+file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial,
+\texttt{RATPOINTS\_MAX\_DEGREE}, is set. Like the defaults, it can be set
+on the compiler's command line instead, but only to a value below the one
+there, which is the largest the library supports.
 
 \texttt{num\_threads} says how many threads sieve (option~\verb+-t+,
 Section~\ref{sec:threads}): $1$ or~$0$, the calling thread alone; $n \ge 2$,
@@ -1301,10 +1335,12 @@ The usual framework for using \texttt{find\_points} is as follows.
 
 (...)
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+#define DEGREE 6     /* The degree of f */
+mpz_t c[DEGREE+1];   /* The coefficients of f */
+ratpoints_interval domain[DEGREE];
                      /* This contains the intervals representing the
-                        search region */
+                        search region: room for num_inter + DEGREE
+                        of them, num_inter being 0 here */
 
 /*****************************************************************
  * function that processes the points                            *
@@ -1332,7 +1368,7 @@ int main(int argc, char *argv[])
   long total, n;
   ratpoints_args args;
 
-  long degree        = 6;
+  long degree        = DEGREE;
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: chosen from the curve */
   long sieve_primes2 = -1; /* negative: chosen from the curve */
@@ -1366,7 +1402,7 @@ int main(int argc, char *argv[])
     for(k = 0; k < 7; k++) { mpz_set_si(c[k], ...); }
 
     args.cof           = &c[0];
-    args.degree        = 6;
+    args.degree        = degree;
     args.height        = height;
     args.domain        = &domain[0];
     args.num_inter     = 0;

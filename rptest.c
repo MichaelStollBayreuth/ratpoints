@@ -66,9 +66,10 @@
 # define TEST_COEFF(n, k)  (testdata[n][(k)+1])
 #endif
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
+mpz_t c[TEST_MAX_DEGREE+1];  /* The coefficients of f */
 
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+ratpoints_interval domain[2*TEST_MAX_DEGREE];
+  /* room for the region the library writes, num_inter + degree intervals */
 
 /**************************************************************************
  * reading the numbers on the command line, as main.c does                *

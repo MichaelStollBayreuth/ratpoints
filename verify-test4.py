@@ -72,15 +72,19 @@ if hasattr(sys, 'set_int_max_str_digits'): sys.set_int_max_str_digits(0)
 BIG_ZEROS = '0'*999_999
 FILES = {'lf-tab': ' 1\t0\n\n\t1\r\n', 'empty': '', 'nul': '1 0 1\0 2\n',
          'word': '1 0 x\n', '-': '1\n0\n1\n',
-         'big': '-1' + BIG_ZEROS + '6 0 1' + BIG_ZEROS + '7\n'}
+         'big': '-1' + BIG_ZEROS + '6 0 1' + BIG_ZEROS + '7\n',
+         'deg250': '1 -1 2' + ' 0'*122 + ' 2' + ' 0'*124 + ' 1\n',
+         'deg251': '1 2 1' + ' 0'*247 + ' -1 2\n'}
 
 def max_degree():
-    """RATPOINTS_MAX_DEGREE of the ratpoints.h next to this script"""
+    """RATPOINTS_MAX_DEGREE of the ratpoints.h next to this script, the
+    default that its #ifndef gives; without it the rules of the command
+    line are not known"""
+    fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')
     try:
-        h = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')).read()
-        return int(re.search(r'#define RATPOINTS_MAX_DEGREE (\d+)', h)[1])
+        return int(re.search(r'^#\s*define\s+RATPOINTS_MAX_DEGREE\s+(\d+)', open(fn).read(), re.M)[1])
     except (OSError, TypeError):
-        return 100
+        sys.exit('verify-test4.py: no RATPOINTS_MAX_DEGREE in %s' % fn)
 MAX_DEGREE = max_degree()
 
 # White space as isspace() has it in the C locale, in which ratpoints runs;

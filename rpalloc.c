@@ -121,8 +121,11 @@ __attribute__((constructor)) static void rpalloc_start(void)
 
 #else /* the driver of the library */
 
-static mpz_t c[RATPOINTS_MAX_DEGREE+1];
-static ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+/* the largest degree of the searches below; domain has room for the region
+ * the library writes, num_inter + degree intervals */
+#define DEGREE 6
+static mpz_t c[DEGREE+1];
+static ratpoints_interval domain[2*DEGREE];
 
 /* A point as the search delivers it: a, b, and y by |y| modulo the prime
  * 2^61 - 1 and the sign of y (no |y| here is that large, so the two are y
@@ -312,7 +315,7 @@ int main(int argc, char *argv[])
   nt = atol(argv[1]);
   from = (strcmp(argv[2], "from") == 0);
   if(argc > 3) { first = last = atol(argv[3]); }
-  for(k = 0; k <= RATPOINTS_MAX_DEGREE; k++) { mpz_init(c[k]); }
+  for(k = 0; k <= DEGREE; k++) { mpz_init(c[k]); }
 
   /* the reference, and its numbers of points against the brute-force ones */
   sequence(nt, 1);
@@ -366,7 +369,7 @@ int main(int argc, char *argv[])
          first, (last > 0) ? last : n - 1,
          bad ? "WRONG" : "every search right");
 
-  for(k = 0; k <= RATPOINTS_MAX_DEGREE; k++) { mpz_clear(c[k]); }
+  for(k = 0; k <= DEGREE; k++) { mpz_clear(c[k]); }
   return(bad ? 1 : 0);
 }
 

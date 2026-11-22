@@ -908,7 +908,7 @@ static void setup_us1(ratpoints_args *args)
         int p = den_info[i].p;
         int v = den_info[i].val;
         int n = 1;
-        int k;
+        long k;
         mpz_t *c = args->cof;
         long degree = args->degree;
 

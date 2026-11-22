@@ -30,7 +30,33 @@
 /* Use the GNU multiprecision library. */
 #include <gmp.h>
 
-#define RATPOINTS_MAX_DEGREE 100           /* max. degree of f(x) */
+/* The largest degree of f: find_points_init and find_points_work refuse a
+ * larger one, and the program more coefficients (error 3).  Every array the
+ * degree d sizes comes from the heap, so the bound is what the sizes,
+ * indexes and counts computed from d allow, with the 64-bit long the
+ * library needs.  The one that binds is the Sturm sequence (sturm.c),
+ * (d^2 + 7d)/2 mpz_t's in one block of 8d^2 + 56d bytes, whose size a
+ * 64-bit size_t holds up to d = 1518500246, the value here.  The others are
+ * far from their limits there: the work space of d + 4 mpz_t's and the
+ * arrays of rp_coeffs (find_points.c), of at most 16(d + 4) bytes; the
+ * exponents of 2 in the Sturm step, up to 55d; the sums w + 62j of
+ * forbidden_valuations; the indexes and loop variables, which are longs.
+ * Memory and time limit the degree long before that: the Sturm sequence
+ * takes 8d^2 bytes and more for its coefficients, so at a large degree it
+ * is best left out (sturm < 0, option -s).  The value can be set on the
+ * compiler's command line, for a build with a small bound that reaches the
+ * refusals; a larger value than this one is not supported, and the check
+ * below refuses it. */
+#ifndef RATPOINTS_MAX_DEGREE
+#define RATPOINTS_MAX_DEGREE 1518500246    /* max. degree of f(x) */
+#endif
+/* The size of the Sturm sequence of degree d = RATPOINTS_MAX_DEGREE fits a
+ * size_t: its (d^2 + 7d)/2 entries are at most ((d + 1)/2)(d + 7), with the
+ * division of integers, which must not exceed SIZE_MAX/sizeof(mpz_t).  An
+ * array of negative size does not compile. */
+typedef char ratpoints_max_degree_fits_size_t
+  [((size_t)-1/sizeof(mpz_t)/((size_t)RATPOINTS_MAX_DEGREE + 7)
+      >= ((size_t)RATPOINTS_MAX_DEGREE + 1)/2) ? 1 : -1];
 
 /* A fixed choice of the numbers of moduli in the first stage and in the
  * first two stages, as versions 2.x used it.  The library does not use

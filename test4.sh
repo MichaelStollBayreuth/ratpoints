@@ -255,10 +255,22 @@ echo '---- higher degrees ----'
 t '1 0 0 0 0 0 0 0 0 1' 30 -q
 t '4 0 0 0 0 0 0 0 0 0 0 0 1' 20 -q
 t '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 15 -q
-# degree 100, the largest allowed
+# degree 100
 t '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 10 -q
-# degree 101
-e '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 10 -q
+# Beyond: the degree is bounded by RATPOINTS_MAX_DEGREE alone, far beyond
+# what a test can give (make testmaxdegree tests the bound in a build with
+# a small one).  Degree 101 on the command line, with the Sturm step:
+# 2x^101 - x^100 + (x + 1)^2 has the point (1 : +-3*2^50 : 2), where
+# 2x - 1 vanishes, besides (0 : +-1 : 1) and the point at infinity, and its
+# leading coefficient is not +-1, so that the denominators are the squares
+# and twice the squares; degree 102 under -s, (x^51 + 1)^2 + x(2x - 1),
+# with the points (1 : +-(2^51 + 1) : 2), (0 : +-1 : 1) and the two at
+# infinity.  The lists of degrees 250 and 251 from a file are below
+z=; i=3; while [ $i -lt 100 ]; do z="$z 0"; i=$((i+1)); done
+t "1 2 1$z -1 2" 10 -q
+z=; i=3; while [ $i -lt 51 ]; do z="$z 0"; i=$((i+1)); done
+z2=; i=52; while [ $i -lt 102 ]; do z2="$z2 0"; i=$((i+1)); done
+t "1 -1 2$z 2$z2 1" 10 -q -s
 
 echo '---- curves with many rational points ----'
 # these run out of informative primes, so the program looks at more of them
@@ -940,10 +952,11 @@ ff=$(printf '\f')
 # zero leading coefficient, '1 0 --1' not -x^3 + 1), a sign does not
 # separate two numbers ('1-1' is not -x + 1, '1+1 0 1' not x^3 + x + 1),
 # and a character that cannot be part of an integer does not end the list
-# ('1 0 1x', '1 0 1.5', '1,0,1').  A list of more than
-# RATPOINTS_MAX_DEGREE + 1 numbers with something else among them is
-# refused for that, not for its length.  Tabs separate the coefficients as
-# blanks do, and white space may stand before and after the list.
+# ('1 0 1x', '1 0 1.5', '1,0,1'), wherever it stands: after 102 numbers
+# too, which in a build with a bound of 100 on the degree (make
+# testmaxdegree) are refused for that word and not for their number.  Tabs
+# separate the coefficients as blanks do, and white space may stand before
+# and after the list.
 e '1 2 3 - 4' 10
 e '1-1' 10
 e '1+1 0 1' 10
@@ -1128,7 +1141,10 @@ echo '---- the list of the coefficients from a file ----'
 # can be on Linux (128 KiB), of y^2 = C x^2 - (C - 1) with
 # C = 10^1000000 + 7, whose points of height at most 3 are (+-1 : +-1 : 1),
 # so that both coefficients must be read exactly; it takes a fraction of a
-# second
+# second.  deg250 and deg251 hold polynomials of these degrees, of the
+# shapes of those of degrees 102 and 101 above, (x^125 + 1)^2 + x(2x - 1)
+# with the Sturm step and 2x^251 - x^250 + (x + 1)^2 under -s, which have
+# the points at x = 1/2 and x = 0 and those at infinity
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
 (
   case $RP in /*) ;; *) RP=$PWD/$RP ;; esac
@@ -1140,6 +1156,11 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
   printf '1 0 x\n' > word
   awk 'BEGIN { z = "0"; while (length(z) < 999999) z = z z
                z = substr(z, 1, 999999); printf "-1%s6 0 1%s7\n", z, z }' > big
+  awk 'BEGIN { printf "1 -1 2"; for (i = 3; i < 125; i++) printf " 0"
+               printf " 2"; for (i = 126; i < 250; i++) printf " 0"
+               printf " 1\n" }' > deg250
+  awk 'BEGIN { printf "1 2 1"; for (i = 3; i < 250; i++) printf " 0"
+               printf " -1 2\n" }' > deg251
   t @lf-tab 10 -q
   e @empty 10
   e @missing 10
@@ -1150,6 +1171,8 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
   e @ 10
   e @missing
   t @big 3 -q
+  t @deg250 10 -q
+  t @deg251 10 -q -s
 )
 rm -rf "$tmp"
 

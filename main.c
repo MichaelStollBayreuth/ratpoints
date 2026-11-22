@@ -1021,7 +1021,7 @@ void join_intervals(ratpoints_args *args)
 void print_poly(mpz_t *coeffs, long degree)
 {
   int flag = 0; /* 0 if at beginning */
-  int i;
+  long i;
   char *s;
 
   for(i = degree; i >= 0; i--)
@@ -1045,10 +1045,10 @@ void print_poly(mpz_t *coeffs, long degree)
                 }
                 break;
         default: if(mpz_cmp_si(tmp, 1) == 0)
-                 { printf("x^%d", i); }
+                 { printf("x^%ld", i); }
                  else
                  { s = mpz_get_str((char *) 0, 10, tmp);
-                   printf("%s x^%d", s, i); free(s);
+                   printf("%s x^%ld", s, i); free(s);
                  }
                  break;
   } } }
