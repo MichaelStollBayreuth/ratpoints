@@ -42,7 +42,11 @@ accept may end with the message for a polynomial that is not squarefree,
 which is checked, or else is checked like any other.  Invocations that
 test an output format or the report of -v are not checked here beyond
 what they print, except that the points a -v report contains are still
-compared.
+compared.  A run whose standard output refuses every write (announced with
+">/dev/full" or ">&-" after the arguments) must report the failure on
+standard error and exit with status 13 when the program writes anything
+there -- the message of a refusal, the banner, a point (see writes) -- and
+must print nothing and exit with 0 when it writes nothing.
 
 Prints one line per invocation that fails and a summary; exits 1 on any
 failure.  Takes a minute or two.
@@ -369,6 +373,24 @@ POINT = re.compile(r'^\((-?\d+) : (-?\d+) : (\d+)\)$')
 XONLY = re.compile(r'^\((-?\d+) : (\d+)\)$')
 FOUND = re.compile(r'^(\d+) rational points? (?:pairs )?found\.$')
 
+# the runs of w() in test4.sh, whose standard output refuses every write
+WRITE_FAILS = ('>/dev/full', '>&-')
+
+def writes(o):
+    """Whether the program writes anything to its standard output on the
+    command line that parse_args read into o: the message of a refusal (for
+    status 2 the usage), the banner and the report without -q, the message
+    for a polynomial that is not squarefree, a point the search finds unless
+    -z suppresses it.  None if that is not decided here: with a string of
+    -fs, -fm or -fe, under -x (which prints survivors of the sieve as well),
+    or when the search is too large for brute_points"""
+    if o['exit'] is not None or not o['q']: return True
+    if o['strs'] or o['x']: return None
+    if not squarefree(o['c']): return True
+    if o['z']: return False
+    pts = brute_points(o['c'], o['H'], o['dl'], o['du'], o['ivs'], o['inf'])
+    return None if pts is None else bool(pts)
+
 def main():
     fn = sys.argv[1] if len(sys.argv) > 1 else 'testbase4'
     # newline='': a carriage return in an argument stays in its line
@@ -391,7 +413,7 @@ def main():
             cur = None
         elif cur is not None:
             cur[1].append(line)
-    checked = failed = skipped = gp_used = refusals = 0
+    checked = failed = skipped = gp_used = refusals = write_fails = 0
     notes = []
     for args, out, filt in invs:
         o = parse_args(args)
@@ -400,6 +422,22 @@ def main():
             failed += 1; print('FAIL:', ' '.join('<%s>' % a for a in args)); print('   ', msg)
         exit_line = [l for l in out if l.startswith('exit ')]
         body = [l for l in out if not l.startswith('exit ')]
+        if filt in WRITE_FAILS:
+            # what the program prints on standard error, where it reports
+            # that a write failed, and its exit status
+            w = writes(o)
+            code = int(exit_line[-1].split()[1]) if exit_line else None
+            text = [l for l in body if l]
+            if w is None:
+                skipped += 1; notes.append('not checked (output %s): %s' % (filt, ' '.join(args[:2])))
+            elif w and (code != 13 or text != ['Error writing to standard output.']):
+                fail('output %s: exit %s and %s, where the program writes and must fail with 13'
+                     % (filt, code, text))
+            elif not w and (code != 0 or text):
+                fail('output %s: exit %s and %s, where the program writes nothing and must exit with 0'
+                     % (filt, code, text))
+            else: write_fails += 1
+            continue
         if exit_line:
             code = int(exit_line[-1].split()[1])
             # a test of the arguments: refused with the status and the
@@ -507,8 +545,9 @@ def main():
             wrong = [k for k in exp if k in got and exp[k] != got[k]]
             fail('missing %s extra %s wrong y %s' % (sorted(missing)[:5], sorted(extra)[:5], wrong[:5]))
     print('%d invocations checked (%d by gp, %d over the denominators e m^2 only), '
-          '%d refusals of the arguments checked, %d skipped (formats, reports), %d failed'
-          % (checked, gp_used, rule_used, refusals, skipped, failed))
+          '%d refusals of the arguments checked, %d runs on a failing standard output checked, '
+          '%d skipped (formats, reports), %d failed'
+          % (checked, gp_used, rule_used, refusals, write_fails, skipped, failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 

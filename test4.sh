@@ -43,8 +43,9 @@
 # -z, the coefficients and the numbers read whole (coefficient lists that
 # are not integers separated by white space, white space around a number,
 # and the intervals that a missing first -l or last -u leave open), -1 in
-# a search of a single block, and ends of the search intervals that are
-# not doubles, which are taken as the numbers they are.
+# a search of a single block, ends of the search intervals that are not
+# doubles, which are taken as the numbers they are, and writes to standard
+# output that fail.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -73,6 +74,22 @@ e() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo
       out=$("$RP" "$@"); st=$?
       printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\['
       echo "exit $st"
+}
+# the program with its standard output where every write fails, the first
+# argument saying where: '>/dev/full', a device that refuses every write
+# (Linux and FreeBSD have it; where there is none, standard output is
+# closed instead, which fails every write as well, so that the reference
+# holds everywhere), or '>&-', a closed standard output.  It is announced
+# like a filter, after the arguments; what follows is what the program
+# prints on standard error, where it reports the failure, and its exit
+# status
+w() { to=$1; shift
+      printf '#'; for a; do printf ' <%s>' "$a"; done; echo " | $to"
+      if [ "$to" = '>/dev/full' ] && [ -w /dev/full ]
+      then "$RP" "$@" 2>&1 > /dev/full
+      else "$RP" "$@" 2>&1 >&-
+      fi
+      echo "exit $?"
 }
 # the same as t, for runs without -q: the first line of the banner names
 # the version, and the report on the moduli used depends on the width and
@@ -1079,3 +1096,18 @@ t '-16 10' 20 -q -i -l +1.6 -u +.17E+1
 t '-16 10' 20 -q -i -l 1.6 -u 1e99999999999999999999
 m '-16 10' 20 -i -l 1.6 -u 1.7976931348623158e308
 t '-16 10' 20 -q -i -l -1.7976931348623158e308 -u 1.7
+
+echo '---- writes to standard output that fail ----'
+# When a write to standard output fails, the program says so on standard
+# error and exits with status 13, also after the message of an error,
+# whose status it would have otherwise; when it has written nothing,
+# nothing has failed.  On a device that refuses every write and on a
+# closed standard output: a run that prints points, one that prints the
+# message of an error (4, the height bound), and one that prints nothing
+# (-q -z on a curve without real points)
+w '>/dev/full' '1 0 1' 10 -q
+w '>/dev/full' '1 2 3' 0
+w '>/dev/full' '-1 0 -1' 10 -q -z
+w '>&-' '1 0 1' 10 -q
+w '>&-' '1 2 3' 0
+w '>&-' '-1 0 -1' 10 -q -z

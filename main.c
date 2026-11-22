@@ -101,6 +101,7 @@ void print_poly(mpz_t*, long);
 void print_string(char*);
 void message(long n, long total, ratpoints_args *args);
 void error(long);
+int exit_status(int);
 
 /**************************************************************************
  * function that processes the points                                     *
@@ -210,7 +211,7 @@ int main(int argc, char *argv[])
   if(argc < 3) { error(2); }
   if(read_input(argc-1, &argv[0], &args))
   { message(1, 0, &args);
-    return(0);
+    return(exit_status(0));
   }
   if(!quiet)
   { message(0, 0, &args);
@@ -281,7 +282,7 @@ int main(int argc, char *argv[])
     for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
     for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_clear(ends[n].q); }
   }
-  return(0);
+  return(exit_status(0));
 }
 
 /**************************************************************************
@@ -1056,6 +1057,21 @@ void error(long n)
              printf("blanks).\n\n");
              break;
   }
-  fflush(stdout);
-  exit(n);
+  exit(exit_status(n));
+}
+
+/* The status to exit with, given the status n the program ends with:
+ * standard output is flushed, and when a write to it has failed, now or
+ * before (on a full disk, say, or with standard output closed), its reader
+ * has not seen all of it, an error message included, so the program says so
+ * on standard error and exits with status 13 instead.  The writes are not
+ * checked while the search runs; a reader that closes a pipe early ends the
+ * program by SIGPIPE at the write that follows. */
+int exit_status(int n)
+{
+  if(fflush(stdout) != 0 || ferror(stdout))
+  { fprintf(stderr, "\nError writing to standard output.\n\n");
+    return(13);
+  }
+  return(n);
 }

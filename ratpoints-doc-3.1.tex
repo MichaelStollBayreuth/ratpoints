@@ -683,6 +683,13 @@ get the memory for the search (``Not enough memory.''). The memory of the
 multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
 cannot get it, it prints its own message and ends the program, and with
 several threads (option~\verb+-t+) that is often what happens first.
+When a write to standard output fails, on a full disk, say, or because
+standard output is closed, the program says so on standard error (``Error
+writing to standard output.'') and exits with status~$13$, also when it ends
+with the message of an error, which was then not seen either. It finds out
+when it ends: the search goes on to its end. A reader that closes a pipe
+early, such as \texttt{head}, ends the program by the signal
+\texttt{SIGPIPE}.
 
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.

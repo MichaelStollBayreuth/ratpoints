@@ -12350,3 +12350,28 @@ Search intervals:
 (8 : 0 : 5)
 (17 : 10 : 10)
 (17 : -10 : 10)
+---- writes to standard output that fail ----
+# <1 0 1> <10> <-q> | >/dev/full
+
+Error writing to standard output.
+
+exit 13
+# <1 2 3> <0> | >/dev/full
+
+Error writing to standard output.
+
+exit 13
+# <-1 0 -1> <10> <-q> <-z> | >/dev/full
+exit 0
+# <1 0 1> <10> <-q> | >&-
+
+Error writing to standard output.
+
+exit 13
+# <1 2 3> <0> | >&-
+
+Error writing to standard output.
+
+exit 13
+# <-1 0 -1> <10> <-q> <-z> | >&-
+exit 0
