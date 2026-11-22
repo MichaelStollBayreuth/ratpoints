@@ -672,13 +672,21 @@ The program refuses any other list with an error message, so that, say,
 \verb+'1 0 1.5'+ or \verb+'1 2 - 3'+ is not read as some other
 polynomial. There is no bound on the size of the
 coefficients; they are read as multi-precision integers.
+In place of the list, the first argument may be \verb+@+ followed by the
+name of a file that holds the list, or \verb+@-+, which reads it from
+standard input; what the file holds is read as the list would be, so that
+it may run over several lines. This is the way to give a list longer than
+the operating system lets one argument be (on Linux, 128~KiB). A zero
+byte in the file is refused like a word that is not an integer.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
 (defined in \texttt{ratpoints.h}), which is set to~$100$ by default.
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
-(e.g., if you specify two leading zero coefficients), and when it cannot
+(e.g., if you specify two leading zero coefficients), when it cannot read
+the file named after \verb+@+ (``Cannot read the file of the
+coefficients.''), and when it cannot
 get the memory for the search (``Not enough memory.''). The memory of the
 multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
 cannot get it, it prints its own message and ends the program, and with

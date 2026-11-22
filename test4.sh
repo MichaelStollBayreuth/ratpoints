@@ -44,8 +44,8 @@
 # are not integers separated by white space, white space around a number,
 # and the intervals that a missing first -l or last -u leave open), -1 in
 # a search of a single block, ends of the search intervals that are not
-# doubles, which are taken as the numbers they are, and writes to standard
-# output that fail.
+# doubles, which are taken as the numbers they are, writes to standard
+# output that fail, and the list of the coefficients read from a file.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -69,10 +69,11 @@ f() { filt=$1; shift
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
-# the options, which differ between 2.2.4 and 3.0.0)
+# the options and the forms of the first argument, which differ between
+# the versions)
 e() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo
       out=$("$RP" "$@"); st=$?
-      printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\['
+      printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\[\|^       In place of the list\|^       and @- from'
       echo "exit $st"
 }
 # the program with its standard output where every write fails, the first
@@ -1111,3 +1112,48 @@ w '>/dev/full' '-1 0 -1' 10 -q -z
 w '>&-' '1 0 1' 10 -q
 w '>&-' '1 2 3' 0
 w '>&-' '-1 0 -1' 10 -q -z
+
+echo '---- the list of the coefficients from a file ----'
+# A first argument @path names a file that holds the list of the
+# coefficients, and @- standard input; what it holds is read as the list
+# would be, so that line feeds and tabs separate the coefficients like
+# blanks.  The files are written to a temporary directory, which the runs
+# take as their working directory, so that the names announced are those
+# of the files; verify-test4.py knows what each of them holds (FILES
+# there, to be kept in step with this block).  lf-tab is y^2 = x^2 + 1,
+# its coefficients separated by line feeds, tabs and a carriage return;
+# empty holds nothing (no polynomial of degree at least 1); missing is no
+# file, and dir a directory (neither can be read, nor can the empty name
+# of @ alone); nul holds 1 0 1, a zero byte and 2, which is refused as a
+# list that is not one of integers, since a scan would stop at the zero
+# byte and read y^2 = x^2 + 1; word holds a word that is no integer; @-
+# reads y^2 = x^2 + 1 from standard input; @file as the only argument is
+# refused before the file is looked at (status 2, not 12 for a file that
+# cannot be read); and big holds a list of 2 MB, more than one argument
+# can be on Linux (128 KiB), of y^2 = C x^2 - (C - 1) with
+# C = 10^1000000 + 7, whose points of height at most 3 are (+-1 : +-1 : 1),
+# so that both coefficients must be read exactly; it takes a fraction of a
+# second
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
+(
+  case $RP in /*) ;; *) RP=$PWD/$RP ;; esac
+  cd "$tmp" || exit 2
+  printf ' 1\t0\n\n\t1\r\n' > lf-tab
+  : > empty
+  mkdir dir
+  printf '1 0 1\000 2\n' > nul
+  printf '1 0 x\n' > word
+  awk 'BEGIN { z = "0"; while (length(z) < 999999) z = z z
+               z = substr(z, 1, 999999); printf "-1%s6 0 1%s7\n", z, z }' > big
+  t @lf-tab 10 -q
+  e @empty 10
+  e @missing 10
+  e @dir 10
+  e @nul 10
+  e @word 10
+  printf '1\n0\n1\n' | t @- 10 -q
+  e @ 10
+  e @missing
+  t @big 3 -q
+)
+rm -rf "$tmp"

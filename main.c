@@ -27,6 +27,7 @@
  ***********************************************************************/
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -85,13 +86,16 @@ char *usage_str =
     "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
     "                 [-F max_forbidden] [-t threads] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
-    "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
+    "                 [-k] [-K] [-j] [-J] [-x] [-X]\n"
+    "       In place of the list of the a_i, @file reads it from a file\n"
+    "       and @- from standard input.\n\n";
 
 /**************************************************************************
  * prototypes                                                             *
  **************************************************************************/
 
 int read_input(long, char *argv[], ratpoints_args*);
+char *read_coeff_file(char*);
 char *scan_mpz(char*, mpz_t);
 int scan_long(char*, long*);
 int scan_double(char*, double*);
@@ -359,10 +363,18 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   /* read coefficients: integers separated by white space (see scan_mpz),
    * at most RATPOINTS_MAX_DEGREE + 1 of them.  Those beyond go into fff,
    * so that a list with something in it that is not an integer is refused
-   * as such, however long it is. */
+   * as such, however long it is.  The list is the first argument, or, when
+   * that is @path, the contents of the file that path names (@- for
+   * standard input; see read_coeff_file), which are freed once the
+   * coefficients are read. */
   { char *s = argv[1];
+    char *list = NULL; /* the contents of the file of @path */
     long n = 0; /* the number of integers read */
 
+    if(*s == '@')
+    { list = read_coeff_file(s + 1);
+      s = list;
+    }
     for(;;)
     { while(isspace((unsigned char)*s)) { s++; }
       if(*s == 0) { break; }
@@ -370,6 +382,7 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
       if(s == NULL) { error(11); }
       n++;
     }
+    free(list);
     if(n > RATPOINTS_MAX_DEGREE + 1) { error(3); }
     if(n <= 1) { error(5); }
     args->degree = n - 1;
@@ -690,6 +703,48 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
 
   mpz_clear(fff); /* clean up */
   return(0);
+}
+
+/* The contents of the file that path names, standard input for "-", as a
+ * string: the list of the coefficients that the first argument @path stands
+ * for.  The file is read to its end by fread into a buffer that doubles
+ * when it is full, so that a pipe or a FIFO, whose size is known only at
+ * its end, is read as well, and as the bytes it holds ("rb"), as an
+ * argument holds them.  Error 12 when the file cannot be opened or read,
+ * error 10 when there is no memory for the buffer, and error 11 when the
+ * contents hold a zero byte, at which the scan of the list would stop as
+ * at its end.  The string is writable (see scan_mpz); the caller frees
+ * it. */
+char *read_coeff_file(char *path)
+{
+  FILE *fp = stdin;
+  char *buf = NULL;
+  size_t size = 0; /* the bytes the buffer has */
+  size_t len = 0;  /* the bytes read into it */
+
+  if(strcmp(path, "-") != 0)
+  { fp = fopen(path, "rb");
+    if(fp == NULL) { error(12); }
+  }
+  for(;;) /* each round finds no buffer or one that fread has filled */
+  { size_t want, got;
+    char *b;
+
+    if(size > SIZE_MAX/2) { error(10); }
+    size = (size == 0) ? 4096 : 2*size;
+    b = realloc(buf, size);
+    if(b == NULL) { error(10); }
+    buf = b;
+    want = size - 1 - len; /* a byte is left for the zero at the end */
+    got = fread(buf + len, 1, want, fp);
+    len += got;
+    if(got < want) { break; } /* the end of the file, or an error */
+  }
+  if(ferror(fp)) { error(12); }
+  if(fp != stdin) { fclose(fp); }
+  buf[len] = 0;
+  if(memchr(buf, 0, len) != NULL) { error(11); }
+  return(buf);
 }
 
 /* Read the integer that s starts with -- an optional sign and at least one
@@ -1056,6 +1111,7 @@ void error(long n)
     case 11: printf("\nIncorrect coefficients (not integers separated by ");
              printf("blanks).\n\n");
              break;
+    case 12: printf("\nCannot read the file of the coefficients.\n\n"); break;
   }
   exit(exit_status(n));
 }

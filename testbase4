@@ -12375,3 +12375,70 @@ Error writing to standard output.
 exit 13
 # <-1 0 -1> <10> <-q> <-z> | >&-
 exit 0
+---- the list of the coefficients from a file ----
+# <@lf-tab> <10> <-q>
+(1 : 1 : 0)
+(1 : -1 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-4 : 5 : 3)
+(-4 : -5 : 3)
+(4 : 5 : 3)
+(4 : -5 : 3)
+(-3 : 5 : 4)
+(-3 : -5 : 4)
+(3 : 5 : 4)
+(3 : -5 : 4)
+# <@empty> <10>
+
+The polynomial must have degree at least 1.
+exit 5
+# <@missing> <10>
+
+Cannot read the file of the coefficients.
+exit 12
+# <@dir> <10>
+
+Cannot read the file of the coefficients.
+exit 12
+# <@nul> <10>
+
+Incorrect coefficients (not integers separated by blanks).
+exit 11
+# <@word> <10>
+
+Incorrect coefficients (not integers separated by blanks).
+exit 11
+# <@-> <10> <-q>
+(1 : 1 : 0)
+(1 : -1 : 0)
+(0 : 1 : 1)
+(0 : -1 : 1)
+(-4 : 5 : 3)
+(-4 : -5 : 3)
+(4 : 5 : 3)
+(4 : -5 : 3)
+(-3 : 5 : 4)
+(-3 : -5 : 4)
+(3 : 5 : 4)
+(3 : -5 : 4)
+# <@> <10>
+
+Cannot read the file of the coefficients.
+exit 12
+# <@missing>
+
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it under the
+terms of the GNU General Public License version 2 or later.
+
+Please acknowledge use of this program in published work.
+
+
+exit 2
+# <@big> <3> <-q>
+(-1 : 1 : 1)
+(-1 : -1 : 1)
+(1 : 1 : 1)
+(1 : -1 : 1)

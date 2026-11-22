@@ -32,7 +32,10 @@ intervals.
 Whether the program refuses its arguments, and with which exit status, is
 decided by the rules of main.c, which parse_args follows: the coefficients
 are integers separated by white space, at most RATPOINTS_MAX_DEGREE + 1 of
-them; a number is the whole argument but for white space around it, an
+them, in the first argument or, when that is @name, in the file name,
+which test4.sh writes and FILES records (a name that FILES does not have
+cannot be read, and a zero byte in a file is refused like a word that is
+no integer); a number is the whole argument but for white space around it, an
 integer within the range of a long or a real number that is not NaN; and
 the search intervals alternate, are ordered by their ends as the numbers
 they are and are not too many.  An
@@ -56,6 +59,20 @@ from fractions import Fraction
 
 MAX_BRUTE = 40_000_000   # candidate pairs a brute-force search is allowed
 rule_used = 0            # searches over the denominators e m^2 only
+
+# the list of the coefficients that test4.sh reads from a file has two of a
+# million digits, beyond the 4300 to which Python limits the conversion of
+# a string to an int by default
+if hasattr(sys, 'set_int_max_str_digits'): sys.set_int_max_str_digits(0)
+
+# The files that test4.sh writes for the runs that read the list of the
+# coefficients from a file, @name, by name, with what each holds; '-' is
+# what the run of @- is given on standard input.  A name that is not here
+# (no file, a directory, the empty name of @ alone) cannot be read.
+BIG_ZEROS = '0'*999_999
+FILES = {'lf-tab': ' 1\t0\n\n\t1\r\n', 'empty': '', 'nul': '1 0 1\0 2\n',
+         'word': '1 0 x\n', '-': '1\n0\n1\n',
+         'big': '-1' + BIG_ZEROS + '6 0 1' + BIG_ZEROS + '7\n'}
 
 def max_degree():
     """RATPOINTS_MAX_DEGREE of the ratpoints.h next to this script"""
@@ -140,7 +157,12 @@ def parse_args(args):
              s=False, S=None, dl=1, du=None, ivs=[], fmt=None, other={},
              exit=None, strs=False)
     if len(args) < 2: o['exit'] = 2; return o
-    c = coefficients(args[0])
+    lst = args[0]
+    if lst.startswith('@'):
+        lst = FILES.get(lst[1:])
+        if lst is None: o['exit'] = 12; return o
+        if '\0' in lst: o['exit'] = 11; return o
+    c = coefficients(lst)
     if c is None: o['exit'] = 11; return o
     if len(c) > MAX_DEGREE + 1: o['exit'] = 3; return o
     if len(c) <= 1: o['exit'] = 5; return o
@@ -209,7 +231,8 @@ MESSAGE = {3: 'Too many coefficients.',
            5: 'The polynomial must have degree at least 1.',
            6: 'Wrong syntax for optional arguments:',
            7: 'Incorrect interval arguments (not numbers, not alternating, too many, or not ordered).',
-           11: 'Incorrect coefficients (not integers separated by blanks).'}
+           11: 'Incorrect coefficients (not integers separated by blanks).',
+           12: 'Cannot read the file of the coefficients.'}
 
 def denominators(H, dl, du):
     """the denominator range the library searches: b_low and b_high below 1
