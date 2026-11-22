@@ -49,11 +49,15 @@ compared, and that wherever the equation of the curve (without -q) or a
 list of the coefficients (the report of -v, at its start and after a
 reversal) is printed, it must be the polynomial in full below the degree
 RATPOINTS_PRINT_DEGREE and its short form from there on (see
-curve_line).  A run whose standard output refuses every write (announced with
-">/dev/full" or ">&-" after the arguments) must report the failure on
-standard error and exit with status 13 when the program writes anything
-there -- the message of a refusal, the banner, a point (see writes) -- and
-must print nothing and exit with 0 when it writes nothing.
+curve_line), and that wherever the report gives the numbers of the
+moduli of the first stage and of the first two stages, they must keep
+within -n and -N, which are hard limits also where the first stage is
+chosen by its rule.  A run whose standard output refuses every write
+(announced with ">/dev/full" or ">&-" after the arguments) must report
+the failure on standard error and exit with status 13 when the program
+writes anything there -- the message of a refusal, the banner, a point
+(see writes) -- and must print nothing and exit with 0 when it writes
+nothing.
 
 Prints one line per invocation that fails and a summary; exits 1 on any
 failure.  Takes a minute or two.
@@ -474,6 +478,9 @@ def curve_line(line, c):
 POINT = re.compile(r'^\((-?\d+) : (-?\d+) : (\d+)\)$')
 XONLY = re.compile(r'^\((-?\d+) : (\d+)\)$')
 FOUND = re.compile(r'^(\d+) rational points? (?:pairs )?found\.$')
+# the numbers of the moduli of the first stage and of the first two stages
+# together in the report of -v
+MODULI = re.compile(r'==> use (\d+) moduli in the first stage, (\d+) altogether,$')
 
 # the runs of w() in test4.sh, whose standard output refuses every write
 WRITE_FAILS = ('>/dev/full', '>&-')
@@ -516,6 +523,7 @@ def main():
         elif cur is not None:
             cur[1].append(line)
     checked = failed = skipped = gp_used = refusals = write_fails = curves = 0
+    moduli = 0
     notes = []
     for args, out, filt in invs:
         o = parse_args(args)
@@ -543,6 +551,18 @@ def main():
                     fail('"%s" is followed by %s, not by a blank line and %s'
                          % (l[:100], after, 'another' if blank2 else 'a line of text')); break
                 curves += 1
+        # -n and -N are hard limits on the moduli of the first stage and of
+        # the first two stages, also where the rule chooses the first stage
+        # (a filter of the run may have cut the line before the "==>")
+        for l in body:
+            m = MODULI.search(l if '==>' in l else '==> ' + l)
+            if not m or 'c' not in o: continue
+            s1, s2 = int(m[1]), int(m[2])
+            lim1, lim2 = o['other'].get('n', -1), o['other'].get('N', -1)
+            if s1 > s2 or (lim2 >= 0 and s2 > lim2) or (lim1 >= 0 and s1 > lim1):
+                fail('%d moduli in the first stage and %d altogether, beyond -n %d or -N %d'
+                     % (s1, s2, lim1, lim2))
+            moduli += 1
         if filt in WRITE_FAILS:
             # what the program prints on standard error, where it reports
             # that a write failed, and its exit status
@@ -668,8 +688,10 @@ def main():
     print('%d invocations checked (%d by gp, %d over the denominators e m^2 only), '
           '%d refusals of the arguments checked, %d runs on a failing standard output checked, '
           '%d lines of the curve or its coefficients checked, '
+          '%d numbers of the moduli of the first two stages checked, '
           '%d skipped (formats, reports), %d failed'
-          % (checked, gp_used, rule_used, refusals, write_fails, curves, skipped, failed))
+          % (checked, gp_used, rule_used, refusals, write_fails, curves, moduli, skipped,
+             failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 

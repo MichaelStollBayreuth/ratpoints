@@ -2501,11 +2501,17 @@ static ratpoints_sieve_entry *make_modulus(ratpoints_args *args, entry *en,
  * the densities so far, times 1 - r --, weighted by what they cost
  * downstream, exceed target times the entry's cost per word.  When the pool
  * runs out first, all of
- * it is taken.  What is left of the pool has nothing in common with what
+ * it is taken.  Under the rule, a max >= 0 caps the number taken: once max
+ * entries are taken, the stage ends as it ends where the rule wants no
+ * more.  The first stage is given the number of moduli of the first two
+ * stages together when the caller fixed it (sp2, option -N), which it must
+ * not exceed; a negative max is no cap, and with want >= 0 max is not read.
+ * What is left of the pool has nothing in common with what
  * was taken.  Returns the number taken. */
 static long take_entries(entry *prec, long from, long *pnp_p,
-                         unsigned long *used, long want, double *rate,
-                         double bits_per_word, double target, long extra)
+                         unsigned long *used, long want, long max,
+                         double *rate, double bits_per_word, double target,
+                         long extra)
 { long n = from, taken = 0, k;
 
   while(n < *pnp_p)
@@ -2516,6 +2522,7 @@ static long take_entries(entry *prec, long from, long *pnp_p,
       (*pnp_p)--;
       continue;
     }
+    if(want < 0 && max >= 0 && taken >= max) { break; }
     if(want >= 0 ? taken >= want
                  : !phase_1_wants(prec, n, *pnp_p, taken, bits_per_word, *rate,
                                   target, extra))
@@ -2860,8 +2867,8 @@ static long sieving_info(ratpoints_args *args,
    * product involving it) would add nothing (take_entries). */
   { double rate = 1.0;
 
-    args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, &rate,
-                             bpw_swept, target, sp2_extra);
+    args->sp1 = take_entries(prec, 0, &pnp, &used, args->sp1, args->sp2,
+                             &rate, bpw_swept, target, sp2_extra);
 
     /* Rank what is left again, for the second stage.  There a modulus is
      * applied only to the bit arrays that survived the first stage, so its
@@ -2883,8 +2890,8 @@ static long sieving_info(ratpoints_args *args,
 
       if(want < 0) { want = 0; }
       args->sp2 = args->sp1
-                  + take_entries(prec, args->sp1, &pnp, &used, want, &rate,
-                                 0.0, 0.0, 0);
+                  + take_entries(prec, args->sp1, &pnp, &used, want, -1,
+                                 &rate, 0.0, 0.0, 0);
     }
   }
 

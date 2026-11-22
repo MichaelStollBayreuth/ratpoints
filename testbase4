@@ -10095,6 +10095,12 @@ Now start the sieving procedure...
   52.4 bits set per word
 # <4 28 -53> <100> <-v> | grep 'bits set per word' | sed 's/,.*//'
   64.0 bits set per word
+# <1 2 3 4 5 6 7> <1000> <-v> <-z> <-N> <4> | grep 'moduli in the first stage\|found' | sed 's/.*==> //'
+use 4 moduli in the first stage, 4 altogether,
+6 rational points found.
+# <1 2 3 4 5 6 7> <1000> <-v> <-z> <-N> <0> | grep 'moduli in the first stage\|found' | sed 's/.*==> //'
+use 0 moduli in the first stage, 0 altogether,
+6 rational points found.
 # <1 0 126 0 441> <100> <-v> <-q> | grep -c .
 12
 # <1 0 126 0 441> <100> <-q> <-v> | grep -c .

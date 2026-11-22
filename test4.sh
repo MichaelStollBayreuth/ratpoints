@@ -674,6 +674,14 @@ v '10 10 5 -7 0 3 -2' 300 -v -n 4 -N 6 -P 0
 f "grep 'bits set per word' | sed 's/,.*//'" '1 0 126 0 441' 100 -v
 f "grep 'bits set per word' | sed 's/,.*//'" '3 2 -1 12' 100 -v
 f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
+# -N caps the moduli of the first two stages also where the rule of the
+# first stage chooses them (-n absent): the rule takes more than four
+# moduli for this curve (fifteen in the default build), and with -N 4 the
+# first stage stops at four, with -N 0 the first two stages are empty and
+# the third stage sieves alone.  The numbers of the moduli then depend on
+# the curve and the cap alone, and the points are the same
+f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 4
+f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 0
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
 
