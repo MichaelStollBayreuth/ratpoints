@@ -1355,11 +1355,12 @@ static double check_cost(const ratpoints_args *args)
  * Changing the number of primes part-way through a run is safe by
  * construction: sieving only ever removes numerators that cannot be points,
  * so using more or fewer of them for later denominators changes the running
- * time and nothing else.  Nor can it get ahead of bp_list: fill_bp_list()
- * makes this correction first and then computes every entry the current
- * number of primes asks for.  The counters are the run's (rp_counts), added
- * up block by block in run_fold(), which calls this; the decision is for
- * the blocks RP_ADAPT_LAG past the one just added.
+ * time and nothing else.  Nor can it get ahead of bp_list: a block takes
+ * its number of primes from the last decision when it starts (run_block),
+ * and fill_bp_list() computes every entry that number asks for, afresh for
+ * each denominator.  The counters are the run's (rp_counts), added up block
+ * by block in run_fold(), which calls this; the decision is for the blocks
+ * RP_ADAPT_LAG past the one just added.
  * ---------------------------------------------------------------------- */
 
 /* how much data is wanted before the first correction, in numerator words;
@@ -3649,11 +3650,13 @@ long sift(long b, rp_worker *wk, const rp_num_class *cls, long *bp_list,
  * data-dependent branches per prime and denominator, mispredicted a quarter
  * of the time -- an eighth of all the branch misses of make test1.
  * Computing it afresh also needs no bookkeeping of which entries are up to
- * date when adapt_primes has just brought another prime into play, which is
- * why that correction is made here first: it is due once the sieve has
- * swept as many words as adapt_at says.  The primes of the third stage are
- * not in the list: what that stage needs is looked up when a numerator
- * reaches it, see fill_checks() in sift.c. */
+ * date when adapt_primes has brought another prime into play: the list is
+ * made for the number of primes of the block (wk->sp2), which the block
+ * takes from the last decision when it starts (run_block); the correction
+ * itself is decided in run_fold(), once the sieve has swept as many words
+ * as adapt_at says.  The primes of the third stage are not in the list:
+ * what that stage needs is looked up when a numerator reaches it, see
+ * fill_checks() in sift.c. */
 static inline void fill_bp_list(long b, long k, long *bp_list, rp_worker *wk)
 { long n, sp2;
   ratpoints_args *args = wk->args;

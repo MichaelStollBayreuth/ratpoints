@@ -952,7 +952,8 @@ void print_poly(mpz_t *coeffs, long degree)
   fflush(stdout);
 }
 
-/* Print a string, recognizing \t, \n, \0, \%, \\. */
+/* Print a string, recognizing \t, \n, \%, \\; a backslash before
+ * another character or at the end of the string is printed as it is. */
 void print_string(char *str)
 {
   if(str)

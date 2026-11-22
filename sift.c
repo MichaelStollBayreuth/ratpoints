@@ -748,7 +748,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       { /* retrieve the pointer to the beginning of the relevant bits */
         ratpoints_bit_array *siv1 = sieves[n].start;
         /* This points to >= RATPOINTS_CHUNK consecutive bit-arrays
-         * of information (see init.c, gen_find_point_h.c),
+         * of information (see init.c, gen_find_points_h.c),
          * so we can safely step siv1 that many times. */
 
         /* perform the sieving on RATPOINTS_CHUNK registers */
