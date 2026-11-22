@@ -3048,8 +3048,8 @@ static long sieving_info(ratpoints_args *args,
      * during the run. */
     { long n;
 
-      if(pnp > args->sp2)
-      { qsort(&prec[args->sp2], pnp - args->sp2, sizeof(entry),
+      if(pnp > args->sp3)
+      { qsort(&prec[args->sp3], pnp - args->sp3, sizeof(entry),
               compare_by_r);
       }
       for(n = args->sp2; n < pnp; n++) { sieve_list[n] = prec[n].ssp; }

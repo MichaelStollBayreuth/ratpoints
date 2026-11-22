@@ -10101,6 +10101,10 @@ use 4 moduli in the first stage, 4 altogether,
 # <1 2 3 4 5 6 7> <1000> <-v> <-z> <-N> <0> | grep 'moduli in the first stage\|found' | sed 's/.*==> //'
 use 0 moduli in the first stage, 0 altogether,
 6 rational points found.
+# <1 4 36 -34 -1 -6 49> <16383> <-v> <-z> | awk '/for third stage/ { print; getline; print } / found/'
+  use 2 primes for third stage:
+    131 137
+96 rational points found.
 # <1 0 126 0 441> <100> <-v> <-q> | grep -c .
 12
 # <1 0 126 0 441> <100> <-q> <-v> | grep -c .

@@ -682,6 +682,15 @@ f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
 # the curve and the cap alone, and the points are the same
 f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 4
 f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 0
+# The third stage sieves with the primes it has taken, in the order in
+# which it took them; the primes it has looked at and not taken follow
+# them, sorted by their densities, for the correction during the run.  On
+# this curve with many points it takes 131 and then 137, the two primes it
+# looks at beyond the thirty, in this order whatever the register width
+# and the composite moduli (which change the choice on many such curves,
+# as they change the moduli of the first two stages).  The primes of the
+# third stage, which the report lists, and the points
+f "awk '/for third stage/ { print; getline; print } / found/'" '1 4 36 -34 -1 -6 49' 16383 -v -z
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
 
