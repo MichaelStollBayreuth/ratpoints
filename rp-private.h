@@ -317,9 +317,12 @@ typedef unsigned long ratpoints_bit_array;
   { printf("%*.*lx", WIDTH, WIDTH, EXT((a), i_)); } \
   printf("%*.*lx ", WIDTH, WIDTH, EXT0(a)); }
 
-/* set up data related to the set of primes considered */
+/* set up data related to the set of primes considered: the odd primes
+ * below 2^RATPOINTS_MAX_BITS_IN_PRIME, a value from 5 to 10, which the
+ * Makefile passes as its PRIME_SIZE; the default here is that of the
+ * Makefile */
 #ifndef RATPOINTS_MAX_BITS_IN_PRIME
-# define RATPOINTS_MAX_BITS_IN_PRIME 7
+# define RATPOINTS_MAX_BITS_IN_PRIME 8
 #endif
 
 #if (RATPOINTS_MAX_BITS_IN_PRIME == 10)
@@ -353,10 +356,7 @@ typedef unsigned long ratpoints_bit_array;
 # define RATPOINTS_MAX_PRIME_EVEN 32
 
 #else
-# define RATPOINTS_MAX_BITS_IN_PRIME 7
-# define RATPOINTS_NUM_PRIMES 30
-# define RATPOINTS_MAX_PRIME 127
-# define RATPOINTS_MAX_PRIME_EVEN 128
+# error "RATPOINTS_MAX_BITS_IN_PRIME (PRIME_SIZE) must be from 5 to 10"
 
 #endif
 /* so that RATPOINTS_MAX_PRIME < RATPOINTS_MAX_PRIME_EVEN
