@@ -168,6 +168,19 @@ typedef struct { long p; unsigned long mask; } forbidden_val;
      bit m of mask is set <==> v_p(b) = m is excluded.  Tested by division.
      See forbidden_valuations() for where these come from. */
 
+/* The arrays of the set-up of a search that the degree sizes, an entry for
+ * each coefficient of f (cm one more, for the form of even degree): the
+ * coefficients as longs, if they fit (find_points_work_1), and modulo a
+ * prime (sieving_info, examine_prime); the valuations and the unit parts of
+ * the coefficients at a prime, and which of them are non-zero
+ * (forbidden_valuations); the coefficients modulo 64 or modulo a prime
+ * power (get_2adic_info, examine_power).  They are taken from the heap, a
+ * large degree being too much for the stack, and once per search, not per
+ * prime: see find_points_work. */
+typedef struct { long *c_long; long *coeffs_mod_p; long *w; long *r;
+                 int *present; unsigned long *cm; }
+        rp_coeffs;
+
 /**************************************************************************
  * Initialization and cleanup of ratpoints_args structure                 *
  **************************************************************************/
@@ -981,12 +994,12 @@ static void setup_us1(ratpoints_args *args)
 #define RP_SQUARES64 0x0202021202030213UL
 
 static void get_2adic_info(ratpoints_args *args, unsigned long *den_bits,
-                           rp_num_class *cls)
+                           rp_num_class *cls, const rp_coeffs *rc)
 {
   mpz_t *c = args->cof;
   long degree = args->degree;
   long D = degree + (degree & 1); /* the degree of the form F(a,b) */
-  unsigned long cm[D + 1];        /* the coefficients of f mod 64, cm[D] = 0
+  unsigned long *cm = rc->cm;     /* the coefficients of f mod 64, cm[D] = 0
                                    * for odd degree */
   unsigned long fsq = 0UL;        /* bit k set: f(k) is a square mod 64 */
   unsigned long gsq = 0UL;        /* bit t set, t even: frev(t) is one */
@@ -2190,14 +2203,15 @@ static double mean_bits_per_word(const ratpoints_args *args,
  * caller decides how to test for them.
  */
 static unsigned long forbidden_valuations(ratpoints_args *args, long pn,
-                                          const long *coeffs_mod_p)
+                                          const long *coeffs_mod_p,
+                                          const rp_coeffs *rc)
 {
   mpz_t *c = args->cof;
   long degree = args->degree;
   long p = prime[pn];
-  long w[degree+1]; /* w[j] = v_p(c[degree-j]); a zero coefficient is absent */
-  long r[degree+1]; /* the unit part of c[degree-j] mod p, in [1, p-1] */
-  int present[degree+1];
+  long *w = rc->w; /* w[j] = v_p(c[degree-j]); a zero coefficient is absent */
+  long *r = rc->r; /* the unit part of c[degree-j] mod p, in [1, p-1] */
+  int *present = rc->present;
   unsigned long mask = 0;
   long j, m, pm;
 
@@ -2265,10 +2279,11 @@ static long modinv(long x, long m)
  * the mean over the unit classes alone, as it is for a prime.  Returns 1
  * when the power says more than nothing. */
 static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
-                         int use_c_long, long *c_long, int pinf)
+                         int use_c_long, long *c_long, int pinf,
+                         const rp_coeffs *rc)
 { mpz_t *c = args->cof;
   long degree = args->degree, D = degree + (degree & 1);
-  unsigned long cm[D + 1], sq[RP_MODWORDS];
+  unsigned long *cm = rc->cm, sq[RP_MODWORDS];
   long m = 1, k, x, np = 0;
   double r;
 
@@ -2346,7 +2361,7 @@ static int examine_power(ratpoints_args *args, rp_power *pw, long p, long e,
 static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
                        ratpoints_sieve_entry **prime_se, const int *pinf,
                        long pn_lim, long *npw_p, int use_c_long, long *c_long,
-                       double cost_table, double call_cost)
+                       double cost_table, double call_cost, const rp_coeffs *rc)
 { rp_power *pws = (rp_power *)args->pw_buffer;
   long npw_max = num_powers();
   /* the power p^e of prime[pn] as an index into pws: -1 not examined, -2
@@ -2389,7 +2404,7 @@ static void add_moduli(ratpoints_args *args, entry *prec, long *pnp_p,
         if(idx == -1)
         { if(*npw_p >= npw_max) { ok = 0; break; }
           idx = examine_power(args, &pws[*npw_p], p, e, use_c_long, c_long,
-                              pinf[pn]) ? (*npw_p)++ : -2;
+                              pinf[pn], rc) ? (*npw_p)++ : -2;
           pw_idx[pn][e] = idx;
         }
         if(idx < 0) { ok = 0; break; }
@@ -2523,7 +2538,8 @@ static long sieving_info(ratpoints_args *args,
                          int use_c_long, long *c_long,
                          ratpoints_sieve_entry **sieve_list,
                          double bits_per_word, int may_extend,
-                         unsigned long den_bits, const rp_num_class *cls)
+                         unsigned long den_bits, const rp_num_class *cls,
+                         const rp_coeffs *rc)
 /* This function either returns a prime p;
  * in this case, the curve has no points mod p, hence no rational points;
  * or RATPOINTS_NO_MEMORY, when the buffer for the sieve tables cannot be
@@ -2603,7 +2619,7 @@ static long sieving_info(ratpoints_args *args,
 
   /* initialize sieve in se_buffer */
   for(pn = 0; pn < pn_lim; pn++)
-  { long coeffs_mod_p[degree+1];
+  { long *coeffs_mod_p = rc->coeffs_mod_p;
            /* The coefficients of f reduced modulo p */
     long p = prime[pn];
     int *is_f_square;
@@ -2626,7 +2642,8 @@ static long sieving_info(ratpoints_args *args,
     { /* record forbidden divisors of the denominator */
       if(coeffs_mod_p[degree] == 0)
       { /* p divides the leading coefficient: see forbidden_valuations */
-        unsigned long mask = forbidden_valuations(args, pn, &coeffs_mod_p[0]);
+        unsigned long mask = forbidden_valuations(args, pn, &coeffs_mod_p[0],
+                                                  rc);
 
         if(mask)
         { /* the valuations a denominator can have at all */
@@ -2819,7 +2836,7 @@ static long sieving_info(ratpoints_args *args,
     }
     /* and the composite moduli join the candidates, keyed the same way */
     add_moduli(args, prec, &pnp, prime_se, pinf, pn_lim, &npw,
-               use_c_long, c_long, cost_table, call_cost);
+               use_c_long, c_long, cost_table, call_cost, rc);
   }
 
   /* sort the array to get at the best moduli */
@@ -2973,7 +2990,7 @@ static long sieving_info(ratpoints_args *args,
       if(best < 0
          || (args->sp3_extra < 0
              && S*(1.0 - per_surv - prec[best].r) <= per_denom))
-      { long coeffs_mod_p[degree+1];
+      { long *coeffs_mod_p = rc->coeffs_mod_p;
         int *is_f_square;
         int info;
 
@@ -4520,8 +4537,32 @@ static long run_threaded(rp_run *run, rp_pool *pool,
 
 
 
+/* The arrays of rp_coeffs, taken for a polynomial of degree at most degree
+ * by coeffs_init, which returns 0 when one of them cannot be had and then
+ * holds none, and given back by coeffs_clear. */
+static void coeffs_clear(rp_coeffs *rc)
+{
+  free(rc->c_long); free(rc->coeffs_mod_p); free(rc->w); free(rc->r);
+  free(rc->present); free(rc->cm);
+}
+
+static int coeffs_init(rp_coeffs *rc, long degree)
+{
+  rc->c_long = malloc((degree+1)*sizeof(long));
+  rc->coeffs_mod_p = malloc((degree+1)*sizeof(long));
+  rc->w = malloc((degree+1)*sizeof(long));
+  rc->r = malloc((degree+1)*sizeof(long));
+  rc->present = malloc((degree+1)*sizeof(int));
+  rc->cm = malloc((degree+2)*sizeof(unsigned long));
+  if(rc->c_long == NULL || rc->coeffs_mod_p == NULL || rc->w == NULL
+     || rc->r == NULL || rc->present == NULL || rc->cm == NULL)
+  { coeffs_clear(rc); return(0); }
+  return(1);
+}
+
 static long find_points_work_1(ratpoints_args *args,
-                 int process(long, long, const mpz_t, void*, int*), void *info);
+                 int process(long, long, const mpz_t, void*, int*), void *info,
+                 const rp_coeffs *rc);
 
 long find_points_work(ratpoints_args *args,
                  int process(long, long, const mpz_t, void*, int*), void *info)
@@ -4544,19 +4585,23 @@ long find_points_work(ratpoints_args *args,
   long array_size = args->array_size, sturm = args->sturm;
   long num_primes = args->num_primes, max_forbidden = args->max_forbidden;
   long result;
+  rp_coeffs rc; /* for the degree given, which the search can only lower */
 
   /* sp3 is a working field the caller never sets, and the three _used
    * fields are outputs: they stay 0 when the search ends before it has
    * chosen its primes (no real points, nothing admissible mod 64, ...). */
   args->sp3 = 0;
   args->sp1_used = 0; args->sp2_used = 0; args->sp3_used = 0;
-  /* the degree sizes arrays on the stack, of find_points_work_1 before that
-   * function can check anything and of the Sturm step, so one the library
-   * does not take, negative or beyond RATPOINTS_MAX_DEGREE, is refused here
-   * (the degree 0 is refused once leading zero coefficients are dropped) */
+  /* the degree sizes arrays, those of rp_coeffs, taken here before
+   * find_points_work_1 can check anything, and those of the Sturm step, so
+   * one the library does not take, negative or beyond RATPOINTS_MAX_DEGREE,
+   * is refused here (the degree 0 is refused once leading zero coefficients
+   * are dropped) */
   if(args->degree < 0 || args->degree > RATPOINTS_MAX_DEGREE)
   { return(RATPOINTS_BAD_ARGS); }
-  result = find_points_work_1(args, process, info);
+  if(!coeffs_init(&rc, args->degree)) { return(RATPOINTS_NO_MEMORY); }
+  result = find_points_work_1(args, process, info, &rc);
+  coeffs_clear(&rc);
   args->b_low = b_low; args->b_high = b_high;
   args->sp1 = sp1; args->sp2 = sp2;
   args->array_size = array_size; args->sturm = sturm;
@@ -4565,7 +4610,8 @@ long find_points_work(ratpoints_args *args,
 }
 
 static long find_points_work_1(ratpoints_args *args,
-                 int process(long, long, const mpz_t, void*, int*), void *info)
+                 int process(long, long, const mpz_t, void*, int*), void *info,
+                 const rp_coeffs *rc)
 {
   long total = 0;       /* total counts the points */
   int quit = 0;         /* for the points at infinity; the sieve has wk.quit */
@@ -4596,7 +4642,7 @@ static long find_points_work_1(ratpoints_args *args,
   long *divisors = (long *)args->divisors;
     /* These are used when degree is odd and leading coeff. is not +-1 */
 
-  long c_long[degree+1]; /* Stores the coefficients as longs if possible */
+  long *c_long = rc->c_long; /* Stores the coefficients as longs if possible */
   int use_c_long = 0;    /* Flag that says if c_long[] is set */
 
   ratpoints_sieve_entry **sieve_list = (ratpoints_sieve_entry **)args->sieve_list;
@@ -4945,7 +4991,7 @@ static long find_points_work_1(ratpoints_args *args,
   /* deal with f mod powers of 2 */
   if(args->flags & RATPOINTS_VERBOSE)
   { printf("Obtain information from the polynomial mod 64:\n"); }
-  get_2adic_info(args, &den_bits, &cls[0]);
+  get_2adic_info(args, &den_bits, &cls[0], rc);
   /* Bit k in den_bits is 0 if b congruent to k mod 64 need not be
      considered as a denominator; cls[b] says how the numerators of the
      denominators b mod 64 are packed into the bit arrays, and which of
@@ -4995,7 +5041,7 @@ static long find_points_work_1(ratpoints_args *args,
     double bits_per_word = mean_bits_per_word(args, cls, den_bits);
     { long ret = sieving_info(args, use_c_long, &c_long[0], sieve_list,
                               bits_per_word, np_is_default,
-                              den_bits, &cls[0]);
+                              den_bits, &cls[0], rc);
 
     if(ret == RATPOINTS_NO_MEMORY) { return(ret); }
     if(ret)
