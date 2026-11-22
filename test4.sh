@@ -45,8 +45,8 @@
 # and the intervals that a missing first -l or last -u leave open), -1 in
 # a search of a single block, ends of the search intervals that are not
 # doubles, which are taken as the numbers they are, writes to standard
-# output that fail, the list of the coefficients read from a file, and any
-# number of search intervals.
+# output that fail, the list of the coefficients read from a file, any
+# number of search intervals, and the modular test before the exact check.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -104,7 +104,9 @@ m() { t "$@" | grep -v '^This is ratpoints-\|used for\|further primes\|primes us
 # nothing else, but the numbers chosen do, and the message continues on a
 # second line), the lists of the moduli each stage uses (the ranking
 # depends on the width of a bit array), and what the exact check is put at
-# (the compiled-in constants).  Two of the reports say what the primes
+# (the compiled-in constants), in two lines, or in three when the survivors
+# are tested modulo the primes of the modular test first, which the same
+# constants decide.  Two of the reports say what the primes
 # beyond 127 say, and differ in a build with PRIME_SIZE 7, whose table ends
 # there; test4-configs.sh compares that build without this part.  The
 # first line of the report names the version and goes too
@@ -112,8 +114,8 @@ v() { t "$@" | awk '
   /^This is ratpoints-/ { next }
   /bits set per word/ { skip = 1; next }
   /^  use [0-9]+ (moduli|primes) for (first|second|third) stage:/ { skip = 1; next }
-  /one exact check is put at/ { skip = 1; next }
-  skip { skip = 0; next }
+  /one exact check is put at/ { skip = /survivors are tested/ ? 2 : 1; next }
+  skip { skip--; next }
   { print }'
 }
 
@@ -693,6 +695,24 @@ f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1
 f "awk '/for third stage/ { print; getline; print } / found/'" '1 4 36 -34 -1 -6 49' 16383 -v -z
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
+# What one exact check is put at, and the modular test before it: where
+# testing the survivors modulo sixteen primes below 2^31 first costs less
+# than the exact check, the search does so, and the report says it in
+# three lines, with what the test costs, in place of two.  For small
+# coefficients the test comes on at a degree that the height bound sets:
+# at the height bound 100, on y^2 = x^d + x + 1, at d = 49 and not at
+# d = 48 (with the constants of ratpoints.h, which verify-test4.py reads to
+# check these lines); with -W 1000000000 (one exact check put at that many
+# cycles) it is on at degree 4, with -W 1 off, and without the check (-x)
+# off whatever -W says.  The lines of the report, and the number of points
+r="awk '/one exact check/ { p = 1 } p; /third stage was tuned/ { p = 0 } / found/'"
+z=; i=2; while [ $i -lt 48 ]; do z="$z 0"; i=$((i+1)); done
+f "$r" "1 1$z 1" 100 -v -z
+f "$r" "1 1$z 0 1" 100 -v -z
+f "$r" '1 0 126 0 441' 100 -v -z -W 1000000000
+f "$r" '1 0 126 0 441' 100 -v -z -W 1
+r="awk '/one exact check/ { p = 1 } p; /third stage was tuned/ { p = 0 }'"
+f "$r" '1 0 126 0 441' 100 -v -x -W 1000000000
 
 echo '==== part 3: the options of 3.0.0 ===='
 # the constants of the rules that choose the sieving primes, set on the
@@ -1247,3 +1267,41 @@ while [ $i -le 100 ]; do set -- "$@" -l $i -u $i; i=$((i+1)); done
 t '1 2 3' 100 -q -du 1 "$@"
 t '1 2 3' 100 -q -du 1 -l -100 -u 100
 set --
+
+echo '---- the modular test before the exact check ----'
+# Where the search tests the survivors modulo sixteen primes below 2^31
+# before the exact check -- by itself where that costs less than the exact
+# check, as in the searches above from the degree 100 on and on the
+# coefficients of thousands of digits and more, and at any degree with a
+# large -W -- the points are the same.  Each search with the test forced on (-W 1000000000) and off
+# (-W 1): y^2 = 441x^4 + 126x^2 + 1, with negative numerators, the
+# numerator 0 and the denominator 1 among its points, also on three
+# threads, which share the residues of the coefficients; a sextic with
+# many points (113 pairs at the height bound 300), on which every point
+# passes all sixteen primes; y^2 = x^6 + x^4 + x^2 + 1;
+# y^2 = 3x^3 - 2x, of odd degree, whose form of
+# even degree takes the factor b, with the point (0 : 0 : 1), where
+# F(a, b) = 0 modulo every prime; y^2 = x^4 + x, which is reversed (a zero
+# constant term); y^2 = C^2 x^4 + (1 - 2C^2) x^2 - x + C^2 with
+# C = 3*10^9, coefficients beyond every modulus and negative ones, with
+# the points (0 : +-C : 1) and (1 : 0 : 1) and those at infinity; and
+# y^2 = x^2 + 3440 (reversed, as its constant term is not a square) at the
+# height bound 1 without sieving moduli (-N 0 -P 0), whose survivors
+# (+-1 : 1) give F(a, b) = 3441 = 3*31*37, which is a square modulo all
+# sixteen primes and no square: they pass the test, and the exact check
+# finds that they are no points
+t '1 0 126 0 441' 200 -q -W 1000000000
+t '1 0 126 0 441' 200 -q -W 1
+t '1 0 126 0 441' 200 -q -W 1000000000 -t 3
+t '456976 -448032 -255200 208380 61033 -12834 81' 300 -q -W 1000000000
+t '456976 -448032 -255200 208380 61033 -12834 81' 300 -q -W 1
+t '1 0 1 0 1 0 1' 100 -q -W 1000000000
+t '1 0 1 0 1 0 1' 100 -q -W 1
+t '0 -2 0 3' 100 -q -W 1000000000
+t '0 -2 0 3' 100 -q -W 1
+t '0 1 0 0 1' 100 -q -W 1000000000
+t '0 1 0 0 1' 100 -q -W 1
+t '9000000000000000000 -1 -17999999999999999999 0 9000000000000000000' 50 -q -W 1000000000
+t '9000000000000000000 -1 -17999999999999999999 0 9000000000000000000' 50 -q -W 1
+t '3440 0 1' 1 -q -N 0 -P 0 -W 1000000000
+t '3440 0 1' 1 -q -N 0 -P 0 -W 1

@@ -454,6 +454,16 @@ int main(void)
   curve(&args, 6, sextic, 3000); args.num_threads = 3;
   keep_to = 1; report("the same on three threads", find_points_work(&args, keep, NULL));
   same_points();
+  /* the modular test before the exact check, which a check_cost far above
+   * what the test costs switches on: the points of the search without it,
+   * on three threads */
+  curve(&args, 6, sextic, 3000);
+  keep_to = 0; report("(x^2 + 1)(x^4 + 1), height 3000, one thread",
+                      find_points_work(&args, keep, NULL));
+  curve(&args, 6, sextic, 3000); args.check_cost = 1e9; args.num_threads = 3;
+  keep_to = 1; report("the same, modular test (check_cost 1e9), three threads",
+                      find_points_work(&args, keep, NULL));
+  same_points();
   curve(&args, 5, quintic, 500);
   keep_to = 0; report("x^5 + 1, height 500, stop at the first point, one thread",
                       find_points_work(&args, keep_one, NULL));

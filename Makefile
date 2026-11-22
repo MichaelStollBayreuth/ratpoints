@@ -80,8 +80,9 @@
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
 #               machine, and must not be run under -j
 #   bench_init  correctness check and benchmark for the sieve table set-up
-#   bench_check benchmark for the exact check, and how to remeasure the four
-#               RATPOINTS_CHECK_* constants
+#   bench_check benchmark for the exact check and the modular test before
+#               it, and how to remeasure the four RATPOINTS_CHECK_* constants
+#               and RATPOINTS_TEST_STEP and _CALL
 #   clean       remove the intermediate files; distclean also the executables
 #               and any tuning.mk
 
@@ -605,10 +606,11 @@ bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h build.
 	${CC} bench_init.c -o bench_init ${CCFLAGS_0} -O3 -funroll-loops \
               ${CCFLAGS3} ${CCFLAGS2} ${CCFLAGS}
 
-# Benchmark for the exact check (see bench_check.c).  It links nothing from
-# the library -- it reproduces the gmp calls the check makes -- but it reads
-# the four RATPOINTS_CHECK_* constants out of ratpoints.h to print beside
-# what it measures.
+# Benchmark for the exact check and the modular test before it (see
+# bench_check.c).  It links nothing from the library -- it reproduces the
+# gmp calls the check makes and the lines of the test -- but it reads the
+# RATPOINTS_CHECK_* and RATPOINTS_TEST_* constants out of ratpoints.h to
+# print beside what it measures.
 bench_check: bench_check.c ratpoints.h build.stamp
 	${CC} bench_check.c -o bench_check ${CCFLAGS_0} ${CCFLAGS2} -lm ${CCFLAGS}
 

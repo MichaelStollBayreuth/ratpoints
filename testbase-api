@@ -80,6 +80,9 @@ the same on three threads                                2852  (2852 seen)
 (x^2 + 1)(x^4 + 1), height 3000, one thread                 8  (8 seen)
 the same on three threads                                   8  (8 seen)
   the two runs: 8 and 8 points, the same in the same order
+(x^2 + 1)(x^4 + 1), height 3000, one thread                 8  (8 seen)
+the same, modular test (check_cost 1e9), three threads      8  (8 seen)
+  the two runs: 8 and 8 points, the same in the same order
 x^5 + 1, height 500, stop at the first point, one thread    1  (1 seen)
 the same on three threads                                   1  (1 seen)
   the two runs: 1 and 1 points, the same in the same order

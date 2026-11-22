@@ -164,9 +164,10 @@ static long failures(void)
  * of primes (denominators from 251^2 on).  After a failure the structure
  * must serve the next search; the eighth repeats the second.  The ninth
  * goes through find_points, which initialises and clears a structure of
- * its own.  The numbers of points of the searches that are not stopped
- * were counted by brute force, over every coprime pair (a, b) in the
- * range. */
+ * its own, with the modular test before the exact check (check_cost
+ * 1e9), whose residues of the coefficients are one more array.  The
+ * numbers of points of the searches that are not stopped were counted by
+ * brute force, over every coprime pair (a, b) in the range. */
 #define NSEARCH 9
 #define NSHARED 8
 static const char *const sname[NSEARCH] =
@@ -178,7 +179,7 @@ static const char *const sname[NSEARCH] =
   "y^2 = 7x^2 + 3x + 5, denominators 66000 to 66100",
   "y^2 = x^5 + 1, height 500, stopped at the first point",
   "y^2 = x^2 + 1, height 1000, again",
-  "y^2 = (x^2 + 1)(x^4 + 1), height 500, find_points" };
+  "y^2 = (x^2 + 1)(x^4 + 1), height 500, find_points, modular test" };
 static const long expect[NSEARCH] = {700, 1436, 330, 16, 8, 2, 1, 1436, 8};
 
 /* the reference: what each search delivers when nothing fails */
@@ -228,7 +229,7 @@ static void setup(ratpoints_args *args, long s, long nt)
             domain[0].low = 0.0; domain[0].up = 0.01;
             break;
     case 6: curve(args, 5, quintic, 500); stop_at = 1; break;
-    case 8: curve(args, 6, sextic, 500); break;
+    case 8: curve(args, 6, sextic, 500); args->check_cost = 1e9; break;
   }
   args->num_threads = nt;
 }

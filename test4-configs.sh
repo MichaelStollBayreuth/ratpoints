@@ -12,9 +12,12 @@
 # denominator and the end of a search interval put together from 32-bit
 # halves, divisions in place of the reductions by multiplying), which no
 # other build compiles, as gcc and clang have that type on every 64-bit
-# machine.  The points found must not depend on any of these, and test4.sh
-# prints nothing that does, so every build is compared with the same
-# testbase4.  "make test4configs" runs this.
+# machine, and the modular test before the exact check in every search
+# that checks its survivors (RATPOINTS_TEST_STEP and RATPOINTS_TEST_CALL
+# 0, so that the test costs nothing by the rule that switches it on).  The
+# points found must not depend on any of these, and test4.sh prints
+# nothing that does, so every build is compared with the same testbase4.
+# "make test4configs" runs this.
 #
 # Each configuration is built in a directory of its own, build-test4-<name>,
 # from symbolic links to the sources, so that the build in the working
@@ -27,7 +30,8 @@
 # replace CCFLAGS1 of the Makefile (and PRIME_SIZE, for the one that
 # changes it).  A third field "nopart2" compares the output without the
 # second part of test4.sh, the reports of -v: two of those say what the
-# primes beyond 127 say, which a table of 30 primes cannot.
+# primes beyond 127 say, which a table of 30 primes cannot, and some of
+# them say whether the modular test is on, and what it costs.
 CONFIGS=${CONFIGS:-'64: 128:-DUSE_AVX128 128s:-DUSE_SSE 512:-DUSE_AVX512
   chunk1:-DUSE_AVX,-mavx2,-DRATPOINTS_CHUNK=1
   long2:-DUSE_AVX,-mavx2,-DUSE_LONG_IN_PHASE_2
@@ -35,7 +39,8 @@ CONFIGS=${CONFIGS:-'64: 128:-DUSE_AVX128 128s:-DUSE_SSE 512:-DUSE_AVX512
   prime9:-DUSE_AVX,-mavx2,PRIME_SIZE=9
   comp1:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1
   comp1023:-DUSE_AVX,-mavx2,-DRATPOINTS_COMPOSITE_MAX=1023
-  noint128:-DUSE_AVX,-mavx2,-DRP_NO_INT128'}
+  noint128:-DUSE_AVX,-mavx2,-DRP_NO_INT128
+  test0:-DUSE_AVX,-mavx2,-DRATPOINTS_TEST_STEP=0.0,-DRATPOINTS_TEST_CALL=0.0:nopart2'}
 
 status=0
 for cfg in $CONFIGS; do

@@ -124,9 +124,11 @@ nomem() {
 # the program's own allocations (the arrays of the coefficients and of the
 # search intervals, the strings of -f, -fs, -fm and -fe, the digits of an
 # interval end it reads exactly, and what it hands to the callback), and
-# then the library's, on one thread, also without the Sturm step (-s); the
-# banner and the report of a run without -q; on three threads, also with a
-# stop at the first point
+# then the library's, on one thread, also without the Sturm step (-s) and
+# with the modular test before the exact check (-W 1000000000), whose
+# residues of the coefficients are one more allocation; the banner and the
+# report of a run without -q; on three threads, also with a stop at the
+# first point
 stopped=0
 prog strings '1 0 1' 300 -q -f '%x %y %z\n' -fs 'start\n' -fm '' -fe 'end\n'
 # the list of the coefficients read from a file (@path) of 10000 bytes,
@@ -134,6 +136,7 @@ prog strings '1 0 1' 300 -q -f '%x %y %z\n' -fs 'start\n' -fm '' -fe 'end\n'
 printf '1 0%9995s1\n' '' > "$dir/coeffs"
 prog file "@$dir/coeffs" 300 -q
 prog nosturm '1 0 1' 300 -q -s
+prog modular '1 0 1' 300 -q -W 1000000000
 prog banner '5 3 7' 70000 -dl 66000 -du 66100 -l 0 -u 0.01
 prog threads '1 0 1' 1000 -q -t 3
 stopped=1

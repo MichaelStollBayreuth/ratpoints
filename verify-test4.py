@@ -52,7 +52,10 @@ RATPOINTS_PRINT_DEGREE and its short form from there on (see
 curve_line), and that wherever the report gives the numbers of the
 moduli of the first stage and of the first two stages, they must keep
 within -n and -N, which are hard limits also where the first stage is
-chosen by its rule.  A run whose standard output refuses every write
+chosen by its rule, and that wherever the report says what one exact check
+is put at, it says it in the form and with the numbers that the constants
+of ratpoints.h give, with the modular test before the exact check where it
+costs less (see check_report).  A run whose standard output refuses every write
 (announced with ">/dev/full" or ">&-" after the arguments) must report
 the failure on standard error and exit with status 13 when the program
 writes anything there -- the message of a refusal, the banner, a point
@@ -103,6 +106,19 @@ MAX_DEGREE = macro('RATPOINTS_MAX_DEGREE')
 # from this degree on, the curve and the lists of its coefficients are
 # printed in their short forms
 PRINT_DEGREE = macro('RATPOINTS_PRINT_DEGREE')
+
+def macro_double(name):
+    """the constant of type double that the macro name of ratpoints.h is,
+    the default of its #ifndef"""
+    fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')
+    try:
+        return float(re.search(r'^#\s*define\s+%s\s+([0-9.eE+-]+)' % name, open(fn).read(), re.M)[1])
+    except (OSError, TypeError, ValueError):
+        sys.exit('verify-test4.py: no %s in %s' % (name, fn))
+# what one exact check and the modular test before it cost (check_report)
+CHECK = {n: macro_double('RATPOINTS_CHECK_' + n) for n in ('STEP', 'LIMB', 'CALL', 'ROOT', 'REFERENCE')}
+TEST = {n: macro_double('RATPOINTS_TEST_' + n) for n in ('STEP', 'CALL', 'TRIED')}
+TEST_MODULI = 16   # the primes of the modular test (find_points.c)
 
 # White space as isspace() has it in the C locale, in which ratpoints runs;
 # a number may have it before and after it (strtol and strtod skip it
@@ -176,7 +192,7 @@ def parse_args(args):
     when it does not)"""
     o = dict(q=False, v=False, z=False, one=False, inf=True, x=False, y=False,
              s=False, S=None, dl=1, du=None, ivs=[], fmt=None, other={},
-             exit=None, strs=False)
+             exit=None, strs=False, keep=False)
     if len(args) < 2: o['exit'] = 2; return o
     lst = args[0]
     if lst.startswith('@'):
@@ -241,6 +257,7 @@ def parse_args(args):
             elif k in ('Z', 'X', 'Y'): o[k.lower()] = False
             elif k == '1': o['one'] = True
             elif k in ('i', 'I'): o['inf'] = (k == 'I')
+            elif k in ('k', 'K'): o['keep'] = (k == 'k')
         else: o['exit'] = 6; return o
         i += 1
     if l_seen: o['ivs'].append((low, None))  # no bound above
@@ -475,6 +492,55 @@ def curve_line(line, c):
             return head + 'of at most %d bits (not printed)' % bits
     return None
 
+def check_report(o):
+    """The lines in which the report of -v says what one exact check is put
+    at, for the run that parse_args read into o: find_points.c's
+    check_cost() -- the -W given when it is positive, and otherwise the
+    estimate from the degree, the largest coefficient and the height bound
+    --, compared in sieving_info with what the modular test costs a
+    survivor, TEST_TRIED*(degree*TEST_STEP + TEST_CALL): where the test
+    costs less and there is a check at all (no -x), the test is on and the
+    third stage is told what it costs, in three lines, and otherwise what
+    the check costs, in two.  The same operations in doubles, in the same
+    order; the degree is that of the search, the leading zeros dropped and
+    one less after the reversal of an even degree with a zero constant term
+    (which leaves the coefficients that are not zero as they were)"""
+    c, H = o['c'], o['H']
+    d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
+    du = o['du'] if o['du'] is not None and o['du'] >= 1 else H
+    if not o['keep'] and not o['ivs'] and o['dl'] <= 1 and du >= H \
+       and d % 2 == 0 and c[0] == 0:
+        d -= 1
+    w = c_double(o['other']['W']) if 'W' in o['other'] else -1.0
+    if w > 0.0: exact = w
+    else:
+        hbits = math.log(float(H) + 1.0)/math.log(2.0)
+        cbits = 1.0
+        for a in c:
+            if a != 0 and float(abs(a).bit_length()) > cbits: cbits = float(abs(a).bit_length())
+        fbits = cbits + float(d)*hbits
+        limbs = fbits/64.0
+        mid = 0.5*(cbits + fbits)/64.0
+        root = math.ceil(0.5*limbs)
+        if root < 1.0: root = 1.0
+        exact = float(d)*(CHECK['STEP'] + CHECK['LIMB']*mid) + CHECK['CALL'] \
+                + CHECK['ROOT']*(root - 1.0)
+        if d & 1: exact += CHECK['STEP'] + CHECK['LIMB']*limbs
+    test = TEST['TRIED']*(float(d)*TEST['STEP'] + TEST['CALL'])
+    modular = not o['x'] and test < exact
+    rel = (test if modular else exact)/CHECK['REFERENCE']
+    if rel <= 0.0: rel = 1.0
+    if modular:
+        return ['  one exact check is put at %.0f cycles; survivors are tested modulo %d'
+                % (exact, TEST_MODULI),
+                '    primes first, at %.0f cycles, %.2f times what a check costs'
+                % (rel*CHECK['REFERENCE'], rel),
+                '    on the curves the third stage was tuned on']
+    return ['  one exact check is put at %.0f cycles, %.2f times what it costs'
+            % (rel*CHECK['REFERENCE'], rel),
+            '    on the curves the third stage was tuned on']
+
 POINT = re.compile(r'^\((-?\d+) : (-?\d+) : (\d+)\)$')
 XONLY = re.compile(r'^\((-?\d+) : (\d+)\)$')
 FOUND = re.compile(r'^(\d+) rational points? (?:pairs )?found\.$')
@@ -523,7 +589,7 @@ def main():
         elif cur is not None:
             cur[1].append(line)
     checked = failed = skipped = gp_used = refusals = write_fails = curves = 0
-    moduli = 0
+    moduli = reports = 0
     notes = []
     for args, out, filt in invs:
         o = parse_args(args)
@@ -563,6 +629,13 @@ def main():
                 fail('%d moduli in the first stage and %d altogether, beyond -n %d or -N %d'
                      % (s1, s2, lim1, lim2))
             moduli += 1
+        # what one exact check is put at, and whether the modular test is on
+        for i, l in enumerate(body):
+            if not l.startswith('  one exact check is put at') or 'c' not in o: continue
+            want = check_report(o)
+            got = body[i:i+len(want)]
+            if got != want: fail('the report of the check: %s, where it must be %s' % (got, want))
+            reports += 1
         if filt in WRITE_FAILS:
             # what the program prints on standard error, where it reports
             # that a write failed, and its exit status
@@ -689,9 +762,10 @@ def main():
           '%d refusals of the arguments checked, %d runs on a failing standard output checked, '
           '%d lines of the curve or its coefficients checked, '
           '%d numbers of the moduli of the first two stages checked, '
+          '%d reports of the cost of a check checked, '
           '%d skipped (formats, reports), %d failed'
-          % (checked, gp_used, rule_used, refusals, write_fails, curves, moduli, skipped,
-             failed))
+          % (checked, gp_used, rule_used, refusals, write_fails, curves, moduli, reports,
+             skipped, failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 

@@ -39,6 +39,7 @@
  * 64-bit size_t holds up to d = 1518500246, the value here.  The others are
  * far from their limits there: the work space of d + 4 mpz_t's and the
  * arrays of rp_coeffs (find_points.c), of at most 16(d + 4) bytes; the
+ * residues of the modular test (find_points.c), 128(d + 1) bytes; the
  * exponents of 2 in the Sturm step, up to 55d; the sums w + 62j of
  * forbidden_valuations; the indexes and loop variables, which are longs.
  * Memory and time limit the degree long before that: the Sturm sequence
@@ -363,6 +364,40 @@ typedef char ratpoints_max_degree_fits_size_t
  * smaller on one whose check costs more. */
 #ifndef RATPOINTS_CHECK_REFERENCE
 # define RATPOINTS_CHECK_REFERENCE 306.0
+#endif
+
+/* What the modular test before the exact check costs a survivor, in the
+ * same rdtsc cycles.  When the test is on for a search, the check first
+ * computes F(a,b) modulo sixteen primes just below 2^31, one after the
+ * other, from the residues of the coefficients, and stops at the first
+ * modulo which F(a,b) is not a square: the survivor is no point.  Only a
+ * survivor that passes all sixteen is checked exactly, by Horner's rule with
+ * a running power of b, which needs no products of the coefficients with
+ * the powers of the denominator.  A survivor that is no point costs
+ *   TEST_TRIED*(degree*TEST_STEP + TEST_CALL),
+ * where TEST_STEP is one step of the loop over the coefficients for one
+ * prime, TEST_CALL what one prime costs besides that loop (the reductions
+ * of a and b and a Jacobi symbol), and TEST_TRIED the mean number of primes
+ * such a survivor goes through, each of which rejects about half of them.
+ * The test is switched on for a search where this is less than what one
+ * exact check is put at (the estimate above, or check_cost, option -W), and
+ * the third stage is then told what the test costs; so a large -W switches
+ * it on at any degree, and -W 1 switches it off.  STEP and CALL are fitted
+ * to what the test costs a survivor in the sieve, against an exact check
+ * on the reference curves, on curves of degrees 6 to 50 with coefficients
+ * of 250 bits (bench_check.c measures the shape of the cost); TRIED was
+ * counted, 2.00 on 81042 such survivors of curves of degrees 6 to 1000.
+ * With these values the test is on for coefficients of a few bits from
+ * about degree 25 to 50 on, as the height bound goes down from 10^6 to
+ * 100, and for coefficients of 2000 bits at every degree. */
+#ifndef RATPOINTS_TEST_STEP
+# define RATPOINTS_TEST_STEP 16.0    /* one step of the loop, one prime */
+#endif
+#ifndef RATPOINTS_TEST_CALL
+# define RATPOINTS_TEST_CALL 650.0   /* one prime besides its loop */
+#endif
+#ifndef RATPOINTS_TEST_TRIED
+# define RATPOINTS_TEST_TRIED 2.0    /* primes per survivor that is no point */
 #endif
 
 #ifndef RATPOINTS_DEFAULT_NUM_PRIMES

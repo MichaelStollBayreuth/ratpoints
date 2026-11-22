@@ -570,7 +570,10 @@ typedef struct ratpoints_sieve_entry_s
  * process() sets to stop the search.  A thread of a pool (find_points.c)
  * also knows its pool, the slot it puts its block's points into, and the
  * flag that tells it to abandon the block; on the calling thread the three
- * are NULL. */
+ * are NULL.  cq is the run's residues of the coefficients modulo the primes
+ * of the modular test before the exact check, which the threads share and
+ * only read, and NULL when the search does without the test (see
+ * test_moduli in find_points.c). */
 typedef struct { ratpoints_args *args; const struct rp_intervals_s *iv;
                  ratpoints_bit_array *survivors; void *survivors_na;
                  mpz_t *work;
@@ -581,7 +584,8 @@ typedef struct { ratpoints_args *args; const struct rp_intervals_s *iv;
                  unsigned long n_checks; unsigned long n_sifts;
                  long dec;
                  int compute_bc; int stage3_filled; int quit;
-                 void *pool; void *slot; const int *stop; }
+                 void *pool; void *slot; const int *stop;
+                 const unsigned long *cq; }
         rp_worker;
 
 /* The following two functions are provided in init.c: the table row of a

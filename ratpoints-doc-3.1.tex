@@ -439,13 +439,18 @@ compile-time switches: the register widths 64, 128 (both variants) and
 512 (emulated); \texttt{RATPOINTS\_CHUNK=1}, one register in the first
 stage; \texttt{USE\_LONG\_IN\_PHASE\_2}, the second stage one word at a
 time; \texttt{PRIME\_SIZE} 7 and~9, the smaller and the larger prime table;
-composite moduli off and unbounded; and \texttt{RP\_NO\_INT128}, the forms
+composite moduli off and unbounded; \texttt{RP\_NO\_INT128}, the forms
 for a compiler without a 128-bit integer type, which gcc and clang have on
-every 64-bit machine.  Each is
+every 64-bit machine; and the modular test before the exact test in every
+search (\texttt{RATPOINTS\_TEST\_STEP} and \texttt{RATPOINTS\_TEST\_CALL}
+0, Section~\ref{sec:modtest}).  Each is
 built in a directory of its own, so that the build in the working
 directory is left alone (\texttt{test4-configs.sh}); the points found
 must not depend on any of these, so every build is compared against the
-same \texttt{testbase4}. It takes about a minute.
+same \texttt{testbase4}, the builds with \texttt{PRIME\_SIZE}~7 and with
+the test in every search without its second part, the reports
+of~\verb+-v+, some of which say what the primes beyond 127 say and what
+the modular test costs. It takes about a minute.
 The script exits with status~1 when an output
 differs from the reference and with~2 when a build failed; so does
 \texttt{coverage.sh} below.
@@ -656,8 +661,9 @@ The archive contains the following files.
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
         two parts that are timed on their own: building the sieving tables,
-        and the exact test.  Neither is part of the library; the second is
-        how to remeasure the constants of Section~\ref{sec:sp3choice}
+        and the exact test with the modular test before it.  Neither is
+        part of the library; the second is how to remeasure the constants
+        of Section~\ref{sec:sp3choice} and Section~\ref{sec:modtest}
   \item \texttt{ratpoints-doc-3.1.tex} --- the source of this documentation
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
   \item \texttt{README.md} --- a short description and an overview of what
@@ -711,9 +717,12 @@ in \verb+CCFLAGS+), as \texttt{make testmaxdegree} does. In practice memory
 and time limit the degree long before that: the coefficients are kept as
 multi-precision integers, and so are a few more numbers for each of them;
 the exact test of a point costs a step per degree on numbers of up to
-about the degree times the size of the height bound; and the Sturm step
-costs most of all. At a large degree, the option~\verb+-s+
-(Section~\ref{fd}) saves time and memory: the Sturm sequence of a
+about the degree times the size of the height bound, which is why at a
+large degree the survivors of the sieve are tested modulo sixteen primes
+first, at a step per degree on numbers of one word
+(Section~\ref{sec:modtest}); and the Sturm step costs most of all. At a
+large degree, the option~\verb+-s+ (Section~\ref{fd}) saves time and
+memory: the Sturm sequence of a
 polynomial of degree~$d$ has about~$d^2/2$ coefficients, which get larger
 along the sequence. A list too long for one argument is read from a file,
 by~\verb+@+ as above.
@@ -797,7 +806,9 @@ There are various ways to change this behavior.
         the degree \texttt{RATPOINTS\_PRINT\_DEGREE} on, as for the
         equation of the curve, a line ``\verb+coefficients: of at most+
         $b$ \verb+bits (not printed)+'' gives the number of bits of the
-        largest of them instead.
+        largest of them instead.  It also says what one exact test is put
+        at, and whether the survivors are tested modulo sixteen primes
+        first and what that costs (Section~\ref{sec:modtest}).
   \item To suppress printing of the points, use \verb+-z+.
   \item If you only want to list the $x$-coordinates of point pairs rather
         than individual points, use~\verb+-y+.
@@ -1014,7 +1025,11 @@ core's own cycles. It is the unit in which the program measures itself:
 in it. \verb+-W 306+ assumes that every curve costs what a degree-6 curve
 with small coefficients costs (on the author's machine).
 Section~\ref{sec:sp3choice} has the formula, and \verb+-v+ prints
-what it gives for the curve in~hand.
+what it gives for the curve in~hand. The same figure decides whether the
+survivors are tested modulo sixteen primes before the exact test
+(Section~\ref{sec:modtest}): where that costs less, the program does it,
+and the third stage is told what the test costs instead; so a large~$w$
+switches the test on whatever the curve, and \verb+-W 1+ switches it off.
 
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
@@ -1231,7 +1246,8 @@ compiled into \texttt{ratpoints.h} when negative. \texttt{check\_cost}
 (Section~\ref{fd}), and both
 of those constants are fractions of it; when negative, which is the usual
 case, the program estimates it from the degree, the coefficients and the
-height bound as described in Section~\ref{sec:sp3choice}.
+height bound as described in Section~\ref{sec:sp3choice}. It decides the
+modular test before the exact test as well (Section~\ref{sec:modtest}).
 Similar statements are true for~\texttt{num\_primes} (option~\verb+-p+),
 \texttt{sturm} (options \verb+-s+, \verb+-S+) and~\texttt{max\_forbidden}
 (option~\verb+-F+). Note that a non-negative \texttt{num\_primes} is a hard
@@ -1545,7 +1561,9 @@ this is done on the whole array; after this first stage, each remaining
 primes. If some bits are still set after this second stage of sieving,
 the corresponding pairs $(a, b)$ (if coprime) are tested against a few
 further primes one at a time, without sieving tables (the third stage),
-and those that pass are then checked exactly.
+and those that pass are then checked exactly, at a high degree or with
+large coefficients after a test modulo sixteen large primes
+(Section~\ref{sec:modtest}).
 
 In the following subsections, we discuss a number of improvements that
 were made.
@@ -1660,6 +1678,58 @@ described. Since the height of the points does not change under the
 transformation $(x,y) \to (1/x, y/x^{\lceil n/2 \rceil})$, we can as well search on the
 reversed polynomial $F(z,x)$. This will result in a speed-up if the
 reversed polynomial belongs to a `better' class than the original.
+
+\subsection{The modular test before the exact test}\label{sec:modtest}
+
+A survivor of the three stages is checked exactly: $F(a, b)$ is computed
+in multi-precision integers, by Horner's rule from the coefficients times
+the powers of~$b$, which are computed once for each denominator, and its
+integer square root is taken. At a high degree with large coefficients
+this costs a great deal (at degree~65000 with coefficients of 38000 bits
+and $H = 10^6$ about 25~seconds a survivor, and the products of the
+coefficients with the powers of~$b$ take gigabytes), and nearly every
+survivor that gets that far is no point. So the program can test the
+survivors modulo the sixteen largest primes below~$2^{31}$ first, one
+after the other: it computes $F(a, b) \bmod q$ from the coefficients
+modulo~$q$, which it computes once for the search, by Horner's rule with a
+running power of~$b$ in arithmetic of one word, and when that is not a
+square modulo~$q$ (its Jacobi symbol is~$-1$), the survivor is no point.
+A point passes every prime, $F(a, b)$ being the square of~$y$; a survivor
+that is no point fails at each prime with a probability of about one
+half, so it goes through two of them on average, and one in some 65000
+passes all sixteen. Those that pass are checked exactly, by Horner's rule
+with a running power of~$b$, which needs no products of the coefficients
+with the powers of~$b$. (The primes of the sieve are below~$2^{10}$, and a
+survivor has passed them already, which is why the test takes large
+primes.)
+
+What the test costs a survivor that is no point is put at
+$T\,(d s + c)$ rdtsc cycles for the degree~$d$, where $s$ is a step of
+the loop for one prime (\texttt{RATPOINTS\_TEST\_STEP}), $c$ what one
+prime costs besides that loop, the reductions and the Jacobi symbol
+(\texttt{RATPOINTS\_TEST\_CALL}), and $T$ the mean number of primes such a
+survivor goes through (\texttt{RATPOINTS\_TEST\_TRIED}); the size of the
+coefficients does not enter. The program switches the test on for a
+search where this is less than what one exact test is put at
+(Section~\ref{sec:sp3choice}, option~\verb+-W+), and then tells the third
+stage what the test costs in its place. For coefficients of a few bits
+that is from a degree between about 25 and 50 on, depending on the
+height bound (at $H = 100$ from degree~49, at $H = 16383$ from
+degree~29, at $H = 10^6$ from degree~25, an odd degree a little before
+an even one, whose exact test costs one multiplication less), and for
+coefficients of 2000 bits at every degree; at a low
+degree with small coefficients it stays off, where on a curve with many
+points every point would pay for all sixteen primes. The residues of the
+coefficients take $128(d + 1)$ bytes. With~\verb+-v+ the report says
+``\verb+one exact check is put at+ $e$ \verb+cycles;+ \verb+survivors are+
+\verb+tested modulo 16+ \verb+primes first, at+ $t$ \verb+cycles,+ $r$
+\verb+times what+ \verb+a check costs+ \verb+on the curves+ \verb+the third+
+\verb+stage was tuned on+'' when the test is on, with $e$ what the exact
+test is put at, $t$ what the test costs and $r = t/306$, and
+``\verb+one exact check+ \verb+is put at+ $e$ \verb+cycles,+ $r$
+\verb+times what+ \verb+it costs+ \verb+on the curves+ \verb+the third+
+\verb+stage was tuned on+'' when it is off. With~\verb+-x+ there is no
+exact test, and no modular test either.
 
 \subsection{Some general remarks}\label{sec:remarks}
 
@@ -1822,7 +1892,10 @@ above by the ratio, so that a curve whose test is dearer gets more primes.
 Only ratios enter, so a machine on which every test costs more needs no
 change; \verb+-W+~$w$ overrides the estimate with $w$ rdtsc cycles
 (Section~\ref{fd}), and \verb+-v+
-prints what the estimate gives for the curve in hand.
+prints what the estimate gives for the curve in hand. The estimate also
+decides the modular test before the exact test
+(Section~\ref{sec:modtest}), and where the test costs less, it is what the
+test costs, $T\,(d s + c)$, that the two fractions are divided by.
 
 \subsection{Correcting the choice while the program runs}\label{sec:adapt}
 
@@ -2541,7 +2614,19 @@ constant (\texttt{RATPOINTS\_\dots}) & value & what it is; how the value was fou
   the same for a degree-6 curve with small coefficients, which is what
   \verb+-W 306+ assumes for every curve &
   scaling every curve's value alike from 306 to 1000 moves no suite by
-  $0.5\%$ \\
+  $0.5\%$ \\[3pt]
+\texttt{TEST\_STEP}, \texttt{\_CALL}, \texttt{\_TRIED} & $16$, $650$, $2$ &
+  the modular test (Section~\ref{sec:modtest}), in the same units: a step
+  of its loop for one prime, one prime besides the loop, and the primes a
+  survivor that is no point tries; the first two fitted to what the test
+  costs a survivor in the sieve against an exact test on the reference
+  curves, on curves of degrees 6 to 50 with 250-bit coefficients
+  (\texttt{make bench\_check} gives the shape), the third counted, 2.00
+  on 81042 survivors of degrees 6 to 1000 &
+  with the test on or off, whole searches of degrees 2 to 200 with
+  coefficients of 3 to 2000 bits differ by under $2\%$ (in the noise),
+  but by a factor of 3.5 to 5.5 at degree~2 with small coefficients,
+  where the test stays off \\
 \end{tabular}
 \caption{The constants of the cost model: their values, where they came
 from, and how much a different value costs.}\label{tab:constants}
