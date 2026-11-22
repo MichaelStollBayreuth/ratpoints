@@ -258,6 +258,15 @@ int main(int argc, char *argv[])
   if(total < 0) /* error signaled by find_points? */
   { mpz_clear(tmp); mpz_clear(tmp2);
     if(total == RATPOINTS_NON_SQUAREFREE) error(8);
+    if(total == RATPOINTS_NO_MEMORY && args.sturm >= 0)
+    { /* error 10 with a hint: at a large degree the Sturm sequence is by
+       * far the largest thing the library allocates, and -s does without
+       * it */
+      printf("\nNot enough memory.\n\n");
+      printf("At large degree, the option -s saves memory ");
+      printf("(no Sturm sequence).\n\n");
+      exit(exit_status(10));
+    }
     if(total == RATPOINTS_NO_MEMORY) error(10);
     error(9);
   }

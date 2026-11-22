@@ -508,9 +508,10 @@ points that the same search delivers without failures, or the first so many
 of them and then return \texttt{RATPOINTS\_NO\_MEMORY}
 (Section~\ref{sec:library}); and a few runs of the program must print what
 they print without failures, or the first lines of that and then ``Not
-enough memory.'', with exit status~10. A crash, or a run that has not ended
-after a minute, fails the test. The memory of the gmp integers is gmp's and
-is left alone. Half a minute.
+enough memory.'' (with the hint on~\verb+-s+ where the library ran out of
+memory with the Sturm step on), with exit status~10. A crash, or a run that
+has not ended after a minute, fails the test. The memory of the gmp
+integers is gmp's and is left alone. Half a minute.
 
 \begin{verbatim}
 > make timing
@@ -681,13 +682,18 @@ byte in the file is refused like a word that is not an integer.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
 (defined in \texttt{ratpoints.h}), which is set to~$100$ by default.
+At a large degree, the option~\verb+-s+ (Section~\ref{fd}) saves time and
+memory: the Sturm sequence of a polynomial of degree~$d$ has about~$d^2/2$
+coefficients, which get larger along the sequence.
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
 (e.g., if you specify two leading zero coefficients), when it cannot read
 the file named after \verb+@+ (``Cannot read the file of the
 coefficients.''), and when it cannot
-get the memory for the search (``Not enough memory.''). The memory of the
+get the memory for the search (``Not enough memory.'', followed by the
+hint that the option~\verb+-s+ saves memory when the library ran out of it
+and the Sturm step was on). The memory of the
 multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
 cannot get it, it prints its own message and ends the program, and with
 several threads (option~\verb+-t+) that is often what happens first.
