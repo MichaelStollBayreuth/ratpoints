@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.0                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -572,6 +572,9 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
   fflush(NULL);
 #endif
 
+#if (RATPOINTS_CHUNK > 16)
+# error "the tail legs cover lengths up to 15: widen them with the ladder"
+#endif
 #if (defined(RATPOINTS_CHUNK) && (RATPOINTS_CHUNK > 1) && (RATPOINTS_CHUNK <= 16))
   /* Use separate variables for the individual bit-arrays;
    * they should be mapped to CPU registers.
@@ -745,7 +748,7 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
       { /* retrieve the pointer to the beginning of the relevant bits */
         ratpoints_bit_array *siv1 = sieves[n].start;
         /* This points to >= RATPOINTS_CHUNK consecutive bit-arrays
-         * of information (see init.c, gen_find_point_h.c),
+         * of information (see init.c, gen_find_points_h.c),
          * so we can safely step siv1 that many times. */
 
         /* perform the sieving on RATPOINTS_CHUNK registers */
@@ -924,9 +927,6 @@ long _ratpoints_sift0(long b, long w_low, long w_high,
      * all bit arrays swept at height 16383, four fifths at height 1000.) */
     { long t = w_high - w_high_full;
 
-#if (RATPOINTS_CHUNK > 16)
-# error "the tail legs cover lengths up to 15: widen them with the ladder"
-#endif
 #if (RATPOINTS_CHUNK > 8)
       if(t & 8) { tail_leg(8, 0, surv, bits64, sieves, sp1); }
 #endif

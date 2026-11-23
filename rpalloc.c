@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2026  Michael Stoll                                   *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -121,8 +121,11 @@ __attribute__((constructor)) static void rpalloc_start(void)
 
 #else /* the driver of the library */
 
-static mpz_t c[RATPOINTS_MAX_DEGREE+1];
-static ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+/* the largest degree of the searches below; domain has room for the region
+ * the library writes, num_inter + degree intervals */
+#define DEGREE 6
+static mpz_t c[DEGREE+1];
+static ratpoints_interval domain[2*DEGREE];
 
 /* A point as the search delivers it: a, b, and y by |y| modulo the prime
  * 2^61 - 1 and the sign of y (no |y| here is that large, so the two are y
@@ -161,9 +164,10 @@ static long failures(void)
  * of primes (denominators from 251^2 on).  After a failure the structure
  * must serve the next search; the eighth repeats the second.  The ninth
  * goes through find_points, which initialises and clears a structure of
- * its own.  The numbers of points of the searches that are not stopped
- * were counted by brute force, over every coprime pair (a, b) in the
- * range. */
+ * its own, with the modular test before the exact check (check_cost
+ * 1e9), whose residues of the coefficients are one more array.  The
+ * numbers of points of the searches that are not stopped were counted by
+ * brute force, over every coprime pair (a, b) in the range. */
 #define NSEARCH 9
 #define NSHARED 8
 static const char *const sname[NSEARCH] =
@@ -175,7 +179,7 @@ static const char *const sname[NSEARCH] =
   "y^2 = 7x^2 + 3x + 5, denominators 66000 to 66100",
   "y^2 = x^5 + 1, height 500, stopped at the first point",
   "y^2 = x^2 + 1, height 1000, again",
-  "y^2 = (x^2 + 1)(x^4 + 1), height 500, find_points" };
+  "y^2 = (x^2 + 1)(x^4 + 1), height 500, find_points, modular test" };
 static const long expect[NSEARCH] = {700, 1436, 330, 16, 8, 2, 1, 1436, 8};
 
 /* the reference: what each search delivers when nothing fails */
@@ -225,7 +229,7 @@ static void setup(ratpoints_args *args, long s, long nt)
             domain[0].low = 0.0; domain[0].up = 0.01;
             break;
     case 6: curve(args, 5, quintic, 500); stop_at = 1; break;
-    case 8: curve(args, 6, sextic, 500); break;
+    case 8: curve(args, 6, sextic, 500); args->check_cost = 1e9; break;
   }
   args->num_threads = nt;
 }
@@ -312,7 +316,7 @@ int main(int argc, char *argv[])
   nt = atol(argv[1]);
   from = (strcmp(argv[2], "from") == 0);
   if(argc > 3) { first = last = atol(argv[3]); }
-  for(k = 0; k <= RATPOINTS_MAX_DEGREE; k++) { mpz_init(c[k]); }
+  for(k = 0; k <= DEGREE; k++) { mpz_init(c[k]); }
 
   /* the reference, and its numbers of points against the brute-force ones */
   sequence(nt, 1);
@@ -366,7 +370,7 @@ int main(int argc, char *argv[])
          first, (last > 0) ? last : n - 1,
          bad ? "WRONG" : "every search right");
 
-  for(k = 0; k <= RATPOINTS_MAX_DEGREE; k++) { mpz_clear(c[k]); }
+  for(k = 0; k <= DEGREE; k++) { mpz_clear(c[k]); }
   return(bad ? 1 : 0);
 }
 

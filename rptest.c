@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -66,9 +66,10 @@
 # define TEST_COEFF(n, k)  (testdata[n][(k)+1])
 #endif
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
+mpz_t c[TEST_MAX_DEGREE+1];  /* The coefficients of f */
 
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+ratpoints_interval domain[2*TEST_MAX_DEGREE];
+  /* room for the region the library writes, num_inter + degree intervals */
 
 /**************************************************************************
  * reading the numbers on the command line, as main.c does                *

@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -27,6 +27,7 @@
  ***********************************************************************/
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -41,17 +42,18 @@
  **************************************************************************/
 
 #define RATPOINTS_VERSION \
-  "This is ratpoints-3.1.1 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
+  "This is ratpoints-3.2.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
-  "terms of the GNU General Public License version 2 or later.\n\n" \
+  "terms of the GNU Lesser General Public License version 2.1 or later.\n\n" \
   "Please acknowledge use of this program in published work.\n\n"
 
 /**************************************************************************
  * global variables                                                       *
  **************************************************************************/
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
+mpz_t *c;             /* The coefficients of f, one per word of the list */
+long num_c;           /* the entries of c */
 mpz_t tmp, tmp2;      /* for intermediate results with gmp integers */
 
 int quiet;            /* A flag saying whether to suppress messages */
@@ -63,16 +65,17 @@ char *string_before;  /* String to be printed before the points */
 char *string_between; /* String to be printed between the points */
 char *string_after;   /* String to be printed after the points */
 
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+ratpoints_interval *domain;
                       /* This contains the intervals representing the search region */
 
 /* An end of a search interval as the command line gives it, exactly: inf is
  * -1 for -infinity, +1 for +infinity and 0 for the rational number q */
 typedef struct {int inf; mpq_t q;} exact_end;
 
-exact_end ends[2*RATPOINTS_MAX_DEGREE];
+exact_end *ends;
                       /* The ends of the intervals of the command line:
                          ends[2*i] <= x <= ends[2*i+1] for the i-th */
+long num_ends;        /* the entries of ends */
 
 char *usage_str =
     "Usage: ratpoints 'a_0 a_1 ... a_n' max_height\n"
@@ -85,13 +88,16 @@ char *usage_str =
     "                 [-P stage3_primes] [-Q stage3_cost] [-W check_cost]\n"
     "                 [-F max_forbidden] [-t threads] [-s] [-S [iter]]\n"
     "                 [-q] [-v] [-z] [-Z] [-1] [-i] [-I]\n"
-    "                 [-k] [-K] [-j] [-J] [-x] [-X]\n\n";
+    "                 [-k] [-K] [-j] [-J] [-x] [-X]\n"
+    "       In place of the list of the a_i, @file reads it from a file\n"
+    "       and @- from standard input.\n\n";
 
 /**************************************************************************
  * prototypes                                                             *
  **************************************************************************/
 
 int read_input(long, char *argv[], ratpoints_args*);
+char *read_coeff_file(char*);
 char *scan_mpz(char*, mpz_t);
 int scan_long(char*, long*);
 int scan_double(char*, double*);
@@ -101,6 +107,7 @@ void print_poly(mpz_t*, long);
 void print_string(char*);
 void message(long n, long total, ratpoints_args *args);
 void error(long);
+int exit_status(int);
 
 /**************************************************************************
  * function that processes the points                                     *
@@ -160,7 +167,7 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
     { case '%':
         c = *fmt++;
         switch(c)
-        { case 0: putchar('%'); return(1);
+        { case 0: putchar('%'); fflush(stdout); return(1);
           case 'x': printf("%ld", a); break;
           case 'y': if(info->no_y)
                     { putchar('%'); putchar('y'); }
@@ -174,7 +181,7 @@ int process(long a, long b, const mpz_t y, void *info0, int *quit)
       case '\\':
         c = *fmt++;
         switch(c)
-        { case 0: putchar('\\'); return(1);
+        { case 0: putchar('\\'); fflush(stdout); return(1);
           case 't': printf("\t"); break;
           case 'n': printf("\n"); break;
           case '\\': putchar('\\'); break;
@@ -198,19 +205,14 @@ int main(int argc, char *argv[])
   int before_printed; /* whether process has printed string_before */
   ratpoints_args args;
 
-  { long n;
-    /* initialize multi-precision integer variables */
-    for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_init(c[n]); }
-    /* and the rational ones for the ends of the intervals */
-    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_init(ends[n].q); }
-  }
+  /* the arrays c, ends and domain are sized and initialized by read_input */
   mpz_init(tmp); mpz_init(tmp2);;
 
   /* read input */
   if(argc < 3) { error(2); }
   if(read_input(argc-1, &argv[0], &args))
   { message(1, 0, &args);
-    return(0);
+    return(exit_status(0));
   }
   if(!quiet)
   { message(0, 0, &args);
@@ -256,6 +258,15 @@ int main(int argc, char *argv[])
   if(total < 0) /* error signaled by find_points? */
   { mpz_clear(tmp); mpz_clear(tmp2);
     if(total == RATPOINTS_NON_SQUAREFREE) error(8);
+    if(total == RATPOINTS_NO_MEMORY && args.sturm >= 0)
+    { /* error 10 with a hint: at a large degree the Sturm sequence is by
+       * far the largest thing the library allocates, and -s does without
+       * it */
+      printf("\nNot enough memory.\n\n");
+      printf("At large degree, the option -s saves memory ");
+      printf("(no Sturm sequence).\n\n");
+      exit(exit_status(10));
+    }
     if(total == RATPOINTS_NO_MEMORY) error(10);
     error(9);
   }
@@ -278,10 +289,11 @@ int main(int argc, char *argv[])
   /* clear multi-precision integer variables */
   mpz_clear(tmp); mpz_clear(tmp2);
   { long n;
-    for(n = 0; n <= RATPOINTS_MAX_DEGREE; n++) { mpz_clear(c[n]); }
-    for(n = 0; n < 2*RATPOINTS_MAX_DEGREE; n++) { mpq_clear(ends[n].q); }
+    for(n = 0; n < num_c; n++) { mpz_clear(c[n]); }
+    for(n = 0; n < num_ends; n++) { mpq_clear(ends[n].q); }
   }
-  return(0);
+  free(c); free(ends); free(domain);
+  return(exit_status(0));
 }
 
 /**************************************************************************
@@ -315,7 +327,6 @@ static int cmp_end(const exact_end *e, const exact_end *f)
 int read_input(long argc, char *argv[], ratpoints_args *args)
 {
   int l_seen = 0;     /* flag for dealing with -l -u */
-  mpz_t fff;          /* temporary variable for gmp integers */
   long num_inter = 0; /* number of positivity intervals */
 
   /* Initialize args */
@@ -327,10 +338,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                     unsigned int flags; ...}
             ratpoints_args;
   */
-  args->cof           = &c[0];
+  args->cof           = NULL; /* c, once the words of the list are counted */
   args->degree        = 0;
   args->height        = 0;
-  args->domain        = &domain[0];
+  args->domain        = NULL; /* domain, before the options are read */
   args->num_inter     = 0;  /* No interval up to now */
   args->b_low         = 1;  /* denominators go from 1 to h */
   args->b_high        = -1;
@@ -354,21 +365,48 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
                             /* allow reversal of polynomial */
                             /* use Jacobi symbol test */
 
-  mpz_init(fff); /* initialize gmp integer */
   /* read coefficients: integers separated by white space (see scan_mpz),
-   * at most RATPOINTS_MAX_DEGREE + 1 of them.  Those beyond go into fff,
-   * so that a list with something in it that is not an integer is refused
-   * as such, however long it is. */
+   * at most RATPOINTS_MAX_DEGREE + 1 of them, since the library takes no
+   * larger degree.  Each word is read into an entry of c of its own, so
+   * that a list with something in it that is not an integer is refused
+   * as such, however long it is.  The list is the first argument, or, when
+   * that is @path, the contents of the file that path names (@- for
+   * standard input; see read_coeff_file), which are freed once the
+   * coefficients are read. */
   { char *s = argv[1];
+    char *list = NULL; /* the contents of the file of @path */
+    long num_words = 0; /* the words of the list */
     long n = 0; /* the number of integers read */
+    long k;
 
+    if(*s == '@')
+    { list = read_coeff_file(s + 1);
+      s = list;
+    }
+    /* count the words of the list, the runs of characters that are not
+     * white space: c gets an entry for each, and one for an empty list */
+    { char *t = s;
+
+      for(;;)
+      { while(isspace((unsigned char)*t)) { t++; }
+        if(*t == 0) { break; }
+        num_words++;
+        while(*t != 0 && !isspace((unsigned char)*t)) { t++; }
+      }
+    }
+    num_c = (num_words > 0) ? num_words : 1;
+    c = calloc(num_c, sizeof(mpz_t));
+    if(c == NULL) { error(10); }
+    for(k = 0; k < num_c; k++) { mpz_init(c[k]); }
+    args->cof = c;
     for(;;)
     { while(isspace((unsigned char)*s)) { s++; }
       if(*s == 0) { break; }
-      s = scan_mpz(s, (n <= RATPOINTS_MAX_DEGREE) ? c[n] : fff);
+      s = scan_mpz(s, c[n]); /* a scan takes one word, so n < num_words */
       if(s == NULL) { error(11); }
       n++;
     }
+    free(list);
     if(n > RATPOINTS_MAX_DEGREE + 1) { error(3); }
     if(n <= 1) { error(5); }
     args->degree = n - 1;
@@ -389,6 +427,32 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   string_between  = NULL;
   string_after    = NULL;
 
+  /* The arrays of the search intervals, sized by the number of intervals
+   * that the options can give at most.  num_inter is advanced after a -u
+   * and the number after it, or, for a last interval without -u, after its
+   * -l and the number after it, so that each interval has two words of the
+   * options of its own; and the entries of the interval num_inter are
+   * written only once its option and the number after it have been read.
+   * So the argc - 2 words of the options, argv[3] to argv[argc], give at
+   * most (argc - 2)/2 intervals, with two entries of ends each.  domain
+   * has in addition the degree entries that the library asks for, since it
+   * writes there the region it searches, the intervals cut down to where f
+   * is positive.  Each array gets at least one entry (domain since the
+   * degree is at least 1), every entry starts as 0, and the rational
+   * numbers are initialized. */
+  { long max_inter, num_domain, k;
+
+    max_inter = (argc - 2)/2;
+    num_ends = (max_inter > 0) ? 2*max_inter : 1;
+    num_domain = max_inter + args->degree;
+    ends = calloc(num_ends, sizeof(exact_end));
+    if(ends == NULL) { error(10); }
+    for(k = 0; k < num_ends; k++) { mpq_init(ends[k].q); }
+    domain = calloc(num_domain, sizeof(ratpoints_interval));
+    if(domain == NULL) { error(10); }
+    args->domain = domain;
+  }
+
   /* recognize optional args */
   { long i = 3;
     while(i <= argc)
@@ -399,7 +463,6 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
           if(argc == i) error(7);
           i++;
           if(l_seen) { error(7); } /* -l -l */
-          if(num_inter == RATPOINTS_MAX_DEGREE) { error(7); }
           if(!scan_end(argv[i], -1, &ends[2*num_inter],
                        &domain[num_inter].low))
           { error(7); }
@@ -687,8 +750,49 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
   /* quiet implies not verbose */
   if(quiet) { args->flags &= ~RATPOINTS_VERBOSE; }
 
-  mpz_clear(fff); /* clean up */
   return(0);
+}
+
+/* The contents of the file that path names, standard input for "-", as a
+ * string: the list of the coefficients that the first argument @path stands
+ * for.  The file is read to its end by fread into a buffer that doubles
+ * when it is full, so that a pipe or a FIFO, whose size is known only at
+ * its end, is read as well, and as the bytes it holds ("rb"), as an
+ * argument holds them.  Error 12 when the file cannot be opened or read,
+ * error 10 when there is no memory for the buffer, and error 11 when the
+ * contents hold a zero byte, at which the scan of the list would stop as
+ * at its end.  The string is writable (see scan_mpz); the caller frees
+ * it. */
+char *read_coeff_file(char *path)
+{
+  FILE *fp = stdin;
+  char *buf = NULL;
+  size_t size = 0; /* the bytes the buffer has */
+  size_t len = 0;  /* the bytes read into it */
+
+  if(strcmp(path, "-") != 0)
+  { fp = fopen(path, "rb");
+    if(fp == NULL) { error(12); }
+  }
+  for(;;) /* each round finds no buffer or one that fread has filled */
+  { size_t want, got;
+    char *b;
+
+    if(size > SIZE_MAX/2) { error(10); }
+    size = (size == 0) ? 4096 : 2*size;
+    b = realloc(buf, size);
+    if(b == NULL) { error(10); }
+    buf = b;
+    want = size - 1 - len; /* a byte is left for the zero at the end */
+    got = fread(buf + len, 1, want, fp);
+    len += got;
+    if(got < want) { break; } /* the end of the file, or an error */
+  }
+  if(ferror(fp)) { error(12); }
+  if(fp != stdin) { fclose(fp); }
+  buf[len] = 0;
+  if(memchr(buf, 0, len) != NULL) { error(11); }
+  return(buf);
 }
 
 /* Read the integer that s starts with -- an optional sign and at least one
@@ -696,7 +800,10 @@ int read_input(long argc, char *argv[], ratpoints_args *args)
  * pointer to what follows it; return NULL if s does not start with one.
  * White space is what isspace() counts as such in the C locale, in which
  * the program runs: spaces, tabs, line feeds, carriage returns, vertical
- * tabs and form feeds. */
+ * tabs and form feeds.  The digits are converted by gmp, in a time nearly
+ * linear in their number (one multiplication by 10 per digit would take a
+ * time quadratic in it); for that the character after them is replaced by
+ * a zero for the call and then put back, so s must be writable. */
 char *scan_mpz(char *s, mpz_t x)
 {
   int neg = 0; /* flag for sign */
@@ -704,11 +811,12 @@ char *scan_mpz(char *s, mpz_t x)
   if(*s == '-') { neg = 1; s++; }
   else if(*s == '+') { s++; }
   if(!('0' <= *s && *s <= '9')) { return NULL; }
-  mpz_set_ui(tmp2, 0);
-  while('0' <= *s && *s <= '9')
-  { mpz_mul_ui(tmp2, tmp2, 10);
-    mpz_add_ui(tmp2, tmp2, (unsigned long)(*s - '0'));
-    s++;
+  { char *e = s, save;
+
+    while('0' <= *e && *e <= '9') { e++; }
+    save = *e; *e = 0;
+    mpz_set_str(tmp2, s, 10);
+    *e = save; s = e;
   }
   if(*s != 0 && !isspace((unsigned char)*s)) { return NULL; }
   if(neg) { mpz_neg(tmp2, tmp2); }
@@ -913,7 +1021,7 @@ void join_intervals(ratpoints_args *args)
 void print_poly(mpz_t *coeffs, long degree)
 {
   int flag = 0; /* 0 if at beginning */
-  int i;
+  long i;
   char *s;
 
   for(i = degree; i >= 0; i--)
@@ -937,10 +1045,10 @@ void print_poly(mpz_t *coeffs, long degree)
                 }
                 break;
         default: if(mpz_cmp_si(tmp, 1) == 0)
-                 { printf("x^%d", i); }
+                 { printf("x^%ld", i); }
                  else
                  { s = mpz_get_str((char *) 0, 10, tmp);
-                   printf("%s x^%d", s, i); free(s);
+                   printf("%s x^%ld", s, i); free(s);
                  }
                  break;
   } } }
@@ -948,7 +1056,8 @@ void print_poly(mpz_t *coeffs, long degree)
   fflush(stdout);
 }
 
-/* Print a string, recognizing \t, \n, \0, \%, \\. */
+/* Print a string, recognizing \t, \n, \%, \\; a backslash before
+ * another character or at the end of the string is printed as it is. */
 void print_string(char *str)
 {
   if(str)
@@ -996,7 +1105,24 @@ void message(long n, long total, ratpoints_args *args)
             printf("%ld further primes used in the third stage.\n",
                    args->sp3_used - args->sp2_used);
             break;
-    case 5: printf("\nCurve equation is  y^2 = ");
+    case 5: /* the polynomial, or from the degree RATPOINTS_PRINT_DEGREE on its
+             * degree and the number of bits of its largest coefficient */
+            { long d = args->degree, k; /* d: the leading zeros dropped */
+
+              while(d > 0 && mpz_cmp_si(args->cof[d], 0) == 0) { d--; }
+              if(d >= RATPOINTS_PRINT_DEGREE)
+              { unsigned long bits = 0;
+
+                for(k = 0; k <= d; k++)
+                { unsigned long b = mpz_sizeinbase(args->cof[k], 2);
+
+                  if(b > bits) { bits = b; }
+                }
+                printf("\nCurve equation is  y^2 = f(x), where f has degree %ld"
+                       " and coefficients of at most %lu bits\n\n", d, bits);
+                break;
+            } }
+            printf("\nCurve equation is  y^2 = ");
             print_poly(args->cof, args->degree);
             printf("\n");
             break;
@@ -1042,7 +1168,7 @@ void error(long n)
     case 6: printf("\nWrong syntax for optional arguments:\n\n");
     case 2: printf("\n%s\n%s", RATPOINTS_VERSION, usage_str); break;
     case 7: printf("\nIncorrect interval arguments (not numbers, ");
-            printf("not alternating, too many, or not ordered).\n\n");
+            printf("not alternating, or not ordered).\n\n");
             break;
     case 8: printf("\nPolynomial is not square-free.\n\n"); break;
     case 9: printf("\nBug no. 1 - please report!\n\n"); break;
@@ -1050,7 +1176,23 @@ void error(long n)
     case 11: printf("\nIncorrect coefficients (not integers separated by ");
              printf("blanks).\n\n");
              break;
+    case 12: printf("\nCannot read the file of the coefficients.\n\n"); break;
   }
-  fflush(stdout);
-  exit(n);
+  exit(exit_status(n));
+}
+
+/* The status to exit with, given the status n the program ends with:
+ * standard output is flushed, and when a write to it has failed, now or
+ * before (on a full disk, say, or with standard output closed), its reader
+ * has not seen all of it, an error message included, so the program says so
+ * on standard error and exits with status 13 instead.  The writes are not
+ * checked while the search runs; a reader that closes a pipe early ends the
+ * program by SIGPIPE at the write that follows. */
+int exit_status(int n)
+{
+  if(fflush(stdout) != 0 || ferror(stdout))
+  { fprintf(stderr, "\nError writing to standard output.\n\n");
+    return(13);
+  }
+  return(n);
 }

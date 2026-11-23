@@ -5,14 +5,16 @@
 This is a program that uses an optimized quadratic sieve algorithm in order
 to find rational points on hyperelliptic curves.
 
-The program is distributed under the GNU GPL, version 2 (or later).
+The program and the library are distributed under the GNU Lesser General
+Public License, version 2.1 or later (LGPL-2.1-or-later). Versions before
+3.2.0 were distributed under the GNU GPL, version 2 or later.
 
-Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.1.pdf).
+Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.2.pdf).
 
 ## Verification in Lean
 
 [RatpointsLean](https://github.com/MichaelStollBayreuth/RatpointsLean) is a
-model of ratpoints 3.1.1 in Lean 4 that mirrors the C code function by
+model of ratpoints 3.2.0 in Lean 4 that mirrors the C code function by
 function, with the same loops, tables and bit arrays, together with proofs
 that the model meets a short specification: it finds exactly the rational
 points up to the height bound, each once, in the order in which ratpoints
@@ -24,7 +26,51 @@ explains what is verified and what one has to trust.
 
 ## Change log
 
-The current version is **ratpoints-3.1.1** from October 9, 2026. It fixes bugs
+The current version is **ratpoints-3.2.0** from November 23, 2026. It removes
+the bound of 100 on the degree and makes searches at a high degree or with
+large coefficients feasible, under a new license:
+
+* **The license is the LGPL.** ratpoints is distributed under the GNU Lesser
+  General Public License, version 2.1 or later, where it was under the GNU
+  General Public License, version 2 or later, so that a program under
+  another license may use the library.
+* **No practical bound on the degree.** `RATPOINTS_MAX_DEGREE` is 1518500246
+  instead of 100, the largest degree for which the sizes the library computes
+  stay within their types, and the arrays that the degree sizes come from the
+  heap. Memory and time are what limits the degree now; at a large degree
+  the option `-s` saves both, and the program points to it when the search
+  runs out of memory with the Sturm step on.
+* **A modular test before the exact check.** At a high degree or with large
+  coefficients, each survivor of the sieve is tested modulo sixteen primes
+  just below 2^31 first, and only the few that pass are checked exactly. The
+  program does this where its cost model says that it is cheaper (`-v` says
+  when, and `-W` decides it too). A search at degree 8192 with 485
+  survivors that took 37 seconds and 71 MB now takes 0.1 seconds and 16 MB.
+  The Lean model has the proof that the test loses no point.
+* **Long lists of coefficients.** A first argument `@file` reads the
+  coefficients from a file and `@-` from standard input, for lists longer
+  than one argument may be (128 KiB on Linux); reading a long coefficient
+  no longer takes quadratic time; and from degree 1000 on the program prints
+  the degree and the size of the largest coefficient instead of the
+  polynomial.
+* **Failed writes are reported.** When standard output cannot be written (a
+  full disk, a closed standard output), the program says so on standard
+  error and exits with status 13, where it used to exit as if the output
+  had been written.
+* **Smaller changes.** The program takes any number of search intervals;
+  `-N` without `-n` is a hard limit on the first stage; the third stage
+  sieves with exactly the primes it chose (the points are the same, the
+  survivors printed under `-x` can differ); a format that ends in `%` or a
+  backslash flushes like any other; and the header's default of
+  `RATPOINTS_MAX_BITS_IN_PRIME` is 8, as in the Makefile.
+* `make testmaxdegree` tests the refusals at the bound on the degree, in a
+  build with a small bound.
+
+Programs using the library need not be recompiled. A program that sizes
+arrays by `RATPOINTS_MAX_DEGREE` has to size them by its own degrees before
+it is compiled with the new header.
+
+Version 3.1.1 from October 9, 2026, fixed bugs
 that a review of the code turned up while the verified version in Lean
 mentioned above was being prepared, most of them at the extremes of the input:
 
@@ -153,8 +199,8 @@ my machine allows) were made by Claude Code (Anthropic),
 in multiple sessions supervised by myself.
 
 The same holds for the improvements of version 3.0.0 over 2.2.4 described above,
-for the test suite, for the threads of version 3.1.0 and for the fixes of
-version 3.1.1: they were worked out,
+for the test suite, for the threads of version 3.1.0, for the fixes of
+version 3.1.1 and for the changes of version 3.2.0: they were worked out,
 implemented and measured by Claude Code in many such sessions, with the
 decisions taken by myself.
 

@@ -32,17 +32,35 @@ intervals.
 Whether the program refuses its arguments, and with which exit status, is
 decided by the rules of main.c, which parse_args follows: the coefficients
 are integers separated by white space, at most RATPOINTS_MAX_DEGREE + 1 of
-them; a number is the whole argument but for white space around it, an
+them, in the first argument or, when that is @name, in the file name,
+which test4.sh writes and FILES records (a name that FILES does not have
+cannot be read, and a zero byte in a file is refused like a word that is
+no integer); a number is the whole argument but for white space around it, an
 integer within the range of a long or a real number that is not NaN; and
-the search intervals alternate, are ordered by their ends as the numbers
-they are and are not too many.  An
+the search intervals alternate and are ordered by their ends as the
+numbers they are, however many there are.  An
 invocation that reports an exit status must report the one these rules
 give, with its message, and one they refuse must report it; one they
 accept may end with the message for a polynomial that is not squarefree,
 which is checked, or else is checked like any other.  Invocations that
 test an output format or the report of -v are not checked here beyond
 what they print, except that the points a -v report contains are still
-compared.
+compared, and that wherever the equation of the curve (without -q) or a
+list of the coefficients (the report of -v, at its start and after a
+reversal) is printed, it must be the polynomial in full below the degree
+RATPOINTS_PRINT_DEGREE and its short form from there on (see
+curve_line), and that wherever the report gives the numbers of the
+moduli of the first stage and of the first two stages, they must keep
+within -n and -N, which are hard limits also where the first stage is
+chosen by its rule, and that wherever the report says what one exact check
+is put at, it says it in the form and with the numbers that the constants
+of ratpoints.h give, with the modular test before the exact check where it
+costs less (see check_report).  A run whose standard output refuses every write
+(announced with ">/dev/full" or ">&-" after the arguments) must report
+the failure on standard error and exit with status 13 when the program
+writes anything there -- the message of a refusal, the banner, a point
+(see writes) -- and must print nothing and exit with 0 when it writes
+nothing.
 
 Prints one line per invocation that fails and a summary; exits 1 on any
 failure.  Takes a minute or two.
@@ -53,14 +71,54 @@ from fractions import Fraction
 MAX_BRUTE = 40_000_000   # candidate pairs a brute-force search is allowed
 rule_used = 0            # searches over the denominators e m^2 only
 
-def max_degree():
-    """RATPOINTS_MAX_DEGREE of the ratpoints.h next to this script"""
+# the list of the coefficients that test4.sh reads from a file has two of a
+# million digits, beyond the 4300 to which Python limits the conversion of
+# a string to an int by default
+if hasattr(sys, 'set_int_max_str_digits'): sys.set_int_max_str_digits(0)
+
+# The files that test4.sh writes for the runs that read the list of the
+# coefficients from a file, @name, by name, with what each holds; '-' is
+# what the run of @- is given on standard input.  A name that is not here
+# (no file, a directory, the empty name of @ alone) cannot be read.
+BIG_ZEROS = '0'*999_999
+FILES = {'lf-tab': ' 1\t0\n\n\t1\r\n', 'empty': '', 'nul': '1 0 1\0 2\n',
+         'word': '1 0 x\n', '-': '1\n0\n1\n',
+         'big': '-1' + BIG_ZEROS + '6 0 1' + BIG_ZEROS + '7\n',
+         'deg250': '1 -1 2' + ' 0'*122 + ' 2' + ' 0'*124 + ' 1\n',
+         'deg251': '1 2 1' + ' 0'*247 + ' -1 2\n',
+         'deg999': '0 1 2' + ' 0'*995 + ' -1 2\n',
+         'deg999z': '0 1 2' + ' 0'*995 + ' -1 2 0\n',
+         'deg1000': '1 -1 2' + ' 0'*497 + ' 2' + ' 0'*499 + ' 1\n',
+         'deg1001': '0 1 2' + ' 0'*997 + ' -1 2\n',
+         'deg3000': '%d -1 2' % (10**100 + 7)**2 + ' 0'*1497 + ' %d' % (2*(10**100 + 7))
+                    + ' 0'*1499 + ' 1\n'}
+
+def macro(name):
+    """the macro name of the ratpoints.h next to this script, the default
+    that its #ifndef gives; without it the rules of the command line or of
+    the output are not known"""
+    fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')
     try:
-        h = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')).read()
-        return int(re.search(r'#define RATPOINTS_MAX_DEGREE (\d+)', h)[1])
+        return int(re.search(r'^#\s*define\s+%s\s+(\d+)' % name, open(fn).read(), re.M)[1])
     except (OSError, TypeError):
-        return 100
-MAX_DEGREE = max_degree()
+        sys.exit('verify-test4.py: no %s in %s' % (name, fn))
+MAX_DEGREE = macro('RATPOINTS_MAX_DEGREE')
+# from this degree on, the curve and the lists of its coefficients are
+# printed in their short forms
+PRINT_DEGREE = macro('RATPOINTS_PRINT_DEGREE')
+
+def macro_double(name):
+    """the constant of type double that the macro name of ratpoints.h is,
+    the default of its #ifndef"""
+    fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ratpoints.h')
+    try:
+        return float(re.search(r'^#\s*define\s+%s\s+([0-9.eE+-]+)' % name, open(fn).read(), re.M)[1])
+    except (OSError, TypeError, ValueError):
+        sys.exit('verify-test4.py: no %s in %s' % (name, fn))
+# what one exact check and the modular test before it cost (check_report)
+CHECK = {n: macro_double('RATPOINTS_CHECK_' + n) for n in ('STEP', 'LIMB', 'CALL', 'ROOT', 'REFERENCE')}
+TEST = {n: macro_double('RATPOINTS_TEST_' + n) for n in ('STEP', 'CALL', 'TRIED')}
+TEST_MODULI = 16   # the primes of the modular test (find_points.c)
 
 # White space as isspace() has it in the C locale, in which ratpoints runs;
 # a number may have it before and after it (strtol and strtod skip it
@@ -134,9 +192,14 @@ def parse_args(args):
     when it does not)"""
     o = dict(q=False, v=False, z=False, one=False, inf=True, x=False, y=False,
              s=False, S=None, dl=1, du=None, ivs=[], fmt=None, other={},
-             exit=None, strs=False)
+             exit=None, strs=False, keep=False)
     if len(args) < 2: o['exit'] = 2; return o
-    c = coefficients(args[0])
+    lst = args[0]
+    if lst.startswith('@'):
+        lst = FILES.get(lst[1:])
+        if lst is None: o['exit'] = 12; return o
+        if '\0' in lst: o['exit'] = 11; return o
+    c = coefficients(lst)
     if c is None: o['exit'] = 11; return o
     if len(c) > MAX_DEGREE + 1: o['exit'] = 3; return o
     if len(c) <= 1: o['exit'] = 5; return o
@@ -153,7 +216,7 @@ def parse_args(args):
             if i + 1 >= n: o['exit'] = 7; return o
             i += 1
             if k == 'l':
-                if l_seen or len(o['ivs']) == MAX_DEGREE: o['exit'] = 7; return o
+                if l_seen: o['exit'] = 7; return o
                 low = c_end(args[i])
                 if low is None: o['exit'] = 7; return o
                 if o['ivs'] and o['ivs'][-1][1] >= low: o['exit'] = 7; return o
@@ -194,6 +257,7 @@ def parse_args(args):
             elif k in ('Z', 'X', 'Y'): o[k.lower()] = False
             elif k == '1': o['one'] = True
             elif k in ('i', 'I'): o['inf'] = (k == 'I')
+            elif k in ('k', 'K'): o['keep'] = (k == 'k')
         else: o['exit'] = 6; return o
         i += 1
     if l_seen: o['ivs'].append((low, None))  # no bound above
@@ -204,8 +268,9 @@ MESSAGE = {3: 'Too many coefficients.',
            4: 'Incorrect height argument.',
            5: 'The polynomial must have degree at least 1.',
            6: 'Wrong syntax for optional arguments:',
-           7: 'Incorrect interval arguments (not numbers, not alternating, too many, or not ordered).',
-           11: 'Incorrect coefficients (not integers separated by blanks).'}
+           7: 'Incorrect interval arguments (not numbers, not alternating, or not ordered).',
+           11: 'Incorrect coefficients (not integers separated by blanks).',
+           12: 'Cannot read the file of the coefficients.'}
 
 def denominators(H, dl, du):
     """the denominator range the library searches: b_low and b_high below 1
@@ -344,6 +409,23 @@ def first_point_b1(c, H, ivs, a_end):
             if r*r == v: return {(a, 1): {r, -r}}
     return {}
 
+def squarefree_mod(c, p):
+    """whether f = sum c_i x^i, of degree len(c) - 1 modulo the prime p,
+    is squarefree modulo p: the gcd of f and f' modulo p is a constant"""
+    def strip(a):
+        while a and a[-1] == 0: a.pop()
+        return a
+    f = strip([x % p for x in c])
+    g = strip([(i*c[i]) % p for i in range(1, len(c))])
+    while g:
+        inv = pow(g[-1], p - 2, p)
+        while len(f) >= len(g):
+            q = f[-1]*inv % p; k = len(f) - len(g)
+            for i in range(len(g)): f[k+i] = (f[k+i] - q*g[i]) % p
+            strip(f)
+        f, g = g, f
+    return len(f) == 1
+
 def squarefree(c):
     """whether f = sum c_i x^i, leading zeros dropped, is squarefree as a
     binary form of even degree: no repeated root, and no double root at
@@ -352,6 +434,12 @@ def squarefree(c):
     while d > 0 and c[d] == 0: d -= 1
     if d <= 0: return False
     if (d + 1) >> 1 < (d0 + 1) >> 1: return False
+    # f is squarefree when it is so modulo a prime that does not divide its
+    # leading coefficient, its discriminant then not being 0 modulo the
+    # prime; this decides it fast at a large degree, and the gcd over Q
+    # below, which can take minutes there, decides the rest
+    for p in (2**61 - 1, 2**31 - 1):
+        if c[d] % p and squarefree_mod(c[:d+1], p): return True
     f = [Fraction(x) for x in c[:d+1]]
     g = [Fraction(i*c[i]) for i in range(1, d+1)]
     # polynomial gcd over Q; squarefree iff it is a constant
@@ -365,9 +453,118 @@ def squarefree(c):
         f, g = g, f
     return len(f) == 1
 
+def poly_text(c):
+    """the polynomial sum c_i x^i as main.c's print_poly prints it"""
+    s = ''
+    for i in range(len(c) - 1, -1, -1):
+        a = c[i]
+        if a == 0: continue
+        if a > 0: s += ' + ' if s else ''
+        else: s += ' - ' if s else '- '; a = -a
+        if i == 0: s += '%d' % a
+        elif i == 1: s += 'x' if a == 1 else '%d x' % a
+        else: s += ('x^%d' % i) if a == 1 else '%d x^%d' % (a, i)
+    return s
+
+def curve_line(line, c):
+    """What a line that prints the curve or the list of its coefficients
+    must be, on the coefficients c given; None for any other line.  The
+    equation of the curve (message 5 of main.c) is the polynomial in full
+    below the degree RATPOINTS_PRINT_DEGREE, its leading zero coefficients
+    not counted, and from there on that degree and the number of bits of
+    its largest coefficient (mpz_sizeinbase, which counts 1 for a 0); so is
+    the list of the coefficients of the report of -v, with its leading
+    zeros dropped, and so is the list after the reversal of an odd degree
+    with a zero constant term, which swaps c_n and c_(d+1-n) for n = 1 to
+    d.  The equation of the curve is followed by a blank line in both forms
+    (see the check in main)"""
+    d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
+    bits = max(abs(a).bit_length() or 1 for a in c[:d+1])
+    if line.startswith('Curve equation is  y^2 = '):
+        if d < PRINT_DEGREE: return 'Curve equation is  y^2 = ' + poly_text(c)
+        return ('Curve equation is  y^2 = f(x), where f has degree %d and coefficients'
+                ' of at most %d bits' % (d, bits))
+    for head, cs in (('  coefficients: ', c[:d+1]),
+                     ('  coefficients now: ', c[:1] + [c[d+1-n] for n in range(1, d+1)])):
+        if line.startswith(head):
+            if d < PRINT_DEGREE: return head[:-1] + ''.join(' %d' % a for a in cs)
+            return head + 'of at most %d bits (not printed)' % bits
+    return None
+
+def check_report(o):
+    """The lines in which the report of -v says what one exact check is put
+    at, for the run that parse_args read into o: find_points.c's
+    check_cost() -- the -W given when it is positive, and otherwise the
+    estimate from the degree, the largest coefficient and the height bound
+    --, compared in sieving_info with what the modular test costs a
+    survivor, TEST_TRIED*(degree*TEST_STEP + TEST_CALL): where the test
+    costs less and there is a check at all (no -x), the test is on and the
+    third stage is told what it costs, in three lines, and otherwise what
+    the check costs, in two.  The same operations in doubles, in the same
+    order; the degree is that of the search, the leading zeros dropped and
+    one less after the reversal of an even degree with a zero constant term
+    (which leaves the coefficients that are not zero as they were)"""
+    c, H = o['c'], o['H']
+    d = len(c) - 1
+    while d > 0 and c[d] == 0: d -= 1
+    du = o['du'] if o['du'] is not None and o['du'] >= 1 else H
+    if not o['keep'] and not o['ivs'] and o['dl'] <= 1 and du >= H \
+       and d % 2 == 0 and c[0] == 0:
+        d -= 1
+    w = c_double(o['other']['W']) if 'W' in o['other'] else -1.0
+    if w > 0.0: exact = w
+    else:
+        hbits = math.log(float(H) + 1.0)/math.log(2.0)
+        cbits = 1.0
+        for a in c:
+            if a != 0 and float(abs(a).bit_length()) > cbits: cbits = float(abs(a).bit_length())
+        fbits = cbits + float(d)*hbits
+        limbs = fbits/64.0
+        mid = 0.5*(cbits + fbits)/64.0
+        root = math.ceil(0.5*limbs)
+        if root < 1.0: root = 1.0
+        exact = float(d)*(CHECK['STEP'] + CHECK['LIMB']*mid) + CHECK['CALL'] \
+                + CHECK['ROOT']*(root - 1.0)
+        if d & 1: exact += CHECK['STEP'] + CHECK['LIMB']*limbs
+    test = TEST['TRIED']*(float(d)*TEST['STEP'] + TEST['CALL'])
+    modular = not o['x'] and test < exact
+    rel = (test if modular else exact)/CHECK['REFERENCE']
+    if rel <= 0.0: rel = 1.0
+    if modular:
+        return ['  one exact check is put at %.0f cycles; survivors are tested modulo %d'
+                % (exact, TEST_MODULI),
+                '    primes first, at %.0f cycles, %.2f times what a check costs'
+                % (rel*CHECK['REFERENCE'], rel),
+                '    on the curves the third stage was tuned on']
+    return ['  one exact check is put at %.0f cycles, %.2f times what it costs'
+            % (rel*CHECK['REFERENCE'], rel),
+            '    on the curves the third stage was tuned on']
+
 POINT = re.compile(r'^\((-?\d+) : (-?\d+) : (\d+)\)$')
 XONLY = re.compile(r'^\((-?\d+) : (\d+)\)$')
 FOUND = re.compile(r'^(\d+) rational points? (?:pairs )?found\.$')
+# the numbers of the moduli of the first stage and of the first two stages
+# together in the report of -v
+MODULI = re.compile(r'==> use (\d+) moduli in the first stage, (\d+) altogether,$')
+
+# the runs of w() in test4.sh, whose standard output refuses every write
+WRITE_FAILS = ('>/dev/full', '>&-')
+
+def writes(o):
+    """Whether the program writes anything to its standard output on the
+    command line that parse_args read into o: the message of a refusal (for
+    status 2 the usage), the banner and the report without -q, the message
+    for a polynomial that is not squarefree, a point the search finds unless
+    -z suppresses it.  None if that is not decided here: with a string of
+    -fs, -fm or -fe, under -x (which prints survivors of the sieve as well),
+    or when the search is too large for brute_points"""
+    if o['exit'] is not None or not o['q']: return True
+    if o['strs'] or o['x']: return None
+    if not squarefree(o['c']): return True
+    if o['z']: return False
+    pts = brute_points(o['c'], o['H'], o['dl'], o['du'], o['ivs'], o['inf'])
+    return None if pts is None else bool(pts)
 
 def main():
     fn = sys.argv[1] if len(sys.argv) > 1 else 'testbase4'
@@ -391,7 +588,8 @@ def main():
             cur = None
         elif cur is not None:
             cur[1].append(line)
-    checked = failed = skipped = gp_used = refusals = 0
+    checked = failed = skipped = gp_used = refusals = write_fails = curves = 0
+    moduli = reports = 0
     notes = []
     for args, out, filt in invs:
         o = parse_args(args)
@@ -400,6 +598,60 @@ def main():
             failed += 1; print('FAIL:', ' '.join('<%s>' % a for a in args)); print('   ', msg)
         exit_line = [l for l in out if l.startswith('exit ')]
         body = [l for l in out if not l.startswith('exit ')]
+        # the curve and the lists of its coefficients, wherever they are
+        # printed, in full or in their short forms
+        if 'c' in o:
+            for i, l in enumerate(body):
+                want = curve_line(l, o['c'])
+                if want is None: continue
+                if l != want: fail('printed "%s", where it must be "%s"' % (l[:100], want[:100])); break
+                # message 5 ends in a blank line, in both forms, after which
+                # comes the height bound (message 6) or, under -v, the search
+                # region (message 3) when intervals are given and otherwise
+                # the report, which begins with a blank line of its own
+                # (unless a filter of the run has taken the lines out)
+                after = body[i+1:i+3]
+                blank2 = o['v'] and not o['ivs']
+                if not filt and l.startswith('Curve equation is') and \
+                   (after[:1] != [''] or (len(after) > 1 and (after[1] == '') != blank2)):
+                    fail('"%s" is followed by %s, not by a blank line and %s'
+                         % (l[:100], after, 'another' if blank2 else 'a line of text')); break
+                curves += 1
+        # -n and -N are hard limits on the moduli of the first stage and of
+        # the first two stages, also where the rule chooses the first stage
+        # (a filter of the run may have cut the line before the "==>")
+        for l in body:
+            m = MODULI.search(l if '==>' in l else '==> ' + l)
+            if not m or 'c' not in o: continue
+            s1, s2 = int(m[1]), int(m[2])
+            lim1, lim2 = o['other'].get('n', -1), o['other'].get('N', -1)
+            if s1 > s2 or (lim2 >= 0 and s2 > lim2) or (lim1 >= 0 and s1 > lim1):
+                fail('%d moduli in the first stage and %d altogether, beyond -n %d or -N %d'
+                     % (s1, s2, lim1, lim2))
+            moduli += 1
+        # what one exact check is put at, and whether the modular test is on
+        for i, l in enumerate(body):
+            if not l.startswith('  one exact check is put at') or 'c' not in o: continue
+            want = check_report(o)
+            got = body[i:i+len(want)]
+            if got != want: fail('the report of the check: %s, where it must be %s' % (got, want))
+            reports += 1
+        if filt in WRITE_FAILS:
+            # what the program prints on standard error, where it reports
+            # that a write failed, and its exit status
+            w = writes(o)
+            code = int(exit_line[-1].split()[1]) if exit_line else None
+            text = [l for l in body if l]
+            if w is None:
+                skipped += 1; notes.append('not checked (output %s): %s' % (filt, ' '.join(args[:2])))
+            elif w and (code != 13 or text != ['Error writing to standard output.']):
+                fail('output %s: exit %s and %s, where the program writes and must fail with 13'
+                     % (filt, code, text))
+            elif not w and (code != 0 or text):
+                fail('output %s: exit %s and %s, where the program writes nothing and must exit with 0'
+                     % (filt, code, text))
+            else: write_fails += 1
+            continue
         if exit_line:
             code = int(exit_line[-1].split()[1])
             # a test of the arguments: refused with the status and the
@@ -507,8 +759,13 @@ def main():
             wrong = [k for k in exp if k in got and exp[k] != got[k]]
             fail('missing %s extra %s wrong y %s' % (sorted(missing)[:5], sorted(extra)[:5], wrong[:5]))
     print('%d invocations checked (%d by gp, %d over the denominators e m^2 only), '
-          '%d refusals of the arguments checked, %d skipped (formats, reports), %d failed'
-          % (checked, gp_used, rule_used, refusals, skipped, failed))
+          '%d refusals of the arguments checked, %d runs on a failing standard output checked, '
+          '%d lines of the curve or its coefficients checked, '
+          '%d numbers of the moduli of the first two stages checked, '
+          '%d reports of the cost of a check checked, '
+          '%d skipped (formats, reports), %d failed'
+          % (checked, gp_used, rule_used, refusals, write_fails, curves, moduli, reports,
+             skipped, failed))
     for n in notes: print(' ', n)
     sys.exit(1 if failed else 0)
 

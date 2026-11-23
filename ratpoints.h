@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -30,7 +30,43 @@
 /* Use the GNU multiprecision library. */
 #include <gmp.h>
 
-#define RATPOINTS_MAX_DEGREE 100           /* max. degree of f(x) */
+/* The largest degree of f: find_points_init and find_points_work refuse a
+ * larger one, and the program more coefficients (error 3).  Every array the
+ * degree d sizes comes from the heap, so the bound is what the sizes,
+ * indexes and counts computed from d allow, with the 64-bit long the
+ * library needs.  The one that binds is the Sturm sequence (sturm.c),
+ * (d^2 + 7d)/2 mpz_t's in one block of 8d^2 + 56d bytes, whose size a
+ * 64-bit size_t holds up to d = 1518500246, the value here.  The others are
+ * far from their limits there: the work space of d + 4 mpz_t's and the
+ * arrays of rp_coeffs (find_points.c), of at most 16(d + 4) bytes; the
+ * residues of the modular test (find_points.c), 128(d + 1) bytes; the
+ * exponents of 2 in the Sturm step, up to 55d; the sums w + 62j of
+ * forbidden_valuations; the indexes and loop variables, which are longs.
+ * Memory and time limit the degree long before that: the Sturm sequence
+ * takes 8d^2 bytes and more for its coefficients, so at a large degree it
+ * is best left out (sturm < 0, option -s).  The value can be set on the
+ * compiler's command line, for a build with a small bound that reaches the
+ * refusals; a larger value than this one is not supported, and the check
+ * below refuses it. */
+#ifndef RATPOINTS_MAX_DEGREE
+#define RATPOINTS_MAX_DEGREE 1518500246    /* max. degree of f(x) */
+#endif
+/* The size of the Sturm sequence of degree d = RATPOINTS_MAX_DEGREE fits a
+ * size_t: its (d^2 + 7d)/2 entries are at most ((d + 1)/2)(d + 7), with the
+ * division of integers, which must not exceed SIZE_MAX/sizeof(mpz_t).  An
+ * array of negative size does not compile. */
+typedef char ratpoints_max_degree_fits_size_t
+  [((size_t)-1/sizeof(mpz_t)/((size_t)RATPOINTS_MAX_DEGREE + 7)
+      >= ((size_t)RATPOINTS_MAX_DEGREE + 1)/2) ? 1 : -1];
+
+/* From this degree of f on, the program and the library print its degree
+ * and the number of bits of its largest coefficient where they would print
+ * the polynomial or the list of its coefficients (the curve the program
+ * prints without -q, the report of -v): at degree 65000 the polynomial can
+ * take half a gigabyte. */
+#ifndef RATPOINTS_PRINT_DEGREE
+#define RATPOINTS_PRINT_DEGREE 1000        /* print f only below this degree */
+#endif
 
 /* A fixed choice of the numbers of moduli in the first stage and in the
  * first two stages, as versions 2.x used it.  The library does not use
@@ -328,6 +364,40 @@
  * smaller on one whose check costs more. */
 #ifndef RATPOINTS_CHECK_REFERENCE
 # define RATPOINTS_CHECK_REFERENCE 306.0
+#endif
+
+/* What the modular test before the exact check costs a survivor, in the
+ * same rdtsc cycles.  When the test is on for a search, the check first
+ * computes F(a,b) modulo sixteen primes just below 2^31, one after the
+ * other, from the residues of the coefficients, and stops at the first
+ * modulo which F(a,b) is not a square: the survivor is no point.  Only a
+ * survivor that passes all sixteen is checked exactly, by Horner's rule with
+ * a running power of b, which needs no products of the coefficients with
+ * the powers of the denominator.  A survivor that is no point costs
+ *   TEST_TRIED*(degree*TEST_STEP + TEST_CALL),
+ * where TEST_STEP is one step of the loop over the coefficients for one
+ * prime, TEST_CALL what one prime costs besides that loop (the reductions
+ * of a and b and a Jacobi symbol), and TEST_TRIED the mean number of primes
+ * such a survivor goes through, each of which rejects about half of them.
+ * The test is switched on for a search where this is less than what one
+ * exact check is put at (the estimate above, or check_cost, option -W), and
+ * the third stage is then told what the test costs; so a large -W switches
+ * it on at any degree, and -W 1 switches it off.  STEP and CALL are fitted
+ * to what the test costs a survivor in the sieve, against an exact check
+ * on the reference curves, on curves of degrees 6 to 50 with coefficients
+ * of 250 bits (bench_check.c measures the shape of the cost); TRIED was
+ * counted, 2.00 on 81042 such survivors of curves of degrees 6 to 1000.
+ * With these values the test is on for coefficients of a few bits from
+ * about degree 25 to 50 on, as the height bound goes down from 10^6 to
+ * 100, and for coefficients of 2000 bits at every degree. */
+#ifndef RATPOINTS_TEST_STEP
+# define RATPOINTS_TEST_STEP 16.0    /* one step of the loop, one prime */
+#endif
+#ifndef RATPOINTS_TEST_CALL
+# define RATPOINTS_TEST_CALL 650.0   /* one prime besides its loop */
+#endif
+#ifndef RATPOINTS_TEST_TRIED
+# define RATPOINTS_TEST_TRIED 2.0    /* primes per survivor that is no point */
 #endif
 
 #ifndef RATPOINTS_DEFAULT_NUM_PRIMES

@@ -38,7 +38,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{3.1.1} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{3.2.0} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -64,7 +64,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{October 9, 2026}
+\date{November 23, 2026}
 
 \maketitle
 
@@ -106,8 +106,11 @@ increase the major version number from 2 to~3, even though many of
 the optimizations are incremental and there are few really new ideas involved.
 Version~3.1.0 added the option to run the sieve on several
 threads (Sections~\ref{sec:threads} and~\ref{sec:library}).
-The current version~3.1.1 fixes some bugs that were discovered while preparing
+Version~3.1.1 fixed some bugs that were discovered while preparing
 for a verified version in~Lean.
+The current version~3.2.0 removes the bound of~$100$ on the degree of the
+polynomial and makes searches at a high degree or with large coefficients
+feasible (Section~\ref{sec:modtest}).
 
 Note that version~2.2.4 is the last one that supports 32-bit architectures;
 versions 3.0.0 and up need a word size of 64~bit.
@@ -121,17 +124,17 @@ see~\cite{ratpoints}, or obtained from \texttt{github} at
 \url{https://github.com/MichaelStollBayreuth/ratpoints}.
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published
-by the Free Software Foundation, either version~2 of the License, or
-(at your option) any later version.
+it under the terms of the GNU Lesser General Public License as published
+by the Free Software Foundation, either version~2.1 of the License, or
+(at your option) any later version. (Up to version~3.1.1, it was
+distributed under the GNU General Public License, version~2 or later.)
 
 This program is distributed in the hope that it will be useful,
 but \textbf{without any warranty}; without even the implied warranty of
 \textbf{merchantability} or \textbf{fitness for a particular purpose}. See the
-GNU General Public License for more details.
+GNU Lesser General Public License for more details.
 
-You should receive a copy of the GNU General Public License
-% and the GNU Lesser General Public License
+You should receive a copy of the GNU Lesser General Public License
 along with this program.
 
 If not, see \url{http://www.gnu.org/licenses/}.
@@ -145,7 +148,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-3.1.1.tar.gz
+> tar xzf ratpoints-3.2.0.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -158,7 +161,7 @@ repository mentioned above into a directory of your choice (and replace
 Do
 
 \begin{verbatim}
-> cd ratpoints-3.1.1
+> cd ratpoints-3.2.0
 > make all
 \end{verbatim}
 
@@ -374,7 +377,7 @@ the bugs fixed since then are at the end of \texttt{test4.sh}, where
 \end{verbatim}
 runs a few hundred invocations of \texttt{ratpoints} collected in \texttt{test4.sh},
 chosen so that nearly every line of the code runs at
-least once (\texttt{make coverage} below says how nearly): degrees $1$ to~$9$ and up to the maximum of~$100$,
+least once (\texttt{make coverage} below says how nearly): degrees $1$ to~$9$ and larger ones, beyond~$100$ too,
 odd and even degrees, square and non-square
 leading and constant coefficients, every reason to reverse the polynomial,
 curves with no points modulo some prime or no admissible numerator modulo~$64$,
@@ -403,7 +406,7 @@ runs \texttt{rpapi}, a program that tests what the library offers and the
 command-line program cannot reach: the checks that
 \texttt{find\_points\_work} makes on its arguments and the error codes it
 returns, a callback that stops the search or declines a point, the flags,
-more search intervals than the command line takes, and a sequence of
+more search intervals than a command line can hold, and a sequence of
 searches on one initialized structure
 (Section~\ref{sec:library}); the output is compared against
 \texttt{testbase-api}.
@@ -417,6 +420,21 @@ denominator, word for word with a direct evaluation of its definition
 (\texttt{bench\_init.c}); it takes a fraction of a second.
 
 \begin{verbatim}
+> make testmaxdegree
+\end{verbatim}
+tests the refusals at the bound on the degree (Section~\ref{sec:usage}),
+which the default build cannot reach, since no test can give a list of
+that many coefficients: \texttt{maxdegree.sh} builds the program and
+\texttt{rpapi} with \texttt{RATPOINTS\_MAX\_DEGREE} set to~$100$ in
+\texttt{build-maxdegree/}, where a list of $101$~coefficients must be
+searched as the default build searches it, one of~$102$ refused with ``Too
+many coefficients.'', and $102$~integers followed by a word that is not one
+refused as a list that is not one of integers; and \texttt{rpapi} must
+print \texttt{testbase-api}, its refusals of the degree
+$\texttt{RATPOINTS\_MAX\_DEGREE} + 1$ being those of~$101$. A few seconds
+besides the build.
+
+\begin{verbatim}
 > make test4configs
 \end{verbatim}
 runs \texttt{test4} again on the library built with each of the other
@@ -424,13 +442,18 @@ compile-time switches: the register widths 64, 128 (both variants) and
 512 (emulated); \texttt{RATPOINTS\_CHUNK=1}, one register in the first
 stage; \texttt{USE\_LONG\_IN\_PHASE\_2}, the second stage one word at a
 time; \texttt{PRIME\_SIZE} 7 and~9, the smaller and the larger prime table;
-composite moduli off and unbounded; and \texttt{RP\_NO\_INT128}, the forms
+composite moduli off and unbounded; \texttt{RP\_NO\_INT128}, the forms
 for a compiler without a 128-bit integer type, which gcc and clang have on
-every 64-bit machine.  Each is
+every 64-bit machine; and the modular test before the exact test in every
+search (\texttt{RATPOINTS\_TEST\_STEP} and \texttt{RATPOINTS\_TEST\_CALL}
+0, Section~\ref{sec:modtest}).  Each is
 built in a directory of its own, so that the build in the working
 directory is left alone (\texttt{test4-configs.sh}); the points found
 must not depend on any of these, so every build is compared against the
-same \texttt{testbase4}. It takes about a minute.
+same \texttt{testbase4}, the builds with \texttt{PRIME\_SIZE}~7 and with
+the test in every search without its second part, the reports
+of~\verb+-v+, some of which say what the primes beyond 127 say and what
+the modular test costs. It takes about a minute.
 The script exits with status~1 when an output
 differs from the reference and with~2 when a build failed; so does
 \texttt{coverage.sh} below.
@@ -508,9 +531,10 @@ points that the same search delivers without failures, or the first so many
 of them and then return \texttt{RATPOINTS\_NO\_MEMORY}
 (Section~\ref{sec:library}); and a few runs of the program must print what
 they print without failures, or the first lines of that and then ``Not
-enough memory.'', with exit status~10. A crash, or a run that has not ended
-after a minute, fails the test. The memory of the gmp integers is gmp's and
-is left alone. Half a minute.
+enough memory.'' (with the hint on~\verb+-s+ where the library ran out of
+memory with the Sturm step on), with exit status~10. A crash, or a run that
+has not ended after a minute, fails the test. The memory of the gmp
+integers is gmp's and is left alone. Half a minute.
 
 \begin{verbatim}
 > make timing
@@ -525,9 +549,10 @@ Finally,
 \begin{verbatim}
 > make test
 \end{verbatim}
+\begin{sloppypar}
 runs \texttt{test1}, \texttt{test1once}, \texttt{test1many},
 \texttt{testdegrees}, \texttt{test2}, \texttt{test3}, \texttt{test4},
-\texttt{testapi}, \texttt{testinit} and \texttt{timing},
+\texttt{testapi}, \texttt{testinit}, \texttt{testmaxdegree} and \texttt{timing},
 and fails at the end if any of them failed, so that a script can
 tell whether the build passed. It takes about a minute.
 The two large-height tests are not part of it; they are meant for judging a
@@ -535,6 +560,7 @@ change to the sieve rather than for checking that the build works. Neither
 are \texttt{testthreads} and \texttt{tsan}, which take longer than the rest
 together, nor \texttt{sanitize} and \texttt{testalloc}, which need the
 sanitizers and GNU~\texttt{ld}.
+\end{sloppypar}
 
 \subsection{Install}
 
@@ -626,24 +652,26 @@ The archive contains the following files.
         \texttt{testbase4} (needs Python~3)
   \item \texttt{test3.sh}, \texttt{test4.sh} --- the scripts that
         \texttt{make test3} and \texttt{make test4} run; they have to be
-        executable, as have the next seven
+        executable, as have the next eight
   \item \texttt{test4-configs.sh}, \texttt{coverage.sh} --- what
         \texttt{make test4configs} and \texttt{make coverage} run
   \item \texttt{test4-threads.sh}, \texttt{tsan.sh} --- the second half of
         \texttt{make testthreads}, and what \texttt{make tsan} runs
-  \item \texttt{sanitize.sh}, \texttt{testalloc.sh} --- what
-        \texttt{make sanitize} and \texttt{make testalloc} run
+  \item \texttt{sanitize.sh}, \texttt{testalloc.sh}, \texttt{maxdegree.sh} ---
+        what \texttt{make sanitize}, \texttt{make testalloc} and
+        \texttt{make testmaxdegree} run
   \item \texttt{tune.sh} --- what \texttt{make tune} runs to measure the
         machine-dependent constants (Section~\ref{sec:tuning})
   \item \texttt{bench\_init.c}, \texttt{bench\_check.c} --- benchmarks for
         two parts that are timed on their own: building the sieving tables,
-        and the exact test.  Neither is part of the library; the second is
-        how to remeasure the constants of Section~\ref{sec:sp3choice}
-  \item \texttt{ratpoints-doc-3.1.tex} --- the source of this documentation
+        and the exact test with the modular test before it.  Neither is
+        part of the library; the second is how to remeasure the constants
+        of Section~\ref{sec:sp3choice} and Section~\ref{sec:modtest}
+  \item \texttt{ratpoints-doc-3.2.tex} --- the source of this documentation
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
   \item \texttt{README.md} --- a short description and an overview of what
         is new in this version
-  \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
+  \item \texttt{lgpl-2.1.txt} --- the GNU license that applies to this program.
 \end{itemize}%
 }
 
@@ -672,17 +700,54 @@ The program refuses any other list with an error message, so that, say,
 \verb+'1 0 1.5'+ or \verb+'1 2 - 3'+ is not read as some other
 polynomial. There is no bound on the size of the
 coefficients; they are read as multi-precision integers.
+In place of the list, the first argument may be \verb+@+ followed by the
+name of a file that holds the list, or \verb+@-+, which reads it from
+standard input; what the file holds is read as the list would be, so that
+it may run over several lines. This is the way to give a list longer than
+the operating system lets one argument be (on Linux, 128~KiB). A zero
+byte in the file is refused like a word that is not an integer.
 
 The degree $n$ of the polynomial is limited to \texttt{RATPOINTS\_MAX\_DEGREE}
-(defined in \texttt{ratpoints.h}), which is set to~$100$ by default.
+(defined in \texttt{ratpoints.h}), which is set to~$1518500246$ by default,
+and a longer list is refused (``Too many coefficients.''). That is the
+largest degree for which every size, index and count that the program and
+the library compute from the degree stays within its type, on a machine
+whose \texttt{long} and \texttt{size\_t} have 64~bits: the one that binds
+is the size of the Sturm sequence, $8d^2 + 56d$ bytes for the degree~$d$
+(\texttt{ratpoints.h} has the list). A larger value is not supported; a
+smaller one can be given to the compiler (\verb+-DRATPOINTS_MAX_DEGREE=+$n$
+in \verb+CCFLAGS+), as \texttt{make testmaxdegree} does. In practice memory
+and time limit the degree long before that: the coefficients are kept as
+multi-precision integers, and so are a few more numbers for each of them;
+the exact test of a point costs a step per degree on numbers of up to
+about the degree times the size of the height bound, which is why at a
+large degree the survivors of the sieve are tested modulo sixteen primes
+first, at a step per degree on numbers of one word
+(Section~\ref{sec:modtest}); and the Sturm step costs most of all. At a
+large degree, the option~\verb+-s+ (Section~\ref{fd}) saves time and
+memory: the Sturm sequence of a
+polynomial of degree~$d$ has about~$d^2/2$ coefficients, which get larger
+along the sequence. A list too long for one argument is read from a file,
+by~\verb+@+ as above.
 
 The program will give an error message when the polynomial (considered
 as a binary form of the smallest even degree $\ge n$) is not squarefree
-(e.g., if you specify two leading zero coefficients), and when it cannot
-get the memory for the search (``Not enough memory.''). The memory of the
+(e.g., if you specify two leading zero coefficients), when it cannot read
+the file named after \verb+@+ (``Cannot read the file of the
+coefficients.''), and when it cannot
+get the memory for the search (``Not enough memory.'', followed by the
+hint that the option~\verb+-s+ saves memory when the library ran out of it
+and the Sturm step was on). The memory of the
 multi-precision integers is \texttt{gmp}'s, though: when \texttt{gmp}
 cannot get it, it prints its own message and ends the program, and with
 several threads (option~\verb+-t+) that is often what happens first.
+When a write to standard output fails, on a full disk, say, or because
+standard output is closed, the program says so on standard error (``Error
+writing to standard output.'') and exits with status~$13$, also when it ends
+with the message of an error, which was then not seen either. It finds out
+when it ends: the search goes on to its end. A reader that closes a pipe
+early, such as \texttt{head}, ends the program by the signal
+\texttt{SIGPIPE}.
 
 The following subsections discuss how to modify the standard behavior.
 This is achieved by adding options after the two required arguments.
@@ -723,7 +788,15 @@ Here, $(x : y : z)$ are the coordinates of the point considered as a point
 in the $(1, \lceil n/2\rceil, 1)$-weighted projective plane, which is the
 natural ambient space for the curve. The coordinates are integers with
 $x$ and~$z$ coprime and $z > 0$, or $z = 0$ and $x = 1$ (for points at
-infinity).
+infinity). The information before the points includes the equation of the
+curve, but from the degree \texttt{RATPOINTS\_PRINT\_DEGREE} on (defined in
+\texttt{ratpoints.h}, $1000$ by default), where the polynomial could fill
+pages (half a gigabyte at degree~$65000$ with large coefficients), only its
+degree~$d$ and the number~$b$ of bits of the absolute value of its largest
+coefficient: ``\texttt{Curve equation is\ \ y\^{}2 = f(x), where f has
+degree} $d$ \texttt{and coefficients of at most} $b$ \texttt{bits}''. The
+degree is that of the polynomial given, its leading zero coefficients not
+counted.
 
 There are various ways to change this behavior.
 \begin{itemize}\setlength{\parindent}{0mm}\setlength{\parskip}{1ex}
@@ -731,7 +804,14 @@ There are various ways to change this behavior.
         {\em quiet}).
   \item To add some more output explaining what the program is doing,
         use \verb+-v+ (for {\em verbose}). This has no effect if
-        the \verb+-q+ option is also given.
+        the \verb+-q+ option is also given. The report lists the
+        coefficients, and again after a reversal that changes them; from
+        the degree \texttt{RATPOINTS\_PRINT\_DEGREE} on, as for the
+        equation of the curve, a line ``\verb+coefficients: of at most+
+        $b$ \verb+bits (not printed)+'' gives the number of bits of the
+        largest of them instead.  It also says what one exact test is put
+        at, and whether the survivors are tested modulo sixteen primes
+        first and what that costs (Section~\ref{sec:modtest}).
   \item To suppress printing of the points, use \verb+-z+.
   \item If you only want to list the $x$-coordinates of point pairs rather
         than individual points, use~\verb+-y+.
@@ -743,7 +823,11 @@ There are various ways to change this behavior.
         \verb+"\\"+ and \verb+"\%"+ are recognized and do what you expect.
         The {\em format} string can contain markers \verb+%x+, \verb+%y+,
         \verb+%z+ that will be replaced with the $x$, $y$, and $z$-coordinate
-        of the point, respectively. The defaults are empty for
+        of the point, respectively. A~\verb+%+ followed by any other
+        character prints both: \verb+%%+ prints two percent signs, and
+        \verb+\%+ is the way to print one. Likewise a backslash followed by
+        any other character prints both, and a~\verb+%+ or a backslash at
+        the end of a string prints as it is. The defaults are empty for
         {\em string-before}, {\em string-between} and {\em string-after},
         and \verb+"(%x : %y : %z)\n"+ for {\em format} when \verb+-y+
         is not specified; otherwise \verb+"(%x : %z)\n"+.
@@ -760,12 +844,14 @@ There are various ways to change this behavior.
         \strut\quad\verb+-f "[%x,%y,%z]" -fs "{" -fm "," -fe "}\n"+
 \end{itemize}
 
-\subsection{Restricting the search domain}
+\subsection{Restricting the search domain}\label{sec:domain}
 
 There are two ways to restrict the domain of the search. The first is
 to restrict the range of denominators considered. This is done via \\
 \strut\quad\verb+-dl+ $d_{\text{min}}$ \verb+-du+ $d_{\text{max}}$\,. \\
-For example, to only look for integral points, you can say \verb+-du 1+.
+For example, to only look for integral points, you can say \verb+-du 1+
+(several threads do not speed up such a search; Section~\ref{sec:threads}
+says what does).
 By default, the lower limit is~$1$ and the upper limit is~$H$.
 
 The other way is to restrict the search to a union of (closed) intervals.
@@ -776,8 +862,7 @@ you can specify this in the form \\
 \verb+-l+ $l_k$ \verb+-u+ $u_k$ \,. \\
 The first \verb+-l+ option is optional; $l_1$ defaults to~$-\infty$.
 Similarly the last \verb+-u+ option is optional, and $u_k$ defaults
-to~$+\infty$. The number $k$ of intervals is bounded by
-\texttt{RATPOINTS\_MAX\_DEGREE} (usually, $100$).
+to~$+\infty$. There is no bound on the number~$k$ of intervals.
 The ends are taken exactly as the numbers given, whether or not they are
 double-precision numbers: \verb+-l 1.6+ means~$8/5$, which no double is
 (the double nearest to it is a little larger), and
@@ -846,6 +931,17 @@ beyond that is the machine. At a small height bound the set-up of a
 search is a large share of the run and there is little to gain; many
 curves at a small height bound are better searched by independent
 searches running in parallel (Section~\ref{sec:library}).
+
+Since the work is handed out by denominators, several threads do not help
+a search with one denominator or a few: a search for integral points
+(\verb+-du 1+) is a single block, which one thread sieves whatever
+\verb+-t+ says. Divide such a search by hand instead: cut the range of the
+$x$-coordinates into disjoint intervals and run one search for each of
+them in parallel, with its interval given by \verb+-l+ and \verb+-u+
+(Section~\ref{sec:domain}). The intervals are closed, so let two
+neighbours meet at a number that is no $x$-coordinate of the search, such
+as $k + \frac12$ for integral points: \verb+-u 0.5+ in one search and
+\verb+-l 0.5+ in the next.
 
 \subsection{Setting the parameters for the sieve} \label{fd}
 
@@ -945,7 +1041,11 @@ core's own cycles. It is the unit in which the program measures itself:
 in it. \verb+-W 306+ assumes that every curve costs what a degree-6 curve
 with small coefficients costs (on the author's machine).
 Section~\ref{sec:sp3choice} has the formula, and \verb+-v+ prints
-what it gives for the curve in~hand.
+what it gives for the curve in~hand. The same figure decides whether the
+survivors are tested modulo sixteen primes before the exact test
+(Section~\ref{sec:modtest}): where that costs less, the program does it,
+and the third stage is told what the test costs instead; so a large~$w$
+switches the test on whatever the curve, and \verb+-W 1+ switches it off.
 
 There are two more parameters that can be set. \\
 \strut\quad\verb+-F+ $D$ \\
@@ -1080,7 +1180,9 @@ in \texttt{flags}; this may result in a loss of performance, though.
 
 \texttt{height} gives the height bound. It is an error for the
 degree to be nonpositive or larger than \texttt{RATPOINTS\_MAX\_DEGREE}
-(defined in \texttt{ratpoints.h}, $100$ by default), or for the height
+(defined in \texttt{ratpoints.h}, $1518500246$ by default, the largest
+degree for which the sizes the library computes from the degree stay
+within their types; see Section~\ref{sec:usage}), or for the height
 bound to be nonpositive; in this case the function returns the value
 \texttt{RATPOINTS\_BAD\_ARGS}.
 
@@ -1160,7 +1262,8 @@ compiled into \texttt{ratpoints.h} when negative. \texttt{check\_cost}
 (Section~\ref{fd}), and both
 of those constants are fractions of it; when negative, which is the usual
 case, the program estimates it from the degree, the coefficients and the
-height bound as described in Section~\ref{sec:sp3choice}.
+height bound as described in Section~\ref{sec:sp3choice}. It decides the
+modular test before the exact test as well (Section~\ref{sec:modtest}).
 Similar statements are true for~\texttt{num\_primes} (option~\verb+-p+),
 \texttt{sturm} (options \verb+-s+, \verb+-S+) and~\texttt{max\_forbidden}
 (option~\verb+-F+). Note that a non-negative \texttt{num\_primes} is a hard
@@ -1173,8 +1276,10 @@ array that is used in the first sieving stage. If non-positive, it is
 set to a default value, and a value above~$2^{20}$ is reduced to~$2^{20}$:
 every sieving thread allocates an array of that many bit arrays. The various
 default values are defined at the beginning of the header
-file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial is
-set.
+file~\texttt{ratpoints.h}, where also the maximal degree of the polynomial,
+\texttt{RATPOINTS\_MAX\_DEGREE}, is set. Like the defaults, it can be set
+on the compiler's command line instead, but only to a value below the one
+there, which is the largest the library supports.
 
 \texttt{num\_threads} says how many threads sieve (option~\verb+-t+,
 Section~\ref{sec:threads}): $1$ or~$0$, the calling thread alone; $n \ge 2$,
@@ -1208,7 +1313,10 @@ The \texttt{flags} field holds a number of bit flags.
         Jacobi symbol test (set by the \verb+-j+~option to~\texttt{ratpoints}).
   \item \texttt{RATPOINTS\_VERBOSE} --- when set, causes the procedure to
         print some output on what it is doing (set by the \verb+-v+~option
-        to~\texttt{ratpoints}).
+        to~\texttt{ratpoints}); from the degree
+        \texttt{RATPOINTS\_PRINT\_DEGREE} on, it prints the number of bits
+        of the largest coefficient in place of the list of the
+        coefficients.
 \end{itemize}
 
 There are some other flags that are used internally. One of them might be
@@ -1231,7 +1339,10 @@ to \texttt{proc}. If \texttt{*quit} is set to a non-zero value, this indicates
 that \texttt{find\_points} should abort the point search and return immediately;
 otherwise the search continues. This is how the \verb+-1+~option works.
 The return value is taken as a weight
-for counting the points; usually it will be~1.
+for counting the points; usually it will be~1. The weights should not be
+negative: \texttt{find\_points} adds them up into the count it returns,
+whose negative values are its error codes (such as
+\texttt{RATPOINTS\_NO\_MEMORY}).
 
 Whatever \texttt{num\_threads} says, \texttt{proc} is called from the
 thread that called \texttt{find\_points}, never from a sieving thread, and
@@ -1274,10 +1385,12 @@ The usual framework for using \texttt{find\_points} is as follows.
 
 (...)
 
-mpz_t c[RATPOINTS_MAX_DEGREE+1];  /* The coefficients of f */
-ratpoints_interval domain[2*RATPOINTS_MAX_DEGREE];
+#define DEGREE 6     /* The degree of f */
+mpz_t c[DEGREE+1];   /* The coefficients of f */
+ratpoints_interval domain[DEGREE];
                      /* This contains the intervals representing the
-                        search region */
+                        search region: room for num_inter + DEGREE
+                        of them, num_inter being 0 here */
 
 /*****************************************************************
  * function that processes the points                            *
@@ -1305,7 +1418,7 @@ int main(int argc, char *argv[])
   long total, n;
   ratpoints_args args;
 
-  long degree        = 6;
+  long degree        = DEGREE;
   long height        = 16383;
   long sieve_primes1 = -1; /* negative: chosen from the curve */
   long sieve_primes2 = -1; /* negative: chosen from the curve */
@@ -1339,7 +1452,7 @@ int main(int argc, char *argv[])
     for(k = 0; k < 7; k++) { mpz_set_si(c[k], ...); }
 
     args.cof           = &c[0];
-    args.degree        = 6;
+    args.degree        = degree;
     args.height        = height;
     args.domain        = &domain[0];
     args.num_inter     = 0;
@@ -1464,7 +1577,9 @@ this is done on the whole array; after this first stage, each remaining
 primes. If some bits are still set after this second stage of sieving,
 the corresponding pairs $(a, b)$ (if coprime) are tested against a few
 further primes one at a time, without sieving tables (the third stage),
-and those that pass are then checked exactly.
+and those that pass are then checked exactly, at a high degree or with
+large coefficients after a test modulo sixteen large primes
+(Section~\ref{sec:modtest}).
 
 In the following subsections, we discuss a number of improvements that
 were made.
@@ -1579,6 +1694,58 @@ described. Since the height of the points does not change under the
 transformation $(x,y) \to (1/x, y/x^{\lceil n/2 \rceil})$, we can as well search on the
 reversed polynomial $F(z,x)$. This will result in a speed-up if the
 reversed polynomial belongs to a `better' class than the original.
+
+\subsection{The modular test before the exact test}\label{sec:modtest}
+
+A survivor of the three stages is checked exactly: $F(a, b)$ is computed
+in multi-precision integers, by Horner's rule from the coefficients times
+the powers of~$b$, which are computed once for each denominator, and its
+integer square root is taken. At a high degree with large coefficients
+this costs a great deal (at degree~65000 with coefficients of 38000 bits
+and $H = 10^6$ about 25~seconds a survivor, and the products of the
+coefficients with the powers of~$b$ take gigabytes), and nearly every
+survivor that gets that far is no point. So the program can test the
+survivors modulo the sixteen largest primes below~$2^{31}$ first, one
+after the other: it computes $F(a, b) \bmod q$ from the coefficients
+modulo~$q$, which it computes once for the search, by Horner's rule with a
+running power of~$b$ in arithmetic of one word, and when that is not a
+square modulo~$q$ (its Jacobi symbol is~$-1$), the survivor is no point.
+A point passes every prime, $F(a, b)$ being the square of~$y$; a survivor
+that is no point fails at each prime with a probability of about one
+half, so it goes through two of them on average, and one in some 65000
+passes all sixteen. Those that pass are checked exactly, by Horner's rule
+with a running power of~$b$, which needs no products of the coefficients
+with the powers of~$b$. (The primes of the sieve are below~$2^{10}$, and a
+survivor has passed them already, which is why the test takes large
+primes.)
+
+What the test costs a survivor that is no point is put at
+$T\,(d s + c)$ rdtsc cycles for the degree~$d$, where $s$ is a step of
+the loop for one prime (\texttt{RATPOINTS\_TEST\_STEP}), $c$ what one
+prime costs besides that loop, the reductions and the Jacobi symbol
+(\texttt{RATPOINTS\_TEST\_CALL}), and $T$ the mean number of primes such a
+survivor goes through (\texttt{RATPOINTS\_TEST\_TRIED}); the size of the
+coefficients does not enter. The program switches the test on for a
+search where this is less than what one exact test is put at
+(Section~\ref{sec:sp3choice}, option~\verb+-W+), and then tells the third
+stage what the test costs in its place. For coefficients of a few bits
+that is from a degree between about 25 and 50 on, depending on the
+height bound (at $H = 100$ from degree~49, at $H = 16383$ from
+degree~29, at $H = 10^6$ from degree~25, an odd degree a little before
+an even one, whose exact test costs one multiplication less), and for
+coefficients of 2000 bits at every degree; at a low
+degree with small coefficients it stays off, where on a curve with many
+points every point would pay for all sixteen primes. The residues of the
+coefficients take $128(d + 1)$ bytes. With~\verb+-v+ the report says
+``\verb+one exact check is put at+ $e$ \verb+cycles;+ \verb+survivors are+
+\verb+tested modulo 16+ \verb+primes first, at+ $t$ \verb+cycles,+ $r$
+\verb+times what+ \verb+a check costs+ \verb+on the curves+ \verb+the third+
+\verb+stage was tuned on+'' when the test is on, with $e$ what the exact
+test is put at, $t$ what the test costs and $r = t/306$, and
+``\verb+one exact check+ \verb+is put at+ $e$ \verb+cycles,+ $r$
+\verb+times what+ \verb+it costs+ \verb+on the curves+ \verb+the third+
+\verb+stage was tuned on+'' when it is off. With~\verb+-x+ there is no
+exact test, and no modular test either.
 
 \subsection{Some general remarks}\label{sec:remarks}
 
@@ -1741,7 +1908,10 @@ above by the ratio, so that a curve whose test is dearer gets more primes.
 Only ratios enter, so a machine on which every test costs more needs no
 change; \verb+-W+~$w$ overrides the estimate with $w$ rdtsc cycles
 (Section~\ref{fd}), and \verb+-v+
-prints what the estimate gives for the curve in hand.
+prints what the estimate gives for the curve in hand. The estimate also
+decides the modular test before the exact test
+(Section~\ref{sec:modtest}), and where the test costs less, it is what the
+test costs, $T\,(d s + c)$, that the two fractions are divided by.
 
 \subsection{Correcting the choice while the program runs}\label{sec:adapt}
 
@@ -2225,6 +2395,110 @@ constant a new value.
 Programs using the library need not be recompiled, and the running time is
 that of 3.1.0 within the accuracy of the measurements.
 
+\textbf{Version 3.2.0} was released November 23, 2026. It removes the bound
+of~$100$ on the degree of the polynomial, makes searches at a high degree
+or with large coefficients feasible, reads long lists of coefficients from
+a file and reports failed writes. Its license is the GNU Lesser General
+Public License.
+\begin{itemize}
+  \item \emph{License.} The program and the library are distributed under
+        the GNU Lesser General Public License, version~$2.1$ or later,
+        where they were under the GNU General Public License, version~$2$
+        or later, so that a program under another license may use the
+        library; Bill Allombert, who contributed code, has agreed to the
+        change.
+  \item \emph{The degree.} \texttt{RATPOINTS\_MAX\_DEGREE} is $1518500246$
+        instead of~$100$: the largest degree for which every size, index
+        and count that the library computes from the degree stays within
+        its type. It can be lowered, not raised, on the compiler's command
+        line (Section~\ref{sec:usage}). Every array that the degree sizes
+        comes from the heap instead of the stack, which a degree of a few
+        hundred would overflow, and the Sturm sequence is kept as a
+        triangular array of half the size. In practice memory and time
+        limit the degree; the option~\verb+-s+ saves both at a large
+        degree, and when the search runs out of memory with the Sturm step
+        on, the message ``Not enough memory.''\ is followed by a hint
+        on~\verb+-s+.
+  \item \emph{The modular test before the exact test.} At a high degree or
+        with large coefficients, each survivor of the sieve is tested
+        modulo sixteen primes just below~$2^{31}$ first, and only the few
+        that pass are tested exactly, by Horner's rule with a running
+        power of the denominator, which needs no products of the
+        coefficients with the powers of the denominator. The program does
+        so where its cost model says that this is cheaper; the
+        option~\verb+-W+ decides it too, and \verb+-v+ says when it does
+        (Section~\ref{sec:modtest}). A search at degree~$8192$ with
+        $485$~survivors that took $37$~seconds and $71$~MB now takes
+        $0.1$~seconds and $16$~MB. The
+        Lean model of the program follows this version
+        (\url{https://github.com/MichaelStollBayreuth/RatpointsLean}),
+        with a proof that the test loses no point.
+  \item \emph{Reading the polynomial.} In place of the list of the
+        coefficients, the first argument may be~\verb+@+ followed by the
+        name of a file that holds the list, or~\verb+@-+ for standard
+        input: the way to give a list longer than the operating system
+        lets one argument be ($128$~KiB on Linux). A file that cannot be
+        read gives a message of its own and exit status~$12$
+        (Section~\ref{sec:usage}). Reading a coefficient no longer takes a
+        time quadratic in its length ($0.007$ instead of $0.29$~seconds
+        for $120000$ digits).
+  \item \emph{Printing the polynomial.} From the degree
+        \texttt{RATPOINTS\_PRINT\_DEGREE} on ($1000$ by default), the
+        program and the library print the degree of the polynomial and the
+        number of bits of its largest coefficient instead of the
+        polynomial, in the equation of the curve and in the lists of the
+        coefficients of the report of~\verb+-v+
+        (Section~\ref{sec:usage}).
+  \item \emph{Search intervals.} The program takes any number of search
+        intervals (\verb+-l+, \verb+-u+), where it took at most
+        \texttt{RATPOINTS\_MAX\_DEGREE}, and its message on wrong interval
+        arguments no longer says ``too many''.
+  \item \emph{Failed writes.} When a write to standard output fails, on a
+        full disk, say, or because standard output is closed, the program
+        says so on standard error and exits with status~$13$; it used to
+        say nothing and exit as if the output had been written
+        (Section~\ref{sec:usage}).
+  \item \emph{The choice of the moduli.} \verb+-N+ without~\verb+-n+ is a
+        hard limit on the number of moduli of the first stage, as the
+        description of the option says; the first stage used to take as
+        many as its rule wanted. After the third stage has chosen its
+        primes, only the primes it did not take are sorted for the
+        correction during the run, so that the third stage sieves with
+        exactly the primes it chose, in the order in which it chose them;
+        before, a prime it had rejected could take the place of one it had
+        chosen. The points found are the same; the survivors printed
+        under~\verb+-x+ can differ.
+  \item \emph{Output.} A format (\verb+-f+) that ends in~\verb+%+ or in a
+        backslash flushes the output after each point like any other
+        format. The manual now says what a~\verb+%+ and a backslash before
+        other characters print (Section~\ref{sec:usage}), that the weights
+        a callback returns should not be negative
+        (Section~\ref{sec:library}), and that several threads do not speed
+        up a search for integral points (Section~\ref{sec:threads}).
+  \item \emph{Build.} The header's default of
+        \texttt{RATPOINTS\_MAX\_BITS\_IN\_PRIME} is~$8$, that of the
+        Makefile's \texttt{PRIME\_SIZE}, where it was~$7$, and a value
+        outside $5$ to~$10$ does not compile; neither does a
+        \texttt{RATPOINTS\_CHUNK} above~$16$, which used to silently give
+        the unchunked first stage. The set-up of the rows of
+        the sieving tables no longer adds an offset to a null pointer
+        (which changed no result).
+  \item \emph{Tests.} \texttt{make testmaxdegree}, a part of \texttt{make
+        test}, tests the refusals at the bound on the degree in a build
+        whose bound is~$100$; \texttt{make test4configs} gains a build
+        with the modular test in every search; \texttt{make testalloc}
+        makes the new allocations fail too; \texttt{bench\_check} times
+        the modular test; and \texttt{test4.sh} has the invocations for
+        all of the above, checked by \texttt{verify-test4.py}
+        (Section~\ref{sec:tests}).
+\end{itemize}
+Programs using the library need not be recompiled. The example of
+Section~\ref{sec:library} used to size its arrays by
+\texttt{RATPOINTS\_MAX\_DEGREE}; a program that does so has to size them
+by its own degrees before it is compiled with the new header. Where the
+modular test is off, the running time is that of 3.1.1 within the accuracy
+of the measurements.
+
 %=========================================================================
 
 \appendix
@@ -2460,7 +2734,19 @@ constant (\texttt{RATPOINTS\_\dots}) & value & what it is; how the value was fou
   the same for a degree-6 curve with small coefficients, which is what
   \verb+-W 306+ assumes for every curve &
   scaling every curve's value alike from 306 to 1000 moves no suite by
-  $0.5\%$ \\
+  $0.5\%$ \\[3pt]
+\texttt{TEST\_STEP}, \texttt{\_CALL}, \texttt{\_TRIED} & $16$, $650$, $2$ &
+  the modular test (Section~\ref{sec:modtest}), in the same units: a step
+  of its loop for one prime, one prime besides the loop, and the primes a
+  survivor that is no point tries; the first two fitted to what the test
+  costs a survivor in the sieve against an exact test on the reference
+  curves, on curves of degrees 6 to 50 with 250-bit coefficients
+  (\texttt{make bench\_check} gives the shape), the third counted, 2.00
+  on 81042 survivors of degrees 6 to 1000 &
+  with the test on or off, whole searches of degrees 2 to 200 with
+  coefficients of 3 to 2000 bits differ by under $2\%$ (in the noise),
+  but by a factor of 3.5 to 5.5 at degree~2 with small coefficients,
+  where the test stays off \\
 \end{tabular}
 \caption{The constants of the cost model: their values, where they came
 from, and how much a different value costs.}\label{tab:constants}

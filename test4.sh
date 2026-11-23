@@ -43,8 +43,10 @@
 # -z, the coefficients and the numbers read whole (coefficient lists that
 # are not integers separated by white space, white space around a number,
 # and the intervals that a missing first -l or last -u leave open), -1 in
-# a search of a single block, and ends of the search intervals that are
-# not doubles, which are taken as the numbers they are.
+# a search of a single block, ends of the search intervals that are not
+# doubles, which are taken as the numbers they are, writes to standard
+# output that fail, the list of the coefficients read from a file, any
+# number of search intervals, and the modular test before the exact check.
 # The copy of this script in the 2.2.4 sources omits the third part and has
 # its own reference.
 
@@ -68,11 +70,28 @@ f() { filt=$1; shift
 }
 # the same, and report the exit status: for the tests of the error
 # messages, with the usage text taken out (it names the version and lists
-# the options, which differ between 2.2.4 and 3.0.0)
+# the options and the forms of the first argument, which differ between
+# the versions)
 e() { printf '#'; for a; do printf ' <%s>' "$a"; done; echo
       out=$("$RP" "$@"); st=$?
-      printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\['
+      printf '%s\n' "$out" | grep -v '^This is ratpoints-\|^Usage: \|^ *\[\|^       In place of the list\|^       and @- from'
       echo "exit $st"
+}
+# the program with its standard output where every write fails, the first
+# argument saying where: '>/dev/full', a device that refuses every write
+# (Linux and FreeBSD have it; where there is none, standard output is
+# closed instead, which fails every write as well, so that the reference
+# holds everywhere), or '>&-', a closed standard output.  It is announced
+# like a filter, after the arguments; what follows is what the program
+# prints on standard error, where it reports the failure, and its exit
+# status
+w() { to=$1; shift
+      printf '#'; for a; do printf ' <%s>' "$a"; done; echo " | $to"
+      if [ "$to" = '>/dev/full' ] && [ -w /dev/full ]
+      then "$RP" "$@" 2>&1 > /dev/full
+      else "$RP" "$@" 2>&1 >&-
+      fi
+      echo "exit $?"
 }
 # the same as t, for runs without -q: the first line of the banner names
 # the version, and the report on the moduli used depends on the width and
@@ -85,7 +104,9 @@ m() { t "$@" | grep -v '^This is ratpoints-\|used for\|further primes\|primes us
 # nothing else, but the numbers chosen do, and the message continues on a
 # second line), the lists of the moduli each stage uses (the ranking
 # depends on the width of a bit array), and what the exact check is put at
-# (the compiled-in constants).  Two of the reports say what the primes
+# (the compiled-in constants), in two lines, or in three when the survivors
+# are tested modulo the primes of the modular test first, which the same
+# constants decide.  Two of the reports say what the primes
 # beyond 127 say, and differ in a build with PRIME_SIZE 7, whose table ends
 # there; test4-configs.sh compares that build without this part.  The
 # first line of the report names the version and goes too
@@ -93,8 +114,8 @@ v() { t "$@" | awk '
   /^This is ratpoints-/ { next }
   /bits set per word/ { skip = 1; next }
   /^  use [0-9]+ (moduli|primes) for (first|second|third) stage:/ { skip = 1; next }
-  /one exact check is put at/ { skip = 1; next }
-  skip { skip = 0; next }
+  /one exact check is put at/ { skip = /survivors are tested/ ? 2 : 1; next }
+  skip { skip--; next }
   { print }'
 }
 
@@ -236,10 +257,22 @@ echo '---- higher degrees ----'
 t '1 0 0 0 0 0 0 0 0 1' 30 -q
 t '4 0 0 0 0 0 0 0 0 0 0 0 1' 20 -q
 t '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 15 -q
-# degree 100, the largest allowed
+# degree 100
 t '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 10 -q
-# degree 101
-e '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1' 10 -q
+# Beyond: the degree is bounded by RATPOINTS_MAX_DEGREE alone, far beyond
+# what a test can give (make testmaxdegree tests the bound in a build with
+# a small one).  Degree 101 on the command line, with the Sturm step:
+# 2x^101 - x^100 + (x + 1)^2 has the point (1 : +-3*2^50 : 2), where
+# 2x - 1 vanishes, besides (0 : +-1 : 1) and the point at infinity, and its
+# leading coefficient is not +-1, so that the denominators are the squares
+# and twice the squares; degree 102 under -s, (x^51 + 1)^2 + x(2x - 1),
+# with the points (1 : +-(2^51 + 1) : 2), (0 : +-1 : 1) and the two at
+# infinity.  The lists of degrees 250 and 251 from a file are below
+z=; i=3; while [ $i -lt 100 ]; do z="$z 0"; i=$((i+1)); done
+t "1 2 1$z -1 2" 10 -q
+z=; i=3; while [ $i -lt 51 ]; do z="$z 0"; i=$((i+1)); done
+z2=; i=52; while [ $i -lt 102 ]; do z2="$z2 0"; i=$((i+1)); done
+t "1 -1 2$z 2$z2 1" 10 -q -s
 
 echo '---- curves with many rational points ----'
 # these run out of informative primes, so the program looks at more of them
@@ -603,12 +636,6 @@ e '5 0' 10
 e '1 2 0 0' 20 -q
 e '1 2 0 0' 20 -q -k
 e '1 2 0 0' 20 -q -s
-# a hundred and one intervals
-set --
-i=0
-while [ $i -le 100 ]; do set -- "$@" -l $((3*i)) -u $((3*i+1)); i=$((i+1)); done
-e '1 2 3' 1000 "$@"
-set --
 
 echo '==== part 2: the report -v prints ===='
 v '1 0 126 0 441' 100 -v -n 3 -N 5 -P 2
@@ -649,8 +676,43 @@ v '10 10 5 -7 0 3 -2' 300 -v -n 4 -N 6 -P 0
 f "grep 'bits set per word' | sed 's/,.*//'" '1 0 126 0 441' 100 -v
 f "grep 'bits set per word' | sed 's/,.*//'" '3 2 -1 12' 100 -v
 f "grep 'bits set per word' | sed 's/,.*//'" '4 28 -53' 100 -v
+# -N caps the moduli of the first two stages also where the rule of the
+# first stage chooses them (-n absent): the rule takes more than four
+# moduli for this curve (fifteen in the default build), and with -N 4 the
+# first stage stops at four, with -N 0 the first two stages are empty and
+# the third stage sieves alone.  The numbers of the moduli then depend on
+# the curve and the cap alone, and the points are the same
+f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 4
+f "grep 'moduli in the first stage\|found' | sed 's/.*==> //'" '1 2 3 4 5 6 7' 1000 -v -z -N 0
+# The third stage sieves with the primes it has taken, in the order in
+# which it took them; the primes it has looked at and not taken follow
+# them, sorted by their densities, for the correction during the run.  On
+# this curve with many points it takes 131 and then 137, the two primes it
+# looks at beyond the thirty, in this order whatever the register width
+# and the composite moduli (which change the choice on many such curves,
+# as they change the moduli of the first two stages).  The primes of the
+# third stage, which the report lists, and the points
+f "awk '/for third stage/ { print; getline; print } / found/'" '1 4 36 -34 -1 -6 49' 16383 -v -z
 f 'grep -c .' '1 0 126 0 441' 100 -v -q
 f 'grep -c .' '1 0 126 0 441' 100 -q -v
+# What one exact check is put at, and the modular test before it: where
+# testing the survivors modulo sixteen primes below 2^31 first costs less
+# than the exact check, the search does so, and the report says it in
+# three lines, with what the test costs, in place of two.  For small
+# coefficients the test comes on at a degree that the height bound sets:
+# at the height bound 100, on y^2 = x^d + x + 1, at d = 49 and not at
+# d = 48 (with the constants of ratpoints.h, which verify-test4.py reads to
+# check these lines); with -W 1000000000 (one exact check put at that many
+# cycles) it is on at degree 4, with -W 1 off, and without the check (-x)
+# off whatever -W says.  The lines of the report, and the number of points
+r="awk '/one exact check/ { p = 1 } p; /third stage was tuned/ { p = 0 } / found/'"
+z=; i=2; while [ $i -lt 48 ]; do z="$z 0"; i=$((i+1)); done
+f "$r" "1 1$z 1" 100 -v -z
+f "$r" "1 1$z 0 1" 100 -v -z
+f "$r" '1 0 126 0 441' 100 -v -z -W 1000000000
+f "$r" '1 0 126 0 441' 100 -v -z -W 1
+r="awk '/one exact check/ { p = 1 } p; /third stage was tuned/ { p = 0 }'"
+f "$r" '1 0 126 0 441' 100 -v -x -W 1000000000
 
 echo '==== part 3: the options of 3.0.0 ===='
 # the constants of the rules that choose the sieving primes, set on the
@@ -917,6 +979,8 @@ t '1 0 126 0 441' 200 -q -z -1 -fs '[' -fe ']\n'
 echo '---- the coefficients and the numbers, read whole ----'
 tab=$(printf '\t')
 cr=$(printf '\r')
+vt=$(printf '\v')
+ff=$(printf '\f')
 # The coefficients are integers, each an optional sign and at least one
 # digit, separated by white space, and a list that is anything else is
 # refused with a message of its own rather than read as some other
@@ -925,10 +989,11 @@ cr=$(printf '\r')
 # zero leading coefficient, '1 0 --1' not -x^3 + 1), a sign does not
 # separate two numbers ('1-1' is not -x + 1, '1+1 0 1' not x^3 + x + 1),
 # and a character that cannot be part of an integer does not end the list
-# ('1 0 1x', '1 0 1.5', '1,0,1').  A list of more than
-# RATPOINTS_MAX_DEGREE + 1 numbers with something else among them is
-# refused for that, not for its length.  Tabs separate the coefficients as
-# blanks do, and white space may stand before and after the list.
+# ('1 0 1x', '1 0 1.5', '1,0,1'), wherever it stands: after 102 numbers
+# too, which in a build with a bound of 100 on the degree (make
+# testmaxdegree) are refused for that word and not for their number.  Tabs
+# separate the coefficients as blanks do, and white space may stand before
+# and after the list.
 e '1 2 3 - 4' 10
 e '1-1' 10
 e '1+1 0 1' 10
@@ -941,6 +1006,22 @@ e '1,0,1' 10
 s=1; i=0; while [ $i -lt 101 ]; do s="$s 0"; i=$((i+1)); done
 e "$s x" 10
 t "${tab}1${tab}0 $tab 1 " 10 -q
+# Leading zeros and a sign on 0 change nothing, and the rest of the white
+# space of isspace() separates the coefficients as well ('+0001 -00 01' with
+# a vertical tab, a form feed and a carriage return is x^2 + 1).  A sign
+# alone is not a number, and neither are two signs, whichever they are.  A
+# long coefficient is read exactly: 10^4000 + 2*10^2000 + 1, of 4001 digits,
+# is (10^2000 + 1)^2, so that y^2 = x^2 + (10^2000 + 1)^2 has the points
+# (0 : +-(10^2000 + 1) : 1) and the two at infinity, and no other of height
+# at most 10.
+t "+0001${vt}-00${ff}${cr}01" 10 -q
+e '1 2 +' 10
+e '+ 1' 10
+e '1 +-1' 10
+e '1 -+1' 10
+e '1 ++1' 10
+z=''; i=0; while [ $i -lt 1999 ]; do z="${z}0"; i=$((i+1)); done
+t "1${z}2${z}1 0 1" 10 -q
 # A number given as the height bound or as the argument of an option may
 # have white space before and after it, but nothing else: a script with
 # CRLF line ends leaves a carriage return on the last argument of a line
@@ -1061,3 +1142,166 @@ t '-16 10' 20 -q -i -l +1.6 -u +.17E+1
 t '-16 10' 20 -q -i -l 1.6 -u 1e99999999999999999999
 m '-16 10' 20 -i -l 1.6 -u 1.7976931348623158e308
 t '-16 10' 20 -q -i -l -1.7976931348623158e308 -u 1.7
+
+echo '---- writes to standard output that fail ----'
+# When a write to standard output fails, the program says so on standard
+# error and exits with status 13, also after the message of an error,
+# whose status it would have otherwise; when it has written nothing,
+# nothing has failed.  On a device that refuses every write and on a
+# closed standard output: a run that prints points, one that prints the
+# message of an error (4, the height bound), and one that prints nothing
+# (-q -z on a curve without real points)
+w '>/dev/full' '1 0 1' 10 -q
+w '>/dev/full' '1 2 3' 0
+w '>/dev/full' '-1 0 -1' 10 -q -z
+w '>&-' '1 0 1' 10 -q
+w '>&-' '1 2 3' 0
+w '>&-' '-1 0 -1' 10 -q -z
+
+echo '---- the list of the coefficients from a file ----'
+# A first argument @path names a file that holds the list of the
+# coefficients, and @- standard input; what it holds is read as the list
+# would be, so that line feeds and tabs separate the coefficients like
+# blanks.  The files are written to a temporary directory, which the runs
+# take as their working directory, so that the names announced are those
+# of the files; verify-test4.py knows what each of them holds (FILES
+# there, to be kept in step with this block).  lf-tab is y^2 = x^2 + 1,
+# its coefficients separated by line feeds, tabs and a carriage return;
+# empty holds nothing (no polynomial of degree at least 1); missing is no
+# file, and dir a directory (neither can be read, nor can the empty name
+# of @ alone); nul holds 1 0 1, a zero byte and 2, which is refused as a
+# list that is not one of integers, since a scan would stop at the zero
+# byte and read y^2 = x^2 + 1; word holds a word that is no integer; @-
+# reads y^2 = x^2 + 1 from standard input; @file as the only argument is
+# refused before the file is looked at (status 2, not 12 for a file that
+# cannot be read); and big holds a list of 2 MB, more than one argument
+# can be on Linux (128 KiB), of y^2 = C x^2 - (C - 1) with
+# C = 10^1000000 + 7, whose points of height at most 3 are (+-1 : +-1 : 1),
+# so that both coefficients must be read exactly; it takes a fraction of a
+# second.  deg250 and deg251 hold polynomials of these degrees, of the
+# shapes of those of degrees 102 and 101 above, (x^125 + 1)^2 + x(2x - 1)
+# with the Sturm step and 2x^251 - x^250 + (x + 1)^2 under -s, which have
+# the points at x = 1/2 and x = 0 and those at infinity.  From the degree
+# RATPOINTS_PRINT_DEGREE (1000) on, the program prints the degree and the
+# number of bits of the largest coefficient in place of the equation of the
+# curve, and so does the report of -v in place of the lists of the
+# coefficients, at its start and after a reversal: deg999 holds
+# 2x^999 - x^998 + 2x^2 + x, of degree 999, printed in full, an odd degree
+# with a zero constant term and the coefficient 1 of x, so that it is
+# reversed, with the points (1 : +-2 : 1) and (1 : +-2^500 : 2) besides
+# (0 : 0 : 1) and the one at infinity; deg999z the same list with a zero
+# after it, 1001 coefficients of a polynomial of degree 999, printed in
+# full; deg1000 (x^500 + 1)^2 + x(2x - 1), short; deg1001
+# 2x^1001 - x^1000 + 2x^2 + x, reversed and short in both lists of -v; and
+# deg3000 (x^1500 + C)^2 + x(2x - 1) with C = 10^100 + 7, whose
+# coefficients C^2 and 2C have 665 and 334 bits, under -s, since the Sturm
+# sequence at that degree with such coefficients takes more than a second
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/test4.XXXXXX") || exit 2
+(
+  case $RP in /*) ;; *) RP=$PWD/$RP ;; esac
+  cd "$tmp" || exit 2
+  printf ' 1\t0\n\n\t1\r\n' > lf-tab
+  : > empty
+  mkdir dir
+  printf '1 0 1\000 2\n' > nul
+  printf '1 0 x\n' > word
+  awk 'BEGIN { z = "0"; while (length(z) < 999999) z = z z
+               z = substr(z, 1, 999999); printf "-1%s6 0 1%s7\n", z, z }' > big
+  awk 'BEGIN { printf "1 -1 2"; for (i = 3; i < 125; i++) printf " 0"
+               printf " 2"; for (i = 126; i < 250; i++) printf " 0"
+               printf " 1\n" }' > deg250
+  awk 'BEGIN { printf "1 2 1"; for (i = 3; i < 250; i++) printf " 0"
+               printf " -1 2\n" }' > deg251
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 998; i++) printf " 0"
+               printf " -1 2\n" }' > deg999
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 998; i++) printf " 0"
+               printf " -1 2 0\n" }' > deg999z
+  awk 'BEGIN { printf "1 -1 2"; for (i = 3; i < 500; i++) printf " 0"
+               printf " 2"; for (i = 501; i < 1000; i++) printf " 0"
+               printf " 1\n" }' > deg1000
+  awk 'BEGIN { printf "0 1 2"; for (i = 3; i < 1000; i++) printf " 0"
+               printf " -1 2\n" }' > deg1001
+  awk 'BEGIN { z = sprintf("%098d", 0); printf "1%s14%s49 -1 2", z, z
+               for (i = 3; i < 1500; i++) printf " 0"
+               printf " 2%s14", z; for (i = 1501; i < 3000; i++) printf " 0"
+               printf " 1\n" }' > deg3000
+  t @lf-tab 10 -q
+  e @empty 10
+  e @missing 10
+  e @dir 10
+  e @nul 10
+  e @word 10
+  printf '1\n0\n1\n' | t @- 10 -q
+  e @ 10
+  e @missing
+  t @big 3 -q
+  t @deg250 10 -q
+  t @deg251 10 -q -s
+  m @deg999 10
+  v @deg999 10 -v
+  m @deg1000 10
+  v @deg1000 10 -v
+  m @deg999z 10
+  v @deg999z 10 -v
+  v @deg1001 10 -v
+  m @deg3000 10 -s
+  v @deg3000 10 -s -v
+)
+rm -rf "$tmp"
+
+echo '---- any number of search intervals ----'
+# The command line takes any number of search intervals: the program sizes
+# its arrays of them by the number of its words.  The 101 intervals
+# [3i, 3i + 1] for i = 0 to 100 on y^2 = 3x^2 + 2x + 1, whose points lie in
+# the first interval and in others; and the 201 intervals [i, i] for
+# i = -100 to 100 with the denominator 1 only, which hold the same x of the
+# search as the one interval [-100, 100] and give its points, five pairs of
+# them from x = -24 to x = 88
+set --
+i=0
+while [ $i -le 100 ]; do set -- "$@" -l $((3*i)) -u $((3*i+1)); i=$((i+1)); done
+t '1 2 3' 200 -q "$@"
+set --
+i=-100
+while [ $i -le 100 ]; do set -- "$@" -l $i -u $i; i=$((i+1)); done
+t '1 2 3' 100 -q -du 1 "$@"
+t '1 2 3' 100 -q -du 1 -l -100 -u 100
+set --
+
+echo '---- the modular test before the exact check ----'
+# Where the search tests the survivors modulo sixteen primes below 2^31
+# before the exact check -- by itself where that costs less than the exact
+# check, as in the searches above from the degree 100 on and on the
+# coefficients of thousands of digits and more, and at any degree with a
+# large -W -- the points are the same.  Each search with the test forced on (-W 1000000000) and off
+# (-W 1): y^2 = 441x^4 + 126x^2 + 1, with negative numerators, the
+# numerator 0 and the denominator 1 among its points, also on three
+# threads, which share the residues of the coefficients; a sextic with
+# many points (113 pairs at the height bound 300), on which every point
+# passes all sixteen primes; y^2 = x^6 + x^4 + x^2 + 1;
+# y^2 = 3x^3 - 2x, of odd degree, whose form of
+# even degree takes the factor b, with the point (0 : 0 : 1), where
+# F(a, b) = 0 modulo every prime; y^2 = x^4 + x, which is reversed (a zero
+# constant term); y^2 = C^2 x^4 + (1 - 2C^2) x^2 - x + C^2 with
+# C = 3*10^9, coefficients beyond every modulus and negative ones, with
+# the points (0 : +-C : 1) and (1 : 0 : 1) and those at infinity; and
+# y^2 = x^2 + 3440 (reversed, as its constant term is not a square) at the
+# height bound 1 without sieving moduli (-N 0 -P 0), whose survivors
+# (+-1 : 1) give F(a, b) = 3441 = 3*31*37, which is a square modulo all
+# sixteen primes and no square: they pass the test, and the exact check
+# finds that they are no points
+t '1 0 126 0 441' 200 -q -W 1000000000
+t '1 0 126 0 441' 200 -q -W 1
+t '1 0 126 0 441' 200 -q -W 1000000000 -t 3
+t '456976 -448032 -255200 208380 61033 -12834 81' 300 -q -W 1000000000
+t '456976 -448032 -255200 208380 61033 -12834 81' 300 -q -W 1
+t '1 0 1 0 1 0 1' 100 -q -W 1000000000
+t '1 0 1 0 1 0 1' 100 -q -W 1
+t '0 -2 0 3' 100 -q -W 1000000000
+t '0 -2 0 3' 100 -q -W 1
+t '0 1 0 0 1' 100 -q -W 1000000000
+t '0 1 0 0 1' 100 -q -W 1
+t '9000000000000000000 -1 -17999999999999999999 0 9000000000000000000' 50 -q -W 1000000000
+t '9000000000000000000 -1 -17999999999999999999 0 9000000000000000000' 50 -q -W 1
+t '3440 0 1' 1 -q -N 0 -P 0 -W 1000000000
+t '3440 0 1' 1 -q -N 0 -P 0 -W 1

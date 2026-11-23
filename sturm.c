@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -57,8 +57,9 @@
  *        domain), return value is number of intervals                    *
  * +  0 - polynomial is everywhere negative, ivlist may be changed        *
  * + -1 - polynomial is not squarefree, ivlist unchanged                  *
- * + RATPOINTS_NO_MEMORY - no memory for the copy of ivlist that the      *
- *        intersection is made from, ivlist unchanged                     *
+ * + RATPOINTS_NO_MEMORY - no memory for the Sturm sequence or for the    *
+ *        copy of ivlist that the intersection is made from, ivlist       *
+ *        unchanged                                                       *
  **************************************************************************/
 
 /* A helper function: evaluate the polynomial in cofs[] of given degree
@@ -83,6 +84,26 @@ static long eval_sign(ratpoints_args *args, mpz_t *cofs, long degree,
   return(s);
 }
 
+/* The Sturm sequence is kept on the heap, since the degree sizes it, as a
+ * triangular array: the k-th polynomial has degree at most degree - k, but
+ * its row first receives a copy of the (k-2)-nd, which the division then
+ * reduces in place, so row k has degree + 3 - k entries for k >= 2, and
+ * rows 0 and 1 have degree + 1.  The rows lie one after the other in one
+ * block, and sturm[k] points to row k. */
+static long sturm_row(long degree, long k)
+{ return((k < 2) ? degree + 1 : degree + 3 - k); }
+
+/* Give back what the Sturm step took: the coefficients of the rows, the
+ * rows, the degrees and the intervals. */
+static void clear_sturm(mpz_t *entries, long num_entries, mpz_t **sturm,
+                        long *sturm_degs, ratpoints_interval *ivlocal)
+{
+  long n;
+
+  for(n = 0; n < num_entries; n++) { mpz_clear(entries[n]); }
+  free(entries); free(sturm); free(sturm_degs); free(ivlocal);
+}
+
 long _ratpoints_compute_sturm(ratpoints_args *args)
 {
   mpz_t *cofs = args->cof;
@@ -91,16 +112,29 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
   ratpoints_interval *ivlist = args->domain;
   long num_iv = args->num_inter;
   long n, m, k, new_num;
-  mpz_t sturm[degree+1][degree+1]; /* Array to hold the polynomials */
-  long sturm_degs[degree+1]; /* The degrees of the polynomials */
+  long num_entries; /* in all the rows of the triangular array */
+  mpz_t *entries; /* the block that holds the rows */
+  mpz_t **sturm; /* Array to hold the polynomials: sturm[k] is row k */
+  long *sturm_degs; /* The degrees of the polynomials */
+  ratpoints_interval *ivlocal; /* the intervals that iterate() makes */
   mpz_t *work = args->work;
   long count1 = 0, count2 = 0;
 
-  /* first initialize */
-  for(n = 0; n <= degree; n++)
-  { for(m = 0; m <= degree; m++)
-    { mpz_init(sturm[n][m]); }
+  /* the memory, all of it or none (see sturm_row() for the layout) */
+  for(n = 0, num_entries = 0; n <= degree; n++)
+  { num_entries += sturm_row(degree, n); }
+  entries = malloc(num_entries*sizeof(mpz_t));
+  sturm = malloc((degree+1)*sizeof(mpz_t *));
+  sturm_degs = malloc((degree+1)*sizeof(long));
+  ivlocal = malloc((1 + (degree>>1))*sizeof(ratpoints_interval));
+  if(entries == NULL || sturm == NULL || sturm_degs == NULL || ivlocal == NULL)
+  { free(entries); free(sturm); free(sturm_degs); free(ivlocal);
+    return(RATPOINTS_NO_MEMORY);
   }
+  /* first initialize */
+  for(n = 0, m = 0; n <= degree; n++)
+  { sturm[n] = &entries[m]; m += sturm_row(degree, n); }
+  for(m = 0; m < num_entries; m++) { mpz_init(entries[m]); }
   /* copy polynomial f into first entry */
   for(n = 0; n <= degree; n++) { mpz_set(sturm[0][n], cofs[n]); }
   sturm_degs[0] = degree;
@@ -134,10 +168,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       /* d2 reaches -1 when the remainder is zero: not squarefree */
       while(d2 >= 0 && mpz_sgn(sturm[k][d2]) == 0) { d2--; }
       if(d2 < 0)  /* not squarefree */
-      { for(n = 0; n <= degree; n++)
-        { for(m = 0; m <= degree; m++)
-            { mpz_clear(sturm[n][m]); }
-        }
+      { clear_sturm(entries, num_entries, sturm, sturm_degs, ivlocal);
         return(-1);
       }
     }
@@ -176,17 +207,14 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
 
   if(count2 == count1 && mpz_sgn(cofs[0]) < 0)
   { /* no real roots, negative constant term ==> no points */
-    for(n = 0; n <= degree; n++)
-    { for(m = 0; m <= degree; m++)
-        { mpz_clear(sturm[n][m]); }
-    }
+    clear_sturm(entries, num_entries, sturm, sturm_degs, ivlocal);
     args->num_inter = 0;
     return(0);
   }
 
   /* Find list of intervals that may contain points */
   /* recall: typedef struct {double low; double up;} ratpoints_interval; */
-  { ratpoints_interval ivlocal[1 + (degree>>1)];
+  { /* into ivlocal[], which holds 1 + floor(degree/2) intervals */
     ratpoints_interval *iptr = &ivlocal[0];
     long max = (long)(((unsigned long)(-1))>>1);
     long min = -max;
@@ -276,10 +304,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       long n, n1, n2;
 
       if(local_copy == NULL)
-      { for(n = 0; n <= degree; n++)
-        { for(m = 0; m <= degree; m++)
-            { mpz_clear(sturm[n][m]); }
-        }
+      { clear_sturm(entries, num_entries, sturm, sturm_degs, ivlocal);
         return(RATPOINTS_NO_MEMORY);
       }
       /* make a copy of the given list */
@@ -324,10 +349,7 @@ long _ratpoints_compute_sturm(ratpoints_args *args)
       free(local_copy);
     }
   }
-  for(n = 0; n <= degree; n++)
-  { for(m = 0; m <= degree; m++)
-      { mpz_clear(sturm[n][m]); }
-  }
+  clear_sturm(entries, num_entries, sturm, sturm_degs, ivlocal);
   return(new_num);
 }
 

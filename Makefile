@@ -1,19 +1,19 @@
-#   ratpoints-3.1.1
+#   ratpoints-3.2.0
 #    - A program to find rational points on hyperelliptic curves
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
 #   This program is free software: you can redistribute it and/or
-#   modify it under the terms of the GNU General Public License
-#   as published by the Free Software Foundation, either version 2 of
+#   modify it under the terms of the GNU Lesser General Public License
+#   as published by the Free Software Foundation, either version 2.1 of
 #   the License, or (at your option) any later version.
 #
 #   This program is distributed in the hope that it will be useful,
 #   but WITHOUT ANY WARRANTY; without even the implied warranty of
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#   GNU General Public License for more details.
+#   GNU Lesser General Public License for more details.
 #
-#   You should have received a copy of version 2 of the GNU General
-#   Public License along with this program.
+#   You should have received a copy of version 2.1 of the GNU Lesser
+#   General Public License along with this program.
 #   If not, see <http://www.gnu.org/licenses/>.
 #
 #
@@ -25,7 +25,8 @@
 # The main targets are
 #   all         the library, the program and this documentation
 #   test        test1, test1once, test1many, testdegrees, test2, test3,
-#               test4, testapi and timing (see below)
+#               test4, testapi, testinit, testmaxdegree and timing (see
+#               below)
 #   test1once   the curves of test1 with the input fields of args set once
 #               before the loop: the library must leave them alone
 #   test3       the invocations of test3.sh, regression tests for bugs
@@ -51,6 +52,8 @@
 #               the callback, the flags), against testbase-api
 #   testinit    every sieve table init.c builds, against a direct evaluation
 #               of its definition (bench_init.c); a fraction of a second
+#   testmaxdegree  the refusals at the bound on the degree, in a build with
+#               RATPOINTS_MAX_DEGREE 100 in build-maxdegree/ (maxdegree.sh)
 #   test4configs  test4 again on the library built with the other
 #               compile-time switches: register widths 64, 128, 512,
 #               RATPOINTS_CHUNK=1, USE_LONG_IN_PHASE_2, PRIME_SIZE 7,
@@ -77,8 +80,9 @@
 #               to tuning.mk (see tune.sh); takes several minutes, wants an idle
 #               machine, and must not be run under -j
 #   bench_init  correctness check and benchmark for the sieve table set-up
-#   bench_check benchmark for the exact check, and how to remeasure the four
-#               RATPOINTS_CHECK_* constants
+#   bench_check benchmark for the exact check and the modular test before
+#               it, and how to remeasure the four RATPOINTS_CHECK_* constants
+#               and RATPOINTS_TEST_STEP and _CALL
 #   clean       remove the intermediate files; distclean also the executables
 #               and any tuning.mk
 
@@ -89,7 +93,7 @@
 # with very many rational points; on those it is worth up to a factor of two.
 # Having the larger table costs nothing when it is not used.
 PRIME_SIZE = 8
-VERSION = 3.1.1
+VERSION = 3.2.0
 
 # The height bound for "make testhigh" and "make testhighmany"; see there.
 TESTHEIGHT = 200000
@@ -233,13 +237,14 @@ CCFLAGS =
 DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
-            main.c rptest.c testdata.h testbase ratpoints-doc-3.1.tex \
-            README.md gpl-2.0.txt testbase2 testdata-many.h testbase-many \
+            main.c rptest.c testdata.h testbase ratpoints-doc-3.2.tex \
+            README.md lgpl-2.1.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \
             test4.sh testbase4 verify-test4.py test4-configs.sh test4-threads.sh tsan.sh \
             rpapi.c testbase-api coverage.sh sanitize.sh testalloc.sh rpalloc.c \
+            maxdegree.sh \
             bench_init.c bench_check.c tune.sh
 
 # Temporary files that are generated during build and test
@@ -258,7 +263,7 @@ TEMPFILES = sift.o init.o sturm.o find_points.o \
 # Executables and library produced when building
 TARGETFILES = ratpoints libratpoints.a rptest rptest-many rptest-high-many \
               rptest-degrees rpapi ratpoints-debug rpalloc ratpoints-alloc \
-              bench_init bench_check ratpoints-doc-3.1.pdf
+              bench_init bench_check ratpoints-doc-3.2.pdf
 
 FAILED = "Test failed!"
 # what a test does when its output differs from the reference: print the
@@ -267,7 +272,7 @@ FAIL = { echo ${FAILED}; false; }
 
 all: ratpoints libratpoints.a doc
 
-doc: ratpoints-doc-3.1.pdf
+doc: ratpoints-doc-3.2.pdf
 
 # The suites "make test" runs, each a target below.  A test whose output
 # differs from its reference prints "Test failed!" and fails its target
@@ -275,7 +280,7 @@ doc: ratpoints-doc-3.1.pdf
 # every suite whatever the earlier ones did and fails at the end if any of
 # them failed.
 TESTS = test1 test1once test1many testdegrees test2 test3 test4 testapi testinit \
-        timing
+        testmaxdegree timing
 
 .PHONY: test
 test:
@@ -436,6 +441,14 @@ testapi: rpapi testbase-api
 testinit: bench_init
 	./bench_init 1 > testinit.out 2>&1 || ${FAIL}
 
+# The refusals at the bound on the degree, which the default build cannot
+# reach (maxdegree.sh: the program and rpapi built with RATPOINTS_MAX_DEGREE
+# 100 in build-maxdegree/; the lists of 101 and 102 coefficients, and rpapi
+# against testbase-api).
+.PHONY: testmaxdegree
+testmaxdegree: ratpoints testbase-api maxdegree.sh
+	./maxdegree.sh || ${FAIL}
+
 # The suites with the sieve on several threads (the option -t): the same
 # references, since what the program prints must not depend on the number
 # of threads; then test4 and test1 on builds with fixed block lengths, so
@@ -527,9 +540,9 @@ install: install-bin install-lib
 
 # To generate the documentation, run pdflatex twice
 # to get the cross-references right.
-ratpoints-doc-3.1.pdf: ratpoints-doc-3.1.tex
-	pdflatex ratpoints-doc-3.1.tex
-	pdflatex ratpoints-doc-3.1.tex
+ratpoints-doc-3.2.pdf: ratpoints-doc-3.2.tex
+	pdflatex ratpoints-doc-3.2.tex
+	pdflatex ratpoints-doc-3.2.tex
 
 dist: ${DISTFILES}
 	mkdir -p ratpoints-${VERSION}
@@ -541,7 +554,7 @@ dist: ${DISTFILES}
 clean:
 	${RM} ${TEMPFILES}
 	${RM} -r build-coverage build-test4-* build-threads-* build-tsan \
-	         build-sanitize build-alloc
+	         build-sanitize build-alloc build-maxdegree
 
 distclean: clean
 	${RM} ${TARGETFILES} tuning.mk
@@ -593,10 +606,11 @@ bench_init: libratpoints.a bench_init.c ratpoints.h rp-private.h primes.h build.
 	${CC} bench_init.c -o bench_init ${CCFLAGS_0} -O3 -funroll-loops \
               ${CCFLAGS3} ${CCFLAGS2} ${CCFLAGS}
 
-# Benchmark for the exact check (see bench_check.c).  It links nothing from
-# the library -- it reproduces the gmp calls the check makes -- but it reads
-# the four RATPOINTS_CHECK_* constants out of ratpoints.h to print beside
-# what it measures.
+# Benchmark for the exact check and the modular test before it (see
+# bench_check.c).  It links nothing from the library -- it reproduces the
+# gmp calls the check makes and the lines of the test -- but it reads the
+# RATPOINTS_CHECK_* and RATPOINTS_TEST_* constants out of ratpoints.h to
+# print beside what it measures.
 bench_check: bench_check.c ratpoints.h build.stamp
 	${CC} bench_check.c -o bench_check ${CCFLAGS_0} ${CCFLAGS2} -lm ${CCFLAGS}
 

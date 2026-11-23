@@ -1,20 +1,20 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -317,9 +317,12 @@ typedef unsigned long ratpoints_bit_array;
   { printf("%*.*lx", WIDTH, WIDTH, EXT((a), i_)); } \
   printf("%*.*lx ", WIDTH, WIDTH, EXT0(a)); }
 
-/* set up data related to the set of primes considered */
+/* set up data related to the set of primes considered: the odd primes
+ * below 2^RATPOINTS_MAX_BITS_IN_PRIME, a value from 5 to 10, which the
+ * Makefile passes as its PRIME_SIZE; the default here is that of the
+ * Makefile */
 #ifndef RATPOINTS_MAX_BITS_IN_PRIME
-# define RATPOINTS_MAX_BITS_IN_PRIME 7
+# define RATPOINTS_MAX_BITS_IN_PRIME 8
 #endif
 
 #if (RATPOINTS_MAX_BITS_IN_PRIME == 10)
@@ -353,10 +356,7 @@ typedef unsigned long ratpoints_bit_array;
 # define RATPOINTS_MAX_PRIME_EVEN 32
 
 #else
-# define RATPOINTS_MAX_BITS_IN_PRIME 7
-# define RATPOINTS_NUM_PRIMES 30
-# define RATPOINTS_MAX_PRIME 127
-# define RATPOINTS_MAX_PRIME_EVEN 128
+# error "RATPOINTS_MAX_BITS_IN_PRIME (PRIME_SIZE) must be from 5 to 10"
 
 #endif
 /* so that RATPOINTS_MAX_PRIME < RATPOINTS_MAX_PRIME_EVEN
@@ -570,7 +570,10 @@ typedef struct ratpoints_sieve_entry_s
  * process() sets to stop the search.  A thread of a pool (find_points.c)
  * also knows its pool, the slot it puts its block's points into, and the
  * flag that tells it to abandon the block; on the calling thread the three
- * are NULL. */
+ * are NULL.  cq is the run's residues of the coefficients modulo the primes
+ * of the modular test before the exact check, which the threads share and
+ * only read, and NULL when the search does without the test (see
+ * test_moduli in find_points.c). */
 typedef struct { ratpoints_args *args; const struct rp_intervals_s *iv;
                  ratpoints_bit_array *survivors; void *survivors_na;
                  mpz_t *work;
@@ -581,7 +584,8 @@ typedef struct { ratpoints_args *args; const struct rp_intervals_s *iv;
                  unsigned long n_checks; unsigned long n_sifts;
                  long dec;
                  int compute_bc; int stage3_filled; int quit;
-                 void *pool; void *slot; const int *stop; }
+                 void *pool; void *slot; const int *stop;
+                 const unsigned long *cq; }
         rp_worker;
 
 /* The following two functions are provided in init.c: the table row of a
