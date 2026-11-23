@@ -5,7 +5,9 @@
 This is a program that uses an optimized quadratic sieve algorithm in order
 to find rational points on hyperelliptic curves.
 
-The program is distributed under the GNU GPL, version 2 (or later).
+The program and the library are distributed under the GNU Lesser General
+Public License, version 2.1 or later (LGPL-2.1-or-later). Versions before
+3.2.0 were distributed under the GNU GPL, version 2 or later.
 
 Read the [documentation](https://www.mathe2.uni-bayreuth.de/stoll/programs/ratpoints-doc-3.2.pdf).
 
@@ -26,8 +28,12 @@ explains what is verified and what one has to trust.
 
 The current version is **ratpoints-3.2.0** from November 23, 2026. It removes
 the bound of 100 on the degree and makes searches at a high degree or with
-large coefficients feasible:
+large coefficients feasible, under a new license:
 
+* **The license is the LGPL.** ratpoints is distributed under the GNU Lesser
+  General Public License, version 2.1 or later, where it was under the GNU
+  General Public License, version 2 or later, so that a program under
+  another license may use the library.
 * **No practical bound on the degree.** `RATPOINTS_MAX_DEGREE` is 1518500246
   instead of 100, the largest degree for which the sizes the library computes
   stay within their types, and the arrays that the degree sizes come from the

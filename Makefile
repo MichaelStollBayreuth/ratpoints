@@ -3,17 +3,17 @@
 #   Copyright (C) 2008, 2009, 2022, 2023, 2026  Michael Stoll
 #
 #   This program is free software: you can redistribute it and/or
-#   modify it under the terms of the GNU General Public License
-#   as published by the Free Software Foundation, either version 2 of
+#   modify it under the terms of the GNU Lesser General Public License
+#   as published by the Free Software Foundation, either version 2.1 of
 #   the License, or (at your option) any later version.
 #
 #   This program is distributed in the hope that it will be useful,
 #   but WITHOUT ANY WARRANTY; without even the implied warranty of
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#   GNU General Public License for more details.
+#   GNU Lesser General Public License for more details.
 #
-#   You should have received a copy of version 2 of the GNU General
-#   Public License along with this program.
+#   You should have received a copy of version 2.1 of the GNU Lesser
+#   General Public License along with this program.
 #   If not, see <http://www.gnu.org/licenses/>.
 #
 #
@@ -238,7 +238,7 @@ DISTFILES = Makefile ratpoints.h rp-private.h primes.h \
             gen_find_points_h.c gen_init_sieve_h.c \
             sift.c init.c sturm.c find_points.c \
             main.c rptest.c testdata.h testbase ratpoints-doc-3.2.tex \
-            README.md gpl-2.0.txt testbase2 testdata-many.h testbase-many \
+            README.md lgpl-2.1.txt testbase2 testdata-many.h testbase-many \
             testdata-high-many.h testbase-high-many \
             testdata-degrees.h testbase-degrees \
             test3.sh testbase3 \

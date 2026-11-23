@@ -124,17 +124,17 @@ see~\cite{ratpoints}, or obtained from \texttt{github} at
 \url{https://github.com/MichaelStollBayreuth/ratpoints}.
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published
-by the Free Software Foundation, either version~2 of the License, or
-(at your option) any later version.
+it under the terms of the GNU Lesser General Public License as published
+by the Free Software Foundation, either version~2.1 of the License, or
+(at your option) any later version. (Up to version~3.1.1, it was
+distributed under the GNU General Public License, version~2 or later.)
 
 This program is distributed in the hope that it will be useful,
 but \textbf{without any warranty}; without even the implied warranty of
 \textbf{merchantability} or \textbf{fitness for a particular purpose}. See the
-GNU General Public License for more details.
+GNU Lesser General Public License for more details.
 
-You should receive a copy of the GNU General Public License
-% and the GNU Lesser General Public License
+You should receive a copy of the GNU Lesser General Public License
 along with this program.
 
 If not, see \url{http://www.gnu.org/licenses/}.
@@ -671,7 +671,7 @@ The archive contains the following files.
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
   \item \texttt{README.md} --- a short description and an overview of what
         is new in this version
-  \item \texttt{gpl-2.0.txt} --- the GNU license that applies to this program.
+  \item \texttt{lgpl-2.1.txt} --- the GNU license that applies to this program.
 \end{itemize}%
 }
 
@@ -2398,8 +2398,15 @@ that of 3.1.0 within the accuracy of the measurements.
 \textbf{Version 3.2.0} was released November 23, 2026. It removes the bound
 of~$100$ on the degree of the polynomial, makes searches at a high degree
 or with large coefficients feasible, reads long lists of coefficients from
-a file and reports failed writes.
+a file and reports failed writes. Its license is the GNU Lesser General
+Public License.
 \begin{itemize}
+  \item \emph{License.} The program and the library are distributed under
+        the GNU Lesser General Public License, version~$2.1$ or later,
+        where they were under the GNU General Public License, version~$2$
+        or later, so that a program under another license may use the
+        library; Bill Allombert, who contributed code, has agreed to the
+        change.
   \item \emph{The degree.} \texttt{RATPOINTS\_MAX\_DEGREE} is $1518500246$
         instead of~$100$: the largest degree for which every size, index
         and count that the library computes from the degree stays within

@@ -4,17 +4,17 @@
  * Copyright (C) 2008, 2009, 2022, 2026  Michael Stoll                 *
  *                                                                     *
  * This program is free software: you can redistribute it and/or       *
- * modify it under the terms of the GNU General Public License         *
- * as published by the Free Software Foundation, either version 2 of   *
+ * modify it under the terms of the GNU Lesser General Public License  *
+ * as published by the Free Software Foundation, either version 2.1 of *
  * the License, or (at your option) any later version.                 *
  *                                                                     *
  * This program is distributed in the hope that it will be useful,     *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the       *
- * GNU General Public License for more details.                        *
+ * GNU Lesser General Public License for more details.                 *
  *                                                                     *
- * You should have received a copy of version 2 of the GNU General     *
- * Public License along with this program.                             *
+ * You should have received a copy of version 2.1 of the GNU Lesser    *
+ * General Public License along with this program.                     *
  * If not, see <http://www.gnu.org/licenses/>.                         *
  ***********************************************************************/
 
@@ -45,7 +45,7 @@
   "This is ratpoints-3.2.0 Copyright (C) 2008,2009,2022,2023,2026 by Michael Stoll.\n\n" \
   "This program comes with ABSOLUTELY NO WARRANTY.\n" \
   "This is free software, and you are welcome to redistribute it under the\n" \
-  "terms of the GNU General Public License version 2 or later.\n\n" \
+  "terms of the GNU Lesser General Public License version 2.1 or later.\n\n" \
   "Please acknowledge use of this program in published work.\n\n"
 
 /**************************************************************************
