@@ -1,5 +1,5 @@
 /***********************************************************************
- * ratpoints-3.1.1                                                     *
+ * ratpoints-3.2.0                                                     *
  *  - A program to find rational points on hyperelliptic curves        *
  * Copyright (C) 2026  Michael Stoll                                   *
  *                                                                     *

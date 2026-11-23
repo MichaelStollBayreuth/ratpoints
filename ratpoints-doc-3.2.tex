@@ -38,7 +38,7 @@
 \newcommand{\R}{{\mathbb R}}
 \newcommand{\BP}{{\mathbb P}}
 
-\newcommand{\rpversion}{3.1.1} % don't forget the verbatim stuff!
+\newcommand{\rpversion}{3.2.0} % don't forget the verbatim stuff!
 
 \addtolength{\hoffset}{-1cm}
 \addtolength{\textwidth}{2cm}
@@ -64,7 +64,7 @@
          Universit\"at Bayreuth,
          95440 Bayreuth, Germany.}
 \email{Michael.Stoll@uni-bayreuth.de}
-\date{October 9, 2026}
+\date{November 23, 2026}
 
 \maketitle
 
@@ -106,8 +106,11 @@ increase the major version number from 2 to~3, even though many of
 the optimizations are incremental and there are few really new ideas involved.
 Version~3.1.0 added the option to run the sieve on several
 threads (Sections~\ref{sec:threads} and~\ref{sec:library}).
-The current version~3.1.1 fixes some bugs that were discovered while preparing
+Version~3.1.1 fixed some bugs that were discovered while preparing
 for a verified version in~Lean.
+The current version~3.2.0 removes the bound of~$100$ on the degree of the
+polynomial and makes searches at a high degree or with large coefficients
+feasible (Section~\ref{sec:modtest}).
 
 Note that version~2.2.4 is the last one that supports 32-bit architectures;
 versions 3.0.0 and up need a word size of 64~bit.
@@ -145,7 +148,7 @@ This section describes the installation procedure under Linux.
 \subsection{Extract the archive}
 
 \begin{verbatim}
-> tar xzf ratpoints-3.1.1.tar.gz
+> tar xzf ratpoints-3.2.0.tar.gz
 \end{verbatim}
 
 This sets up a directory \texttt{ratpoints-\rpversion} containing the various
@@ -158,7 +161,7 @@ repository mentioned above into a directory of your choice (and replace
 Do
 
 \begin{verbatim}
-> cd ratpoints-3.1.1
+> cd ratpoints-3.2.0
 > make all
 \end{verbatim}
 
@@ -664,7 +667,7 @@ The archive contains the following files.
         and the exact test with the modular test before it.  Neither is
         part of the library; the second is how to remeasure the constants
         of Section~\ref{sec:sp3choice} and Section~\ref{sec:modtest}
-  \item \texttt{ratpoints-doc-3.1.tex} --- the source of this documentation
+  \item \texttt{ratpoints-doc-3.2.tex} --- the source of this documentation
         (\texttt{make all} or \texttt{make doc} produce the PDF file)
   \item \texttt{README.md} --- a short description and an overview of what
         is new in this version
@@ -2391,6 +2394,103 @@ constant a new value.
 \end{itemize}
 Programs using the library need not be recompiled, and the running time is
 that of 3.1.0 within the accuracy of the measurements.
+
+\textbf{Version 3.2.0} was released November 23, 2026. It removes the bound
+of~$100$ on the degree of the polynomial, makes searches at a high degree
+or with large coefficients feasible, reads long lists of coefficients from
+a file and reports failed writes.
+\begin{itemize}
+  \item \emph{The degree.} \texttt{RATPOINTS\_MAX\_DEGREE} is $1518500246$
+        instead of~$100$: the largest degree for which every size, index
+        and count that the library computes from the degree stays within
+        its type. It can be lowered, not raised, on the compiler's command
+        line (Section~\ref{sec:usage}). Every array that the degree sizes
+        comes from the heap instead of the stack, which a degree of a few
+        hundred would overflow, and the Sturm sequence is kept as a
+        triangular array of half the size. In practice memory and time
+        limit the degree; the option~\verb+-s+ saves both at a large
+        degree, and when the search runs out of memory with the Sturm step
+        on, the message ``Not enough memory.''\ is followed by a hint
+        on~\verb+-s+.
+  \item \emph{The modular test before the exact test.} At a high degree or
+        with large coefficients, each survivor of the sieve is tested
+        modulo sixteen primes just below~$2^{31}$ first, and only the few
+        that pass are tested exactly, by Horner's rule with a running
+        power of the denominator, which needs no products of the
+        coefficients with the powers of the denominator. The program does
+        so where its cost model says that this is cheaper; the
+        option~\verb+-W+ decides it too, and \verb+-v+ says when it does
+        (Section~\ref{sec:modtest}). A search at degree~$8192$ with
+        $485$~survivors that took $37$~seconds and $71$~MB takes
+        $0.1$~seconds and $16$~MB. The
+        Lean model of the program follows this version
+        (\url{https://github.com/MichaelStollBayreuth/RatpointsLean}),
+        with a proof that the test loses no point.
+  \item \emph{Reading the polynomial.} In place of the list of the
+        coefficients, the first argument may be~\verb+@+ followed by the
+        name of a file that holds the list, or~\verb+@-+ for standard
+        input: the way to give a list longer than the operating system
+        lets one argument be ($128$~KiB on Linux). A file that cannot be
+        read gives a message of its own and exit status~$12$
+        (Section~\ref{sec:usage}). Reading a coefficient no longer takes a
+        time quadratic in its length ($0.007$ instead of $0.29$~seconds
+        for $120000$ digits).
+  \item \emph{Printing the polynomial.} From the degree
+        \texttt{RATPOINTS\_PRINT\_DEGREE} on ($1000$ by default), the
+        program and the library print the degree of the polynomial and the
+        number of bits of its largest coefficient instead of the
+        polynomial, in the equation of the curve and in the lists of the
+        coefficients of the report of~\verb+-v+
+        (Section~\ref{sec:usage}).
+  \item \emph{Search intervals.} The program takes any number of search
+        intervals (\verb+-l+, \verb+-u+), where it took at most
+        \texttt{RATPOINTS\_MAX\_DEGREE}, and its message on wrong interval
+        arguments no longer says ``too many''.
+  \item \emph{Failed writes.} When a write to standard output fails, on a
+        full disk, say, or because standard output is closed, the program
+        says so on standard error and exits with status~$13$; it used to
+        say nothing and exit as if the output had been written
+        (Section~\ref{sec:usage}).
+  \item \emph{The choice of the moduli.} \verb+-N+ without~\verb+-n+ is a
+        hard limit on the number of moduli of the first stage, as the
+        description of the option says; the first stage used to take as
+        many as its rule wanted. After the third stage has chosen its
+        primes, only the primes it did not take are sorted for the
+        correction during the run, so that the third stage sieves with
+        exactly the primes it chose, in the order in which it chose them;
+        before, a prime it had rejected could take the place of one it had
+        chosen. The points found are the same; the survivors printed
+        under~\verb+-x+ can differ.
+  \item \emph{Output.} A format (\verb+-f+) that ends in~\verb+%+ or in a
+        backslash flushes the output after each point like any other
+        format. The manual now says what a~\verb+%+ and a backslash before
+        other characters print (Section~\ref{sec:usage}), that the weights
+        a callback returns should not be negative
+        (Section~\ref{sec:library}), and that several threads do not speed
+        up a search for integral points (Section~\ref{sec:threads}).
+  \item \emph{Build.} The header's default of
+        \texttt{RATPOINTS\_MAX\_BITS\_IN\_PRIME} is~$8$, that of the
+        Makefile's \texttt{PRIME\_SIZE}, where it was~$7$, and a value
+        outside $5$ to~$10$ does not compile; neither does a
+        \texttt{RATPOINTS\_CHUNK} above~$16$, which used to give the
+        unchunked first stage without a word. The set-up of the rows of
+        the sieving tables no longer adds an offset to a null pointer
+        (which changed no result).
+  \item \emph{Tests.} \texttt{make testmaxdegree}, a part of \texttt{make
+        test}, tests the refusals at the bound on the degree in a build
+        whose bound is~$100$; \texttt{make test4configs} gains a build
+        with the modular test in every search; \texttt{make testalloc}
+        makes the new allocations fail too; \texttt{bench\_check} times
+        the modular test; and \texttt{test4.sh} has the invocations for
+        all of the above, checked by \texttt{verify-test4.py}
+        (Section~\ref{sec:tests}).
+\end{itemize}
+Programs using the library need not be recompiled. The example of
+Section~\ref{sec:library} used to size its arrays by
+\texttt{RATPOINTS\_MAX\_DEGREE}; a program that does so has to size them
+by its own degrees before it is compiled with the new header. Where the
+modular test is off, the running time is that of 3.1.1 within the accuracy
+of the measurements.
 
 %=========================================================================
 
