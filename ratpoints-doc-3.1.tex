@@ -841,12 +841,14 @@ There are various ways to change this behavior.
         \strut\quad\verb+-f "[%x,%y,%z]" -fs "{" -fm "," -fe "}\n"+
 \end{itemize}
 
-\subsection{Restricting the search domain}
+\subsection{Restricting the search domain}\label{sec:domain}
 
 There are two ways to restrict the domain of the search. The first is
 to restrict the range of denominators considered. This is done via \\
 \strut\quad\verb+-dl+ $d_{\text{min}}$ \verb+-du+ $d_{\text{max}}$\,. \\
-For example, to only look for integral points, you can say \verb+-du 1+.
+For example, to only look for integral points, you can say \verb+-du 1+
+(several threads do not speed up such a search; Section~\ref{sec:threads}
+says what does).
 By default, the lower limit is~$1$ and the upper limit is~$H$.
 
 The other way is to restrict the search to a union of (closed) intervals.
@@ -926,6 +928,17 @@ beyond that is the machine. At a small height bound the set-up of a
 search is a large share of the run and there is little to gain; many
 curves at a small height bound are better searched by independent
 searches running in parallel (Section~\ref{sec:library}).
+
+Since the work is handed out by denominators, several threads do not help
+a search with one denominator or a few: a search for integral points
+(\verb+-du 1+) is a single block, which one thread sieves whatever
+\verb+-t+ says. Divide such a search by hand instead: cut the range of the
+$x$-coordinates into disjoint intervals and run one search for each of
+them in parallel, with its interval given by \verb+-l+ and \verb+-u+
+(Section~\ref{sec:domain}). The intervals are closed, so let two
+neighbours meet at a number that is no $x$-coordinate of the search, such
+as $k + \frac12$ for integral points: \verb+-u 0.5+ in one search and
+\verb+-l 0.5+ in the next.
 
 \subsection{Setting the parameters for the sieve} \label{fd}
 
