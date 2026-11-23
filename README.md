@@ -45,8 +45,8 @@ large coefficients feasible, under a new license:
   just below 2^31 first, and only the few that pass are checked exactly. The
   program does this where its cost model says that it is cheaper (`-v` says
   when, and `-W` decides it too). A search at degree 8192 with 485
-  survivors that took 37 seconds and 71 MB takes 0.1 seconds and 16 MB. The
-  Lean model has the proof that the test loses no point.
+  survivors that took 37 seconds and 71 MB now takes 0.1 seconds and 16 MB.
+  The Lean model has the proof that the test loses no point.
 * **Long lists of coefficients.** A first argument `@file` reads the
   coefficients from a file and `@-` from standard input, for lists longer
   than one argument may be (128 KiB on Linux); reading a long coefficient

@@ -2428,7 +2428,7 @@ Public License.
         so where its cost model says that this is cheaper; the
         option~\verb+-W+ decides it too, and \verb+-v+ says when it does
         (Section~\ref{sec:modtest}). A search at degree~$8192$ with
-        $485$~survivors that took $37$~seconds and $71$~MB takes
+        $485$~survivors that took $37$~seconds and $71$~MB now takes
         $0.1$~seconds and $16$~MB. The
         Lean model of the program follows this version
         (\url{https://github.com/MichaelStollBayreuth/RatpointsLean}),
@@ -2479,8 +2479,8 @@ Public License.
         \texttt{RATPOINTS\_MAX\_BITS\_IN\_PRIME} is~$8$, that of the
         Makefile's \texttt{PRIME\_SIZE}, where it was~$7$, and a value
         outside $5$ to~$10$ does not compile; neither does a
-        \texttt{RATPOINTS\_CHUNK} above~$16$, which used to give the
-        unchunked first stage without a word. The set-up of the rows of
+        \texttt{RATPOINTS\_CHUNK} above~$16$, which used to silently give
+        the unchunked first stage. The set-up of the rows of
         the sieving tables no longer adds an offset to a null pointer
         (which changed no result).
   \item \emph{Tests.} \texttt{make testmaxdegree}, a part of \texttt{make
